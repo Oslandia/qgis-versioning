@@ -127,11 +127,11 @@ class Versioning:
                     print hcols
                     con = db.connect(filename)
                     cur = con.cursor()
-                    sql = "CREATE VIEW "+table+"_view "+"AS SELECT "+cols+" FROM "+table+" WHERE "+hcols['rev_end']+" IS NULL"
+                    sql = "CREATE VIEW "+table+"_view "+"AS SELECT ROWID AS ROWID, "+cols+" FROM "+table+" WHERE "+hcols['rev_end']+" IS NULL"
                     print sql
                     cur.execute(sql)
 
-                    sql = "INSERT INTO views_geometry_columns "+"(view_name, view_geometry, view_rowid, f_table_name, f_geometry_column) "+"VALUES"+"('"+table+"_view', 'GEOMETRY', 'OGC_FID', '"+table+"', 'GEOMETRY')"
+                    sql = "INSERT INTO views_geometry_columns "+"(view_name, view_geometry, view_rowid, f_table_name, f_geometry_column) "+"VALUES"+"('"+table+"_view', 'GEOMETRY', 'ROWID', '"+table+"', 'GEOMETRY')"
                     print sql 
                     cur.execute(sql)  
                      
@@ -174,7 +174,7 @@ class Versioning:
 
                     # replace layer by it's offline version
                     registry.removeMapLayer(name)
-                    self.iface.addVectorLayer("dbname="+filename+" table=\""+table+"_view\" (GEOMETRY)",table,'spatialite')
+                    self.iface.addVectorLayer("dbname="+filename+" key=\"OGC_FID\" table=\""+table+"_view\" (GEOMETRY)",table,'spatialite')
 
 
 

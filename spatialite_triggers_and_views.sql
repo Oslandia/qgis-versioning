@@ -1,3 +1,12 @@
+CREATE VIEW foo
+AS SELECT ROWID AS ROWID, OGC_FID, GEOMETRY
+   FROM junctions
+   WHERE trunk_rev_end IS NULL;
+INSERT INTO views_geometry_columns
+        (view_name, view_geometry, view_rowid, f_table_name, f_geometry_column)
+VALUES 
+        ('foo', 'GEOMETRY', 'ROWID', 'junctions', 'GEOMETRY');  
+
 
 /*
 Replace tables by views for current revision of trunk and create triggers
@@ -8,7 +17,7 @@ Replace tables by views for current revision of trunk and create triggers
 --ALTER TABLE pipes_view RENAME TO pipes;
 
 CREATE VIEW junctions_view
-AS SELECT ogc_fid, id, elevation, base_demand_flow, demand_pattern_id, geometry
+AS SELECT ROWID AS ROWID, ogc_fid, id, elevation, base_demand_flow, demand_pattern_id, geometry
    FROM junctions
    WHERE ( trunk_rev_end IS NULL OR trunk_rev_end >=4 ) AND trunk_rev_begin <= 4;
 INSERT INTO views_geometry_columns
@@ -17,13 +26,13 @@ VALUES
         ('junctions_view', 'GEOMETRY', 'OGC_FID', 'junctions', 'GEOMETRY');  
 
 CREATE VIEW pipes_view
-AS SELECT  ogc_fid, id, start_node, end_node, length, diameter, roughness, minor_loss_coefficient, status, geometry
+AS SELECT  ROWID AS ROWID, ogc_fid, id, start_node, end_node, length, diameter, roughness, minor_loss_coefficient, status, geometry
    FROM pipes
    WHERE ( trunk_rev_end IS NULL OR trunk_rev_end >=4 ) AND trunk_rev_begin <= 4;
 INSERT INTO views_geometry_columns
         (view_name, view_geometry, view_rowid, f_table_name, f_geometry_column)
 VALUES 
-        ('pipes_view', 'GEOMETRY', 'OGC_FID', 'pipes', 'GEOMETRY');  
+        ('pipes_view', 'GEOMETRY', 'ROWID', 'pipes', 'GEOMETRY');  
 
 
 CREATE TRIGGER update_junctions INSTEAD OF UPDATE ON junctions_view

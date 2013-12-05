@@ -1,0 +1,6 @@
+<RCC>
+    <qresource prefix="/plugins/versioning" >
+        <file>commit.svg</file>
+        <file>work_offline.svg</file>
+    </qresource>
+</RCC>

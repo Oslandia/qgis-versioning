@@ -85,6 +85,20 @@ UPDATE epanet.junctions SET trunk_rev_begin = 1;
 UPDATE epanet.pipes SET trunk_rev_begin = 1;
 
 /*
+Create a readonly checkout for last revision of trunk
+*/
+CREATE SCHEMA epanet_trunk_rev_head;
+
+CREATE VIEW epanet_trunk_rev_head.junctions
+AS SELECT hid, id, elevation, base_demand_flow, demand_pattern_id, geom
+   FROM epanet.junctions
+   WHERE trunk_rev_end IS NULL;
+  
+CREATE VIEW epanet_trunk_rev_head.pipes
+AS SELECT  hid, id, start_node, end_node, length, diameter, roughness, minor_loss_coefficient, status, geom 
+   FROM epanet.pipes
+   WHERE trunk_rev_end IS NULL;
+/*
 Create a readonly checkout for rev 1 of trunk
 */
 CREATE SCHEMA epanet_trunk_rev_1;

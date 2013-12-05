@@ -24,6 +24,7 @@ from PyQt4.QtCore import *
 from PyQt4.QtGui import *
 from qgis.core import *
 import resources_rc
+import os
 import os.path
 
 qset = QSettings( "oslandia", "horao_qgis_plugin" )
@@ -36,42 +37,72 @@ class Versioning:
         self.iface = iface
         # initialize plugin directory
         self.plugin_dir = os.path.dirname(__file__)
-        # map of layer object => LayerInfo
-        self.layers = {}
 
     def initGui(self):
         # Create action  work_offline
-        self.work_offline = QAction(
+        self.work_offline_action = QAction(
             QIcon(":/plugins/versioning/work_offline.svg"),
             u"work offline", self.iface.mainWindow())
+        self.work_offline_action.setWhatsThis("work offline")
         # connect the action to the run method
-        self.work_offline.triggered.connect(self.test1)
+        self.work_offline_action.triggered.connect(self.work_offline)
 
         # Add toolbar button and menu item
-        self.iface.addToolBarIcon(self.work_offline)
-        self.iface.addPluginToMenu( WIN_TITLE, self.work_offline)
+        self.iface.addToolBarIcon(self.work_offline_action)
+        self.iface.addPluginToMenu( WIN_TITLE, self.work_offline_action)
 
         # Create action commit
-        self.commit = QAction(
+        self.commit_action = QAction(
             QIcon(":/plugins/versioning/commit.svg"),
-            u"work offline", self.iface.mainWindow())
+            u"commit", self.iface.mainWindow())
         # connect the action to the run method
-        self.commit.triggered.connect(self.test1)
+        self.commit_action.triggered.connect(self.commit)
 
         # Add toolbar button and menu item
-        self.iface.addToolBarIcon(self.commit)
-        self.iface.addPluginToMenu( WIN_TITLE, self.commit)
+        self.iface.addToolBarIcon(self.commit_action)
+        self.iface.addPluginToMenu( WIN_TITLE, self.commit_action)
 
     def unload(self):
         # Remove the plugin menu item and icon
-        self.iface.removePluginMenu( WIN_TITLE, self.action)
-        self.iface.removeToolBarIcon(self.work_offline)
-        self.iface.removeToolBarIcon(self.commit)
+        self.iface.removePluginMenu( WIN_TITLE, self.work_offline_action)
+        self.iface.removePluginMenu( WIN_TITLE, self.commit_action)
+        self.iface.removeToolBarIcon(self.work_offline_action)
+        self.iface.removeToolBarIcon(self.commit_action)
 
-    def test1(self):
-        print "Versioning.test1"
+    def work_offline(self):
+        print "Versioning.work_offline"
+        registry = QgsMapLayerRegistry.instance()
+        filename = ""
+        for name,layer in registry.mapLayers().iteritems():
+            if layer.providerType() == "postgres":
+                uri = QgsDataSourceURI(layer.source())
+                if uri.schema()[-9:] == "_rev_head":
+                    schema = uri.schema()[:-9]
+                    table = uri.table()
+                    # remove _branch from name
+                    branch = schema[schema.rfind('_'):]
+                    schema = schema[:schema.rfind('_')]
+                    database = uri.database()
+                    # use ogr2ogr to create spatialite db
+                    if not filename:
+                        filename = QFileDialog.getSaveFileName(self.iface.mainWindow(), 'Save Versionned Layers As', '.', '*.sqlite')
+                        cmd = "ogr2ogr -preserve_fid -f SQLite -dsco SPATIALITE=yes "+filename+" PG:\"dbname='"+database+"' active_schema="+schema+"\" "+table
+                        print cmd
+                        os.remove(filename)
+                        os.system(cmd)
+                    else:
+                        cmd = "ogr2ogr -preserve_fid -f SQLite -update "+filename+" PG:\"dbname='"+database+"' active_schema="+schema+"\" "+table
+                        print cmd
+                        os.system(cmd)
+                    # replace layer by it's offline version
+                    registry.removeMapLayer(name)
+                    self.iface.addVectorLayer("dbname="+filename+" table=\""+table+"\" (GEOMETRY)\"",table,'spatialite')
+
+
+
+        
         pass
 
-    def test2(self):
-        print "Versioning.test2"
+    def commit(self):
+        print "Versioning.commit"
         pass

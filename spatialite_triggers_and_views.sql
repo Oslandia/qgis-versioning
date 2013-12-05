@@ -14,7 +14,7 @@ AS SELECT ogc_fid, id, elevation, base_demand_flow, demand_pattern_id, geometry
 INSERT INTO views_geometry_columns
         (view_name, view_geometry, view_rowid, f_table_name, f_geometry_column)
 VALUES 
-        ('junctions_view', 'GEOMETRY', 'ogc_fid', 'junctions', 'GEOMETRY');  
+        ('junctions_view', 'GEOMETRY', 'OGC_FID', 'junctions', 'GEOMETRY');  
 
 CREATE VIEW pipes_view
 AS SELECT  ogc_fid, id, start_node, end_node, length, diameter, roughness, minor_loss_coefficient, status, geometry
@@ -23,7 +23,7 @@ AS SELECT  ogc_fid, id, start_node, end_node, length, diameter, roughness, minor
 INSERT INTO views_geometry_columns
         (view_name, view_geometry, view_rowid, f_table_name, f_geometry_column)
 VALUES 
-        ('pipes_view', 'GEOMETRY', 'ogc_fid', 'pipes', 'GEOMETRY');  
+        ('pipes_view', 'GEOMETRY', 'OGC_FID', 'pipes', 'GEOMETRY');  
 
 
 CREATE TRIGGER update_junctions INSTEAD OF UPDATE ON junctions_view

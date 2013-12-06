@@ -33,7 +33,8 @@ INSERT INTO epanet.junctions
     VALUES
     (2,'1',1,ST_GeometryFromText('POINT(1 0)',2154));
 
-CREATE TYPE epanet.pipe_status AS ENUM ('OPEN', 'CLOSED', 'CV');
+-- Avoid custom types that will not translate well to spatialite
+--CREATE TYPE epanet.pipe_status AS ENUM ('OPEN', 'CLOSED', 'CV');
 
 CREATE TABLE epanet.pipes (
     hid serial PRIMARY KEY,
@@ -44,7 +45,7 @@ CREATE TABLE epanet.pipes (
     diameter float,
     roughness float,
     minor_loss_coefficient float,
-    status epanet.pipe_status,
+    status varchar,
     geom public.geometry, 
     CONSTRAINT enforce_dims_geom CHECK ((public.st_ndims(geom) = 2)),
     CONSTRAINT enforce_geotype_geom CHECK (((public.geometrytype(geom) = 'LINESTRING'::text) OR (geom IS NULL))),
@@ -92,12 +93,13 @@ CREATE SCHEMA epanet_trunk_rev_head;
 CREATE VIEW epanet_trunk_rev_head.junctions
 AS SELECT hid, id, elevation, base_demand_flow, demand_pattern_id, geom
    FROM epanet.junctions
-   WHERE trunk_rev_end IS NULL;
+   WHERE trunk_rev_end IS NULL AND trunk_rev_begin IS NOT NULL;
   
 CREATE VIEW epanet_trunk_rev_head.pipes
 AS SELECT  hid, id, start_node, end_node, length, diameter, roughness, minor_loss_coefficient, status, geom 
    FROM epanet.pipes
-   WHERE trunk_rev_end IS NULL;
+   WHERE trunk_rev_end IS NULL AND trunk_rev_begin IS NOT NULL;
+
 /*
 Create a readonly checkout for rev 1 of trunk
 */

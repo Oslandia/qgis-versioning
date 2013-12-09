@@ -21,7 +21,7 @@ ln -s $PWD $HOME/.qgis2/python/plugins/versioning
 Use the plugin in qgis
 ----------------------
 
-FOnce the test database have been created, open qgis.
+Once the test database have been created, open qgis.
 
 Activate the plugin 'versioning' in the plugin manager.
 

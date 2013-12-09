@@ -124,6 +124,7 @@ class Versioning:
                 # save target revision in a table
                 con = db.connect(filename)
                 cur = con.cursor()
+                #TODO: add the table in there such that we can have layer from multiples sources
                 cur.execute("CREATE TABLE initial_revision AS SELECT "+str(current_rev)+" AS rev, '"+branch+"' AS branch, '"+schema+"' AS schema" )
                 con.commit()
                 con.close()

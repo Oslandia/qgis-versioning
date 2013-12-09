@@ -28,7 +28,8 @@ import os
 import os.path
 from pyspatialite import dbapi2 as db
 import psycopg2
-from commit_ui import *
+from commit_msg_ui import *
+from connections_ui import *
 
 qset = QSettings( "oslandia", "horao_qgis_plugin" )
 
@@ -41,9 +42,13 @@ class Versioning:
         # initialize plugin directory
         self.plugin_dir = os.path.dirname(__file__)
 
-        self.qdialog = QDialog(self.iface.mainWindow())
-        self.dialog = Ui_Dialog()
-        self.dialog.setupUi(self.qdialog)
+        self.qConnectionDialog = QDialog(self.iface.mainWindow())
+        self.connectionDialog = Ui_ConnectionDialog()
+        self.connectionDialog.setupUi(self.qConnectionDialog)
+
+        self.qCommitMsgDialog = QDialog(self.iface.mainWindow())
+        self.commitMsgDialog = Ui_CommitMsgDialog()
+        self.commitMsgDialog.setupUi(self.qCommitMsgDialog)
 
     def initGui(self):
         # Create action  checkout
@@ -92,13 +97,30 @@ class Versioning:
 
     def update(self):
         """merge modifiactions since last update into working copy"""
+        print "update"
         # get the target revision from the spatialite db
         # create the diff in postgres
         # load the diff in spatialite
         # detect conflicts
         # merge changes and update target_revision
         # delete diff
-        print "update"
+        self.getConnections()
+        conn_name = self.connectionDialog.comboBoxConnection.currentText()
+        schema = self.connectionDialog.comboBoxSchema.currentText()
+        local_file = self.connectionDialog.comboBoxLocalDb.currentText()
+        user = QSettings().value("PostgreSQL/connections/"+conn_name+"/username")
+        dbname = QSettings().value("PostgreSQL/connections/"+conn_name+"/database")
+
+        con = db.connect(local_file)
+        cur = con.cursor()
+        cur.execute("SELECT rev, branch FROM initial_revision WHERE schema = '"+schema+"'")
+        target_rev, branch = cur.fetchone()
+        assert(target_rev)
+        target_rev = target_rev + 1
+        con.commit()
+        con.close()
+        
+
 
     def checkout(self):
         """create working copy from versionned database layers"""
@@ -129,7 +151,7 @@ class Versioning:
             dbname = uri.database()
 
             # set the current and target rev for the local db
-            con =  psycopg2.connect(database=dbname)
+            con =  psycopg2.connect(uri)
             cur = con.cursor()
             cur.execute("SELECT MAX(rev) FROM "+schema+".revisions")
             current_rev = int(cur.fetchone()[0])
@@ -239,15 +261,13 @@ class Versioning:
             registry.removeMapLayer(name)
             self.iface.addVectorLayer("dbname="+filename+" key=\"OGC_FID\" table=\""+table+"_view\" (GEOMETRY)",table,'spatialite')
 
-    def commit(self):
-        print "Versioning.commit"
+    def getConnections(self):
         # get list of connections
         settings = QSettings()
         settings.beginGroup("PostgreSQL/connections")
         pgGonnections=[settings.childGroups()]
         settings.endGroup()
         selectedConnection = settings.value("PostgreSQL/connections/selected")
-        print selectedConnection
 
         # find all versionned spatilite layers
         registry = QgsMapLayerRegistry.instance()
@@ -263,27 +283,33 @@ class Versioning:
         else:
             print "converting ", local_files
 
-        # setup dialog
-        self.dialog.comboBoxLocalDb.clear()
-        self.dialog.comboBoxLocalDb.addItems(local_files)
+        # setup connectionDialog
+        self.connectionDialog.comboBoxLocalDb.clear()
+        self.connectionDialog.comboBoxLocalDb.addItems(local_files)
 
-        self.dialog.comboBoxConnection.clear()
-        self.dialog.comboBoxConnection.addItems(pgGonnections[0])
+        self.connectionDialog.comboBoxConnection.clear()
+        self.connectionDialog.comboBoxConnection.addItems(pgGonnections[0])
 
         if selectedConnection:
-            self.dialog.comboBoxConnection.setCurrentIndex( self.dialog.comboBoxConnection.findText(selectedConnection) )
+            self.connectionDialog.comboBoxConnection.setCurrentIndex( self.connectionDialog.comboBoxConnection.findText(selectedConnection) )
             self.versionnedSchemas(selectedConnection)
         
-        QObject.connect(self.dialog.comboBoxConnection, SIGNAL("currentIndexChanged(const QString &)"), self.versionnedSchemas)
+        QObject.connect(self.connectionDialog.comboBoxConnection, SIGNAL("currentIndexChanged(const QString &)"), self.versionnedSchemas)
 
-        ok = self.qdialog.exec_()
-        QObject.disconnect(self.dialog.comboBoxConnection, SIGNAL("currentIndexChanged(const QString &)"), self.versionnedSchemas)
-        if not ok: return
+        ok = self.qConnectionDialog.exec_()
+        QObject.disconnect(self.connectionDialog.comboBoxConnection, SIGNAL("currentIndexChanged(const QString &)"), self.versionnedSchemas)
+        return ok
 
-        dbname = self.dialog.comboBoxConnection.currentText()
-        schema = self.dialog.comboBoxSchema.currentText()
-        local_file = self.dialog.comboBoxLocalDb.currentText()
-        commit_msg = self.dialog.commitMessage.document().toPlainText()
+
+    def commit(self):
+        print "Versioning.commit"
+
+        if not self.getConnections(): return
+
+        conn_name = self.connectionDialog.comboBoxConnection.currentText()
+        schema = self.connectionDialog.comboBoxSchema.currentText()
+        local_file = self.connectionDialog.comboBoxLocalDb.currentText()
+        dbname = QSettings().value("PostgreSQL/connections/"+conn_name+"/dbname")
 
         con = db.connect(local_file)
         cur = con.cursor()
@@ -295,7 +321,7 @@ class Versioning:
         con.close()
 
         # check if a commit occured between chechout and now
-        con =  psycopg2.connect(database=dbname)
+        con =  self.pgConnect(conn_name)
         cur = con.cursor()
         sql = "SELECT dest.rev - "+str(target_rev)+"  FROM (SELECT MAX(rev) AS rev FROM "+schema+".revisions) AS dest;"
         cur.execute(sql)
@@ -318,7 +344,7 @@ class Versioning:
 
         # create convert back to posgres to do the merging
         assert(dbname and schema)
-        user = settings.value("PostgreSQL/connections/"+dbname+"/username")
+        user = QSettings().value("PostgreSQL/connections/"+dbname+"/username")
         commit_schema = schema+"_"+user+"_commit"
         try:
             cur.execute("CREATE SCHEMA "+commit_schema)
@@ -346,6 +372,13 @@ class Versioning:
         for r in cur: tables.append(r[0])
         
         print "tables to update:", tables
+
+
+        if not self.qCommitMsgDialog.exec_(): 
+            print "aborted"
+            con.close()
+            return
+        commit_msg = self.commitMsgDialog.commitMessage.document().toPlainText()
             
         sql="INSERT INTO "+schema+".revisions(rev,commit_msg, branch, author) VALUES ("+str(target_rev)+",'"+commit_msg+"', '"+branch+"', '"+user+"')"
         cur.execute(sql)
@@ -400,13 +433,24 @@ class Versioning:
         con.close()
         QMessageBox.information(self.iface.mainWindow(), "Info", "You have successfully commited revision "+str(target_rev))
 
-    def versionnedSchemas(self, dbname):
-        self.dialog.comboBoxSchema.clear()
-        con = psycopg2.connect(database=dbname)
+    def versionnedSchemas(self, conn_name):
+        self.connectionDialog.comboBoxSchema.clear()
+        print conn_name
+        con = self.pgConnect(conn_name)
         cur = con.cursor()
         cur.execute("SELECT DISTINCT table_schema FROM information_schema.tables WHERE table_name = 'revisions'")
-        for r in cur: self.dialog.comboBoxSchema.addItem(r[0])
+        for r in cur: self.connectionDialog.comboBoxSchema.addItem(r[0])
         con.close()
+
+    def pgConnect(self, conn_name):
+        settings = QSettings()
+        return  psycopg2.connect(
+                database = settings.value("PostgreSQL/connections/"+conn_name+"/database"),
+                user     = settings.value("PostgreSQL/connections/"+conn_name+"/user"),
+                host     = settings.value("PostgreSQL/connections/"+conn_name+"/host"),
+                password = settings.value("PostgreSQL/connections/"+conn_name+"/password"),
+                port     = settings.value("PostgreSQL/connections/"+conn_name+"/port")
+                )
 
 
 

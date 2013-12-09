@@ -20,9 +20,14 @@ add_custom_command( OUTPUT resources_rc.py
     WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
     DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/resources.qrc ${SVG} )
 
-add_custom_command( OUTPUT commit_ui.py 
-    COMMAND pyuic4 -o commit_ui.py commit.ui
+add_custom_command( OUTPUT connections_ui.py 
+    COMMAND pyuic4 -o connections_ui.py connections.ui
     WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
-    DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/commit.ui )
+    DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/connections.ui )
 
-add_custom_target(qgis_plugin ALL DEPENDS resources_rc.py commit_ui.py ${Files})
+add_custom_command( OUTPUT commit_msg_ui.py 
+    COMMAND pyuic4 -o commit_msg_ui.py commit_msg.ui
+    WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
+    DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/commit_msg.ui )
+
+add_custom_target(qgis_plugin ALL DEPENDS resources_rc.py commit_msg_ui.py connections_ui.py ${Files})

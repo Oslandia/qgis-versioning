@@ -1,13 +1,13 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <ui version="4.0">
- <class>Dialog</class>
- <widget class="QDialog" name="Dialog">
+ <class>CommitMsgDialog</class>
+ <widget class="QDialog" name="CommitMsgDialog">
   <property name="geometry">
    <rect>
     <x>0</x>
     <y>0</y>
     <width>398</width>
-    <height>511</height>
+    <height>314</height>
    </rect>
   </property>
   <property name="windowTitle">
@@ -17,7 +17,7 @@
    <property name="geometry">
     <rect>
      <x>20</x>
-     <y>460</y>
+     <y>260</y>
      <width>341</width>
      <height>32</height>
     </rect>
@@ -29,82 +29,13 @@
     <set>QDialogButtonBox::Cancel|QDialogButtonBox::Ok</set>
    </property>
   </widget>
-  <widget class="QComboBox" name="comboBoxConnection">
+  <widget class="QPlainTextEdit" name="commitMessage">
    <property name="geometry">
     <rect>
      <x>40</x>
      <y>50</y>
      <width>321</width>
-     <height>28</height>
-    </rect>
-   </property>
-  </widget>
-  <widget class="QComboBox" name="comboBoxSchema">
-   <property name="geometry">
-    <rect>
-     <x>40</x>
-     <y>120</y>
-     <width>321</width>
-     <height>28</height>
-    </rect>
-   </property>
-  </widget>
-  <widget class="QLabel" name="label">
-   <property name="geometry">
-    <rect>
-     <x>40</x>
-     <y>20</y>
-     <width>311</width>
-     <height>18</height>
-    </rect>
-   </property>
-   <property name="text">
-    <string>Choose postgis connection</string>
-   </property>
-  </widget>
-  <widget class="QLabel" name="label_2">
-   <property name="geometry">
-    <rect>
-     <x>40</x>
-     <y>90</y>
-     <width>311</width>
-     <height>18</height>
-    </rect>
-   </property>
-   <property name="text">
-    <string>Choose versioned schema</string>
-   </property>
-  </widget>
-  <widget class="QLabel" name="label_3">
-   <property name="geometry">
-    <rect>
-     <x>40</x>
-     <y>160</y>
-     <width>311</width>
-     <height>18</height>
-    </rect>
-   </property>
-   <property name="text">
-    <string>Choose local database</string>
-   </property>
-  </widget>
-  <widget class="QComboBox" name="comboBoxLocalDb">
-   <property name="geometry">
-    <rect>
-     <x>40</x>
-     <y>190</y>
-     <width>321</width>
-     <height>28</height>
-    </rect>
-   </property>
-  </widget>
-  <widget class="QPlainTextEdit" name="commitMessage">
-   <property name="geometry">
-    <rect>
-     <x>40</x>
-     <y>260</y>
-     <width>321</width>
-     <height>181</height>
+     <height>191</height>
     </rect>
    </property>
   </widget>
@@ -112,7 +43,7 @@
    <property name="geometry">
     <rect>
      <x>40</x>
-     <y>230</y>
+     <y>20</y>
      <width>311</width>
      <height>18</height>
     </rect>
@@ -127,7 +58,7 @@
   <connection>
    <sender>buttonBox</sender>
    <signal>accepted()</signal>
-   <receiver>Dialog</receiver>
+   <receiver>CommitMsgDialog</receiver>
    <slot>accept()</slot>
    <hints>
     <hint type="sourcelabel">
@@ -143,7 +74,7 @@
   <connection>
    <sender>buttonBox</sender>
    <signal>rejected()</signal>
-   <receiver>Dialog</receiver>
+   <receiver>CommitMsgDialog</receiver>
    <slot>reject()</slot>
    <hints>
     <hint type="sourcelabel">

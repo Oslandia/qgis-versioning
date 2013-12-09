@@ -27,7 +27,7 @@ Activate the plugin 'versioning' in the plugin manager.
 
 Load a posgis layer from the schema epanet_trunk_rev_head of test database.
 
-Click on the 'work offline' icon (either in the plugin menu or in the plugin toolbar). Choose a file to save your layers locally.
+Click on the 'checkout' icon (either in the plugin menu or in the plugin toolbar). Choose a file to save your layers locally.
 
 Modify your layers.
 

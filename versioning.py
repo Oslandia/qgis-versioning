@@ -46,22 +46,34 @@ class Versioning:
         self.dialog.setupUi(self.qdialog)
 
     def initGui(self):
-        # Create action  work_offline
-        self.work_offline_action = QAction(
-            QIcon(":/plugins/versioning/work_offline.svg"),
-            u"work offline", self.iface.mainWindow())
-        self.work_offline_action.setWhatsThis("work offline")
+        # Create action  checkout
+        self.checkout_action = QAction(
+            QIcon(":/plugins/versioning/checkout.svg"),
+            u"checkout", self.iface.mainWindow())
+        self.checkout_action.setWhatsThis("checkout")
         # connect the action to the run method
-        self.work_offline_action.triggered.connect(self.work_offline)
+        self.checkout_action.triggered.connect(self.checkout)
 
         # Add toolbar button and menu item
-        self.iface.addToolBarIcon(self.work_offline_action)
-        self.iface.addPluginToMenu( WIN_TITLE, self.work_offline_action)
+        self.iface.addToolBarIcon(self.checkout_action)
+        self.iface.addPluginToMenu( WIN_TITLE, self.checkout_action)
+
+        self.update_action = QAction(
+            QIcon(":/plugins/versioning/update.svg"),
+            u"update", self.iface.mainWindow())
+        self.update_action.setWhatsThis("update working copy")
+        # connect the action to the run method
+        self.update_action.triggered.connect(self.update)
+
+        # Add toolbar button and menu item
+        self.iface.addToolBarIcon(self.update_action)
+        self.iface.addPluginToMenu( WIN_TITLE, self.update_action)
 
         # Create action commit
         self.commit_action = QAction(
             QIcon(":/plugins/versioning/commit.svg"),
             u"commit", self.iface.mainWindow())
+        self.commit_action.setWhatsThis("commit modifications")
         # connect the action to the run method
         self.commit_action.triggered.connect(self.commit)
 
@@ -71,12 +83,25 @@ class Versioning:
 
     def unload(self):
         # Remove the plugin menu item and icon
-        self.iface.removePluginMenu( WIN_TITLE, self.work_offline_action)
+        self.iface.removePluginMenu( WIN_TITLE, self.checkout_action)
+        self.iface.removePluginMenu( WIN_TITLE, self.update_action)
         self.iface.removePluginMenu( WIN_TITLE, self.commit_action)
-        self.iface.removeToolBarIcon(self.work_offline_action)
+        self.iface.removeToolBarIcon(self.checkout_action)
+        self.iface.removeToolBarIcon(self.update_action)
         self.iface.removeToolBarIcon(self.commit_action)
 
-    def work_offline(self):
+    def update(self):
+        """merge modifiactions since last update into working copy"""
+        # get the target revision from the spatialite db
+        # create the diff in postgres
+        # load the diff in spatialite
+        # detect conflicts
+        # merge changes and update target_revision
+        # delete diff
+        print "update"
+
+    def checkout(self):
+        """create working copy from versionned database layers"""
         registry = QgsMapLayerRegistry.instance()
         filename = ""
         versionned_layers = {}
@@ -320,9 +345,9 @@ class Versioning:
         tables = []
         for r in cur: tables.append(r[0])
         
-        print "tabless to update:", tables
+        print "tables to update:", tables
             
-        sql="INSERT INTO "+schema+".revisions VALUES ("+str(target_rev)+",'"+commit_msg+"','"+branch+"');"
+        sql="INSERT INTO "+schema+".revisions(rev,commit_msg, branch, author) VALUES ("+str(target_rev)+",'"+commit_msg+"', '"+branch+"', '"+user+"')"
         cur.execute(sql)
 
         for table in tables:

@@ -32,7 +32,7 @@
 <h3>Tutorial</h3>
 
 <p>
-The aim of this tutorial is to create a versionned database in posgresql/postgis following the gidelines in <a href=documentation.html>documentation</a> and to discover, through example, the versionning plugin for qgis. 
+The aim of this tutorial is to create a versioned database in posgresql/postgis following the gidelines in <a href=documentation.html>documentation</a> and to discover, through example, the versioning plugin for qgis. 
 </p>
 
 <h4>Database creation</h4>
@@ -56,7 +56,7 @@ psql epanet_test_db
 </pre>
 
 <p>
-First we create a schema that will store all our versionned tables. Copy the following sql comands in your posgresql client:
+First we create a schema that will store all our versioned tables. Copy the following sql commands in your posgresql client:
 </p>
 <pre>
 CREATE SCHEMA epanet;
@@ -78,12 +78,12 @@ CREATE TABLE epanet.junctions (
 INSERT INTO epanet.junctions
     (id, elevation, geom)
     VALUES
-    ('0',0,ST_GeometryFromText('POINT(0 0)',2154));
+    ('0',0,ST_GeometryFromText('POINT(1 0)',2154));
 
 INSERT INTO epanet.junctions
     (id, elevation, geom)
     VALUES
-    ('1',1,ST_GeometryFromText('POINT(1 0)',2154));
+    ('1',1,ST_GeometryFromText('POINT(0 1)',2154));
 
 CREATE TABLE epanet.pipes (
     id varchar,
@@ -103,7 +103,7 @@ CREATE TABLE epanet.pipes (
 INSERT INTO epanet.pipes
     (id, start_node, end_node, length, diameter, geom) 
     VALUES
-    ('0','0','1',1,2,ST_GeometryFromText('LINESTRING(0 0,1 0)',2154));
+    ('0','0','1',1,2,ST_GeometryFromText('LINESTRING(1 0,0 1)',2154));
 </pre>
 
 
@@ -112,6 +112,7 @@ INSERT INTO epanet.pipes
 <p>
 We start by creating table that will store information about revisions and add a record for our initial revision. We will call the branch 'trunk' as it is the custom in <a href=http://subversion.apache.org/svn>svn</a>. Within the posgresql client, issue the following commands:
 </p>
+<pre>
 CREATE TABLE epanet.revisions(
     rev serial PRIMARY KEY,
     commit_msg varchar,
@@ -123,7 +124,7 @@ INSERT INTO epanet.revisions VALUES (1,'initial commit','trunk');
 </pre>
 
 <p>
-Now we add the historization colunms (note the trunk_ prefix on the column names):
+Now we add the historization columns (note the trunk_ prefix on the column names):
 </p>
 <pre>
 ALTER TABLE epanet.junctions
@@ -171,8 +172,49 @@ AS SELECT  hid, id, start_node, end_node, length, diameter, roughness, minor_los
    WHERE trunk_rev_end IS NULL AND trunk_rev_begin IS NOT NULL;
 </pre>
 
+<p>
+We can test that everything is ok (in psql type 'Q' to end the display of a table):
+</p>
+<pre>
+SELECT * FROM epanet_trunk_rev_head.junctions;
+</pre>
+<p>
+and
+</p>
+<pre>
+SELECT * FROM epanet_trunk_rev_head.pipes;
+</pre>
 
 <h4>Using the QGIS plugin</h4>
+
+<p>
+To install the QGIS plugin, follow the <a href=installation.html>installation instruction</a>. 
+</p>
+
+<p>
+Open QGIS and make sure the plugin is enabled: in the 'Plugins' menu, there should be an entry 'versioning', if their is not, select 'Manage and Install Pluging...', type versioning in the 'Search' field and enable it.
+</p>
+
+<p>
+Click on 'Add PostGIS Layer' and create a new connection named epanet_test_db to database epanet_test_db.
+</p>
+
+<p>
+Add the layers junctions and pipes from the schema epanet_trunk_rev_head.
+</p>
+
+<p>
+In menu Plugins&rarr;versioning&rarr;work offline. You will be prompted to select a file for your working copy (with extension .sqlite). Your versionned layers will be replaced by their equivalent in your working copy.
+</p>
+
+<p>
+Now edit a layer and save your modifications.
+</p>
+
+<p>
+When you are done editing, in menu Plugins&rarr;versioning&rarr;commit. You will be prompted to select the connection to the postgis database and the schema you want to commit to along with the name of you working copy. Enter a commit message and click OK. You should obtain an information message that your commit was successful. 
+</p>
+
 
       </section>
     </div>

@@ -14,12 +14,12 @@ CREATE TABLE epanet.junctions (
 INSERT INTO epanet.junctions
     (id, elevation, geom)
     VALUES
-    ('0',0,ST_GeometryFromText('POINT(0 0)',2154));
+    ('0',0,ST_GeometryFromText('POINT(1 0)',2154));
 
 INSERT INTO epanet.junctions
     (id, elevation, geom)
     VALUES
-    ('1',1,ST_GeometryFromText('POINT(1 0)',2154));
+    ('1',1,ST_GeometryFromText('POINT(0 1)',2154));
 
 CREATE TABLE epanet.pipes (
     id varchar,
@@ -39,7 +39,7 @@ CREATE TABLE epanet.pipes (
 INSERT INTO epanet.pipes
     (id, start_node, end_node, length, diameter, geom) 
     VALUES
-    ('0','0','1',1,2,ST_GeometryFromText('LINESTRING(0 0,1 0)',2154));
+    ('0','0','1',1,2,ST_GeometryFromText('LINESTRING(1 0,0 1)',2154));
 
 CREATE TABLE epanet.revisions(
     rev serial PRIMARY KEY,

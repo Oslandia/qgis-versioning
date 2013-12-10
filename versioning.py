@@ -125,10 +125,10 @@ class Versioning:
             scon = db.connect(uri.database())
             scur = scon.cursor()
             table = uri.table()[:-5] # remove suffix _view
-            scur.execute("SELECT rev, branch, table_schema, conn_info, user  "+
+            scur.execute("SELECT rev, branch, table_schema, conn_info "+
                 "FROM initial_revision "+
                 "WHERE table_name = '"+table+"'")
-            [rev, branch, table_schema, conn_info, user] = scur.fetchone()
+            [rev, branch, table_schema, conn_info] = scur.fetchone()
 
             pcon = psycopg2.connect(conn_info)
             pcur = pcon.cursor()
@@ -136,13 +136,13 @@ class Versioning:
             [max_rev] = pcur.fetchone()
             if max_rev == rev: 
                 print "Nothing new in branch "+branch+" in "+table+"."+table_schema+" since last update"
-                next
+                continue
 
+            # create the diff
             diff_schema = table_schema+"_"+branch+"_"+str(rev)+"_to_"+str(max_rev)+"_diff"
             pcur.execute("SELECT schema_name FROM information_schema.schemata WHERE schema_name = '"+diff_schema+"'")
             if not pcur.fetchone():
                 pcur.execute("CREATE SCHEMA "+diff_schema)
-                pcon.commit()
 
             pcur.execute( "DROP TABLE IF EXISTS "+diff_schema+"."+table+"_diff")
             pcur.execute( "CREATE TABLE "+diff_schema+"."+table+"_diff AS "+
@@ -151,8 +151,12 @@ class Versioning:
                     "WHERE "+branch+"_rev_end = "+str(rev)+" OR "+branch+"_rev_begin > "+str(rev))
             pcon.commit()
 
+            # import the diff to spatialite
+            cmd = "ogr2ogr -preserve_fid -f SQLite -update "+uri.database()+" PG:\""+conn_info+" active_schema="+diff_schema+"\" "+table+"_diff"
+            print cmd
+            os.system(cmd)
 
-
+ 
 
 
 
@@ -233,9 +237,10 @@ class Versioning:
                 con.commit()
                 con.close()
 
-            # create views and triggers in spatilite db
             con = db.connect(filename)
             cur = con.cursor()
+
+            # create views and triggers in spatilite db
             cur.execute("PRAGMA table_info("+table+")")
             cols = ""
             newcols = ""
@@ -306,45 +311,6 @@ class Versioning:
             QgsMapLayerRegistry.instance().removeMapLayer(name)
             self.iface.addVectorLayer("dbname="+filename+" key=\"OGC_FID\" table=\""+table+"_view\" (GEOMETRY)",table,'spatialite')
 
-    def getConnections(self):
-        # get list of connections
-        settings = QSettings()
-        settings.beginGroup("PostgreSQL/connections")
-        pgGonnections=[settings.childGroups()]
-        settings.endGroup()
-        selectedConnection = settings.value("PostgreSQL/connections/selected")
-
-        # find all versionned spatilite layers
-        registry = QgsMapLayerRegistry.instance()
-        local_files = []
-        for name,layer in registry.mapLayers().iteritems():
-            uri = QgsDataSourceURI(layer.source())
-            if layer.providerType() == "spatialite" and uri.table()[-5:] == "_view": 
-                local_files.append( uri.database() )
-        if not local_files: 
-            print "No versionned layer found"
-            QMessageBox.information( self.iface.mainWindow(), "Notice", "No versionned layer found")
-            return
-        else:
-            print "converting ", local_files
-
-        # setup connectionDialog
-        self.connectionDialog.comboBoxLocalDb.clear()
-        self.connectionDialog.comboBoxLocalDb.addItems(local_files)
-
-        self.connectionDialog.comboBoxConnection.clear()
-        self.connectionDialog.comboBoxConnection.addItems(pgGonnections[0])
-
-        if selectedConnection:
-            self.connectionDialog.comboBoxConnection.setCurrentIndex( self.connectionDialog.comboBoxConnection.findText(selectedConnection) )
-            self.versionnedSchemas(selectedConnection)
-        
-        QObject.connect(self.connectionDialog.comboBoxConnection, SIGNAL("currentIndexChanged(const QString &)"), self.versionnedSchemas)
-
-        ok = self.qConnectionDialog.exec_()
-        QObject.disconnect(self.connectionDialog.comboBoxConnection, SIGNAL("currentIndexChanged(const QString &)"), self.versionnedSchemas)
-        return ok
-
 
     def commit(self):
         """merge modifiactions into database"""
@@ -386,7 +352,7 @@ class Versioning:
         if not self.qCommitMsgDialog.exec_(): return
         commit_msg = self.commitMsgDialog.commitMessage.document().toPlainText()
 
-        schema_list=[] # for final cleanup
+        schema_list={} # for final cleanup
         for name,layer in versionned_layers.iteritems():
             uri = QgsDataSourceURI(layer.source())
             scon = db.connect(uri.database())
@@ -405,14 +371,6 @@ class Versioning:
                 pcur.execute("INSERT INTO "+table_schema+".revisions (rev, commit_msg, branch, author) VALUES ("+str(rev+1)+", '"+commit_msg+"', '"+branch+"', 'dummy')")
 
             diff_schema = table_schema+"_"+branch+"_"+str(rev)+"_to_"+str(rev+1)+"_diff"
-            pcur.execute("SELECT schema_name FROM information_schema.schemata WHERE schema_name = '"+diff_schema+"'")
-            res = pcur.fetchone()
-            print "found schema",res
-            if not res:
-                schema_list.append(diff_schema)
-                print "creating schema ", diff_schema
-                pcur.execute("CREATE SCHEMA "+diff_schema)
-                pcon.commit()
 
             scur.execute( "DROP TABLE IF EXISTS "+table+"_diff")
 
@@ -434,6 +392,13 @@ class Versioning:
             scon.commit()
 
             # import layers in postgis schema
+            pcur.execute("SELECT schema_name FROM information_schema.schemata WHERE schema_name = '"+diff_schema+"'")
+            res = pcur.fetchone()
+            print "found schema",res
+            if not res:
+                schema_list[diff_schema] = conn_info
+                print "creating schema ", diff_schema
+                pcur.execute("CREATE SCHEMA "+diff_schema)
             pcur.execute( "DROP TABLE IF EXISTS "+diff_schema+"."+table+"_diff")
             pcon.commit()
             cmd = "ogr2ogr -f PostgreSQL PG:\""+conn_info+" active_schema="+diff_schema+"\" -lco GEOMETRY_NAME=geom "+uri.database()+" "+table+"_diff"
@@ -443,8 +408,6 @@ class Versioning:
             # remove dif table and geometry column
             scur.execute("DELETE FROM geometry_columns WHERE f_table_name = '"+table+"_diff'")
             scur.execute("DROP TABLE "+table+"_diff")
-            scon.commit()
-            scon.close()
 
             # add  constrain  such that we can
             # update the new hid and have posgres update the child hid fields accordingly
@@ -484,11 +447,24 @@ class Versioning:
                     "SET ("+branch+"_rev_end, "+branch+"_child)=(src."+branch+"_rev_end, src."+branch+"_child) "+
                     "FROM "+diff_schema+"."+table+"_diff AS src "+
                     "WHERE dest.hid = src.hid AND src."""+branch+"_rev_end = "+str(rev))
+            pcon.commit()
+            pcon.close()
 
+        for name,layer in versionned_layers.iteritems():
+            uri = QgsDataSourceURI(layer.source())
+            scon = db.connect(uri.database())
+            scur = scon.cursor()
+            table = uri.table()[:-5] # remove suffix _view
+            scur.execute("UPDATE initial_revision SET rev = rev+1 WHERE table_name = '"+table+"'")
+            scon.commit()
+            scon.close()
 
-        for s in schema_list: pcur.execute("DROP SCHEMA "+s+" CASCADE")
-        pcon.commit()
-        pcon.close()
+        for schema, conn_info in schema_list.iteritems(): 
+            pcon = psycopg2.connect(conn_info)
+            pcur = pcon.cursor()
+            pcur.execute("DROP SCHEMA "+schema+" CASCADE")
+            pcon.commit()
+            pcon.close()
         QMessageBox.information(self.iface.mainWindow(), "Info", "You have successfully commited revision "+str(rev+1))
 
     def versionnedSchemas(self, conn_name):
@@ -527,3 +503,43 @@ class Versioning:
                 con.close()
                 return False
         return True
+
+    def getConnections(self):
+        # get list of connections
+        settings = QSettings()
+        settings.beginGroup("PostgreSQL/connections")
+        pgGonnections=[settings.childGroups()]
+        settings.endGroup()
+        selectedConnection = settings.value("PostgreSQL/connections/selected")
+
+        # find all versionned spatilite layers
+        registry = QgsMapLayerRegistry.instance()
+        local_files = []
+        for name,layer in registry.mapLayers().iteritems():
+            uri = QgsDataSourceURI(layer.source())
+            if layer.providerType() == "spatialite" and uri.table()[-5:] == "_view": 
+                local_files.append( uri.database() )
+        if not local_files: 
+            print "No versionned layer found"
+            QMessageBox.information( self.iface.mainWindow(), "Notice", "No versionned layer found")
+            return
+        else:
+            print "converting ", local_files
+
+        # setup connectionDialog
+        self.connectionDialog.comboBoxLocalDb.clear()
+        self.connectionDialog.comboBoxLocalDb.addItems(local_files)
+
+        self.connectionDialog.comboBoxConnection.clear()
+        self.connectionDialog.comboBoxConnection.addItems(pgGonnections[0])
+
+        if selectedConnection:
+            self.connectionDialog.comboBoxConnection.setCurrentIndex( self.connectionDialog.comboBoxConnection.findText(selectedConnection) )
+            self.versionnedSchemas(selectedConnection)
+        
+        QObject.connect(self.connectionDialog.comboBoxConnection, SIGNAL("currentIndexChanged(const QString &)"), self.versionnedSchemas)
+
+        ok = self.qConnectionDialog.exec_()
+        QObject.disconnect(self.connectionDialog.comboBoxConnection, SIGNAL("currentIndexChanged(const QString &)"), self.versionnedSchemas)
+        return ok
+

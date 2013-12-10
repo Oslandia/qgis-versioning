@@ -353,6 +353,7 @@ class Versioning:
         commit_msg = self.commitMsgDialog.commitMessage.document().toPlainText()
 
         schema_list={} # for final cleanup
+        nb_of_updated_layer = 0
         for name,layer in versionned_layers.iteritems():
             uri = QgsDataSourceURI(layer.source())
             scon = db.connect(uri.database())
@@ -362,13 +363,6 @@ class Versioning:
                 "FROM initial_revision "+
                 "WHERE table_name = '"+table+"'")
             [rev, branch, table_schema, conn_info] = scur.fetchone()
-
-            pcon = psycopg2.connect(conn_info)
-            pcur = pcon.cursor()
-            pcur.execute("SELECT rev FROM "+table_schema+".revisions WHERE rev = "+str(rev+1))
-            if not pcur.fetchone():
-                print "inserting rev ", str(rev+1)
-                pcur.execute("INSERT INTO "+table_schema+".revisions (rev, commit_msg, branch, author) VALUES ("+str(rev+1)+", '"+commit_msg+"', '"+branch+"', 'dummy')")
 
             diff_schema = table_schema+"_"+branch+"_"+str(rev)+"_to_"+str(rev+1)+"_diff"
 
@@ -389,7 +383,12 @@ class Versioning:
                     "SELECT * "+
                     "FROM "+table+" "+
                     "WHERE "+branch+"_rev_end = "+str(rev)+" OR "+branch+"_rev_begin > "+str(rev))
+            scur.execute( "SELECT hid FROM "+table+"_diff")
+            there_is_something_to_commit = scur.fetchone()
             scon.commit()
+
+            pcon = psycopg2.connect(conn_info)
+            pcur = pcon.cursor()
 
             # import layers in postgis schema
             pcur.execute("SELECT schema_name FROM information_schema.schemata WHERE schema_name = '"+diff_schema+"'")
@@ -408,6 +407,15 @@ class Versioning:
             # remove dif table and geometry column
             scur.execute("DELETE FROM geometry_columns WHERE f_table_name = '"+table+"_diff'")
             scur.execute("DROP TABLE "+table+"_diff")
+
+            if not there_is_something_to_commit: continue
+
+            nb_of_updated_layer += 1
+
+            pcur.execute("SELECT rev FROM "+table_schema+".revisions WHERE rev = "+str(rev+1))
+            if not pcur.fetchone():
+                print "inserting rev ", str(rev+1)
+                pcur.execute("INSERT INTO "+table_schema+".revisions (rev, commit_msg, branch, author) VALUES ("+str(rev+1)+", '"+commit_msg+"', '"+branch+"', 'dummy')")
 
             # add  constrain  such that we can
             # update the new hid and have posgres update the child hid fields accordingly
@@ -450,14 +458,19 @@ class Versioning:
             pcon.commit()
             pcon.close()
 
-        for name,layer in versionned_layers.iteritems():
-            uri = QgsDataSourceURI(layer.source())
-            scon = db.connect(uri.database())
-            scur = scon.cursor()
-            table = uri.table()[:-5] # remove suffix _view
-            scur.execute("UPDATE initial_revision SET rev = rev+1 WHERE table_name = '"+table+"'")
-            scon.commit()
-            scon.close()
+        if nb_of_updated_layer: 
+            for name,layer in versionned_layers.iteritems():
+                uri = QgsDataSourceURI(layer.source())
+                scon = db.connect(uri.database())
+                scur = scon.cursor()
+                table = uri.table()[:-5] # remove suffix _view
+                scur.execute("UPDATE initial_revision SET rev = rev+1 WHERE table_name = '"+table+"'")
+                scon.commit()
+                scon.close()
+            QMessageBox.information(self.iface.mainWindow(), "Info", "You have successfully commited revision "+str(rev+1))
+        else:
+            QMessageBox.information(self.iface.mainWindow(), "Info", "There was no modification to commit")
+
 
         for schema, conn_info in schema_list.iteritems(): 
             pcon = psycopg2.connect(conn_info)
@@ -465,7 +478,6 @@ class Versioning:
             pcur.execute("DROP SCHEMA "+schema+" CASCADE")
             pcon.commit()
             pcon.close()
-        QMessageBox.information(self.iface.mainWindow(), "Info", "You have successfully commited revision "+str(rev+1))
 
     def versionnedSchemas(self, conn_name):
         self.connectionDialog.comboBoxSchema.clear()

@@ -1,6 +1,7 @@
 CREATE SCHEMA epanet;
 
 CREATE TABLE epanet.junctions (
+    fid serial PRIMARY KEY,
     id varchar,
     elevation float, 
     base_demand_flow float, 
@@ -22,6 +23,7 @@ INSERT INTO epanet.junctions
     ('1',1,ST_GeometryFromText('POINT(0 1)',2154));
 
 CREATE TABLE epanet.pipes (
+    fid serial PRIMARY KEY,
     id varchar,
     start_node varchar,
     end_node varchar,
@@ -50,14 +52,14 @@ CREATE TABLE epanet.revisions(
 INSERT INTO epanet.revisions VALUES (1,'initial commit','trunk');
 
 ALTER TABLE epanet.junctions
-ADD COLUMN hid serial PRIMARY KEY, 
+ADD COLUMN hid serial UNIQUE, 
 ADD COLUMN trunk_rev_begin integer REFERENCES epanet.revisions(rev), 
 ADD COLUMN trunk_rev_end integer REFERENCES epanet.revisions(rev), 
 ADD COLUMN trunk_parent integer REFERENCES epanet.junctions(hid),
 ADD COLUMN trunk_child  integer REFERENCES epanet.junctions(hid);
 
 ALTER TABLE epanet.pipes
-ADD COLUMN hid serial PRIMARY KEY, 
+ADD COLUMN hid serial UNIQUE, 
 ADD COLUMN trunk_rev_begin integer REFERENCES epanet.revisions(rev), 
 ADD COLUMN trunk_rev_end integer REFERENCES epanet.revisions(rev), 
 ADD COLUMN trunk_parent integer REFERENCES epanet.pipes(hid),

@@ -269,37 +269,31 @@ class Versioning:
             print sql 
             cur.execute(sql)  
              
-            sql = """
-                CREATE TRIGGER update_"""+table+""" INSTEAD OF UPDATE ON """+table+"""_view
-                  BEGIN
-                    INSERT INTO """+table+"""
-                    (OGC_FID, hid, """+cols+""", """+hcols['rev_begin']+""", """+hcols['parent']+""")
-                    VALUES
-                    ((SELECT MAX(OGC_FID) + 1 FROM """+table+"""),(SELECT MAX(hid) + 1 FROM """+table+"""), """+newcols+""", """+str(rev)+""", old.hid);
-                    UPDATE """+table+""" SET trunk_rev_end = """+str(rev-1)+""", """+hcols['child']+""" = (SELECT MAX(hid) FROM """+table+""") WHERE hid = old.hid;
-                  END
-                  """
+            sql =("CREATE TRIGGER update_"+table+" INSTEAD OF UPDATE ON "+table+"_view\n"+
+                  "BEGIN\n"+
+                    "INSERT INTO "+table+" "
+                    "(OGC_FID, hid, "+cols+", "+hcols['rev_begin']+", "+hcols['parent']+") "+
+                    "VALUES "
+                    "((SELECT MAX(OGC_FID) + 1 FROM "+table+"),(SELECT MAX(hid) + 1 FROM "+table+"), "+newcols+", (SELECT rev+1 FROM initial_revision WHERE table_name = '"+table+"'), old.hid);\n"+
+                    "UPDATE "+table+" SET trunk_rev_end = (SELECT rev FROM initial_revision WHERE table_name = '"+table+"'), "+hcols['child']+" = (SELECT MAX(hid) FROM "+table+") WHERE hid = old.hid;\n"+
+                  "END")
             print sql
             cur.execute(sql)  
 
-            sql = """
-                CREATE TRIGGER insert_"""+table+""" INSTEAD OF INSERT ON """+table+"""_view
-                  BEGIN
-                    INSERT INTO """+table+""" 
-                    (OGC_FID, hid, """+cols+""", """+hcols['rev_begin']+""")
-                    VALUES
-                    ((SELECT MAX(OGC_FID) + 1 FROM """+table+"""),(SELECT MAX(hid) + 1 FROM """+table+"""), """+newcols+""", """+str(rev)+""");
-                  END
-                  """
+            sql =("CREATE TRIGGER insert_"+table+" INSTEAD OF INSERT ON "+table+"_view\n"+
+                  "BEGIN\n"+
+                    "INSERT INTO "+table+" "+ 
+                    "(OGC_FID, hid, "+cols+", "+hcols['rev_begin']+") "+
+                    "VALUES "+
+                    "((SELECT MAX(OGC_FID) + 1 FROM "+table+"),(SELECT MAX(hid) + 1 FROM "+table+"), "+newcols+", (SELECT rev+1 FROM initial_revision WHERE table_name = '"+table+"'));\n"+
+                  "END")
             print sql
             cur.execute(sql)  
 
-            sql = """
-                CREATE TRIGGER delete_"""+table+""" INSTEAD OF DELETE ON """+table+"""_view
-                  BEGIN
-                    UPDATE """+table+""" SET """+hcols['rev_end']+""" = """+str(rev-1)+""" WHERE hid = old.hid;
-                  END;
-                  """
+            sql =("CREATE TRIGGER delete_"+table+" INSTEAD OF DELETE ON "+table+"_view\n"+
+                  "BEGIN\n"+
+                    "UPDATE "+table+" SET "+hcols['rev_end']+" = (SELECT rev FROM initial_revision WHERE table_name = '"+table+"') WHERE hid = old.hid;\n"+
+                  "END")
             print sql 
             cur.execute(sql)
 
@@ -385,6 +379,7 @@ class Versioning:
                     "WHERE "+branch+"_rev_end = "+str(rev)+" OR "+branch+"_rev_begin > "+str(rev))
             scur.execute( "SELECT hid FROM "+table+"_diff")
             there_is_something_to_commit = scur.fetchone()
+            print "there_is_something_to_commit ", there_is_something_to_commit
             scon.commit()
 
             pcon = psycopg2.connect(conn_info)
@@ -408,7 +403,10 @@ class Versioning:
             scur.execute("DELETE FROM geometry_columns WHERE f_table_name = '"+table+"_diff'")
             scur.execute("DROP TABLE "+table+"_diff")
 
-            if not there_is_something_to_commit: continue
+            if not there_is_something_to_commit: 
+                print "nothing to commit for ", table
+                pcon.close()
+                continue
 
             nb_of_updated_layer += 1
 

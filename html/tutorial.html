@@ -70,10 +70,7 @@ CREATE TABLE epanet.junctions (
     elevation float, 
     base_demand_flow float, 
     demand_pattern_id varchar, 
-    geom public.geometry, 
-    CONSTRAINT enforce_dims_geom CHECK ((public.st_ndims(geom) = 2)),
-    CONSTRAINT enforce_geotype_geom CHECK (((public.geometrytype(geom) = 'POINT'::text) OR (geom IS NULL))),
-    CONSTRAINT enforce_srid_geom CHECK ((public.st_srid(geom) = 2154))
+    geom geometry('POINT',2154)
 );
 
 INSERT INTO epanet.junctions
@@ -96,10 +93,7 @@ CREATE TABLE epanet.pipes (
     roughness float,
     minor_loss_coefficient float,
     status varchar,
-    geom public.geometry, 
-    CONSTRAINT enforce_dims_geom CHECK ((public.st_ndims(geom) = 2)),
-    CONSTRAINT enforce_geotype_geom CHECK (((public.geometrytype(geom) = 'LINESTRING'::text) OR (geom IS NULL))),
-    CONSTRAINT enforce_srid_geom CHECK ((public.st_srid(geom) = 2154))
+    geom geometry('LINESTRING',2154) 
 );
 
 INSERT INTO epanet.pipes

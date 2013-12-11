@@ -6,10 +6,7 @@ CREATE TABLE epanet.junctions (
     elevation float, 
     base_demand_flow float, 
     demand_pattern_id varchar, 
-    geom public.geometry, 
-    CONSTRAINT enforce_dims_geom CHECK ((public.st_ndims(geom) = 2)),
-    CONSTRAINT enforce_geotype_geom CHECK (((public.geometrytype(geom) = 'POINT'::text) OR (geom IS NULL))),
-    CONSTRAINT enforce_srid_geom CHECK ((public.st_srid(geom) = 2154))
+    geom geometry('POINT',2154)
 );
 
 INSERT INTO epanet.junctions
@@ -32,10 +29,7 @@ CREATE TABLE epanet.pipes (
     roughness float,
     minor_loss_coefficient float,
     status varchar,
-    geom public.geometry, 
-    CONSTRAINT enforce_dims_geom CHECK ((public.st_ndims(geom) = 2)),
-    CONSTRAINT enforce_geotype_geom CHECK (((public.geometrytype(geom) = 'LINESTRING'::text) OR (geom IS NULL))),
-    CONSTRAINT enforce_srid_geom CHECK ((public.st_srid(geom) = 2154))
+    geom geometry('LINESTRING',2154)
 );
 
 INSERT INTO epanet.pipes
@@ -72,12 +66,12 @@ UPDATE epanet.pipes SET trunk_rev_begin = 1;
 CREATE SCHEMA epanet_trunk_rev_head;
 
 CREATE VIEW epanet_trunk_rev_head.junctions
-AS SELECT hid, id, elevation, base_demand_flow, demand_pattern_id, geom
+AS SELECT hid, id, elevation, base_demand_flow, demand_pattern_id, geom::geometry('POINT',2154)
    FROM epanet.junctions
    WHERE trunk_rev_end IS NULL AND trunk_rev_begin IS NOT NULL;
   
 CREATE VIEW epanet_trunk_rev_head.pipes
-AS SELECT  hid, id, start_node, end_node, length, diameter, roughness, minor_loss_coefficient, status, geom 
+AS SELECT  hid, id, start_node, end_node, length, diameter, roughness, minor_loss_coefficient, status, geom::geometry('LINESTRING',2154)
    FROM epanet.pipes
    WHERE trunk_rev_end IS NULL AND trunk_rev_begin IS NOT NULL;
 

@@ -28,8 +28,8 @@ import os
 import os.path
 from pyspatialite import dbapi2 as db
 import psycopg2
-from commit_msg_ui import *
-from connections_ui import *
+import commit_msg_ui
+import connections_ui
 
 qset = QSettings( "oslandia", "horao_qgis_plugin" )
 
@@ -46,11 +46,11 @@ class Versioning:
         self.plugin_dir = os.path.dirname(__file__)
 
         self.qConnectionDialog = QDialog(self.iface.mainWindow())
-        self.connectionDialog = Ui_ConnectionDialog()
+        self.connectionDialog = connections_ui.Ui_ConnectionDialog()
         self.connectionDialog.setupUi(self.qConnectionDialog)
 
         self.qCommitMsgDialog = QDialog(self.iface.mainWindow())
-        self.commitMsgDialog = Ui_CommitMsgDialog()
+        self.commitMsgDialog =commit_msg_ui.Ui_CommitMsgDialog()
         self.commitMsgDialog.setupUi(self.qCommitMsgDialog)
 
     def initGui(self):
@@ -129,6 +129,7 @@ class Versioning:
                 "FROM initial_revision "+
                 "WHERE table_name = '"+table+"'")
             [rev, branch, table_schema, conn_info] = scur.fetchone()
+            scur.close()
 
             pcon = psycopg2.connect(conn_info)
             pcur = pcon.cursor()
@@ -144,9 +145,21 @@ class Versioning:
             if not pcur.fetchone():
                 pcur.execute("CREATE SCHEMA "+diff_schema)
 
+            pcur.execute("SELECT column_name "+
+                    "FROM information_schema.columns "+
+                    "WHERE table_schema = '"+table_schema+"' AND table_name = '"+table+"'")
+            cols = ""
+            for c in pcur: 
+                if c[0] != "geom": cols += c[0]+", "
+            cols = cols[:-2] # remove last coma and space
+
+            pcur.execute("SELECT srid, type "+
+                "FROM geometry_columns "+
+                "WHERE f_table_schema = '"+table_schema+"' AND f_table_name ='"+table+"' AND f_geometry_column = 'geom'")
+            [srid, geom_type] = pcur.fetchone()
             pcur.execute( "DROP TABLE IF EXISTS "+diff_schema+"."+table+"_diff")
             pcur.execute( "CREATE TABLE "+diff_schema+"."+table+"_diff AS "+
-                    "SELECT * "+
+                    "SELECT "+cols+", geom::geometry('"+geom_type+"', "+str(srid)+") AS geom "+
                     "FROM "+table_schema+"."+table+" "+
                     "WHERE "+branch+"_rev_end = "+str(rev)+" OR "+branch+"_rev_begin > "+str(rev))
             pcon.commit()
@@ -156,14 +169,85 @@ class Versioning:
             print cmd
             os.system(cmd)
 
- 
+            # cleanup in postgis
+            #pcur.execute("DROP SCHEMA "+diff_schema+" CASCADE")
+            #pcon.commit()
+            pcon.close()
 
+            scon = db.connect(uri.database())
+            scur = scon.cursor()
+            
+            # we cannot add constrain to the spatialite db in order to have spatialite
+            # update parent and child when we bump inserted hid above the max hid in the diff
+            # we must do this manually
+            scur.execute("SELECT MAX(hid) FROM "+table+"_diff")
+            [max_pg_hid] = scur.fetchone()
+            print "max pg hid", max_pg_hid
+            scur.execute("SELECT MIN(hid) "+
+                "FROM "+table+" "+
+                "WHERE "+branch+"_rev_begin = "+str(rev+1))
+            [min_sl_hid] = scur.fetchone()
+            print "min sl hid", min_sl_hid
+            if max_pg_hid and min_sl_hid: # one of them is empty, no conflict possible
+                bump = max_pg_hid - min_sl_hid + 1
+                if bump > 0:
+                    # now bump the hids of inserted rows in working copy
+                    scur.execute("UPDATE "+table+" "+
+                            "SET hid = hid + "+str(bump)+" "+
+                            "WHERE "+branch+"_rev_begin = "+str(rev+1))
+                    # and bump the hid in the child field
+                    # not that we don't care for nulls since adding something to null is null
+                    scur.execute("UPDATE "+table+" "+
+                            "SET "+branch+"_child = "+branch+"_child  + "+str(bump)+" "+
+                            "WHERE "+branch+"_rev_end = "+str(rev))
+                else:
+                    print "our min added hid is superior to the max added hid in the posgtgis database"
 
+                # detect conflicts: conflict occur if two lines with the same hid have
+                # been modified (i.e. have a non null child) or removed/modified
+                sql=("SELECT sl.hid, pg.hid FROM "+table+" AS sl, "+table+"_diff AS pg "
+                        "WHERE sl.hid = pg.hid "+
+                        "AND ((sl."+branch+"_child IS NOT NULL AND pg."+branch+"_child IS NOT NULL) "+
+                        "OR (sl."+branch+"_rev_end IS NOT NULL AND pg."+branch+"_child IS NOT NULL) "+
+                        "OR (sl."+branch+"_child IS NOT NULL AND pg."+branch+"_rev_end IS NOT NULL))")
+                print sql
+                scur.execute(sql)
+                if scur.fetchone():
+                    QMessageBox.warning(self.iface.mainWindow(), "Warning", "Conflicts detected.\n\nPlease resolve conflicts before continuing.")
+                    print "there are conflicts"
+                    assert(False)
 
+            # in case no conflicts are detected, update the initial revision and integrate changes
+            scur.execute("UPDATE initial_revision SET rev = "+str(max_rev)+" WHERE table_name = '"+table+"'")
 
+            scur.execute("PRAGMA table_info("+table+")")
+            cols = ""
+            for c in scur: 
+                if c[1] != "OGC_FID": cols += c[1]+", "
+            cols = cols[:-2] # remove last coma and space
+            
+            # update revision
+            scur.execute("UPDATE "+table+" "+
+                    "SET "+branch+"_rev_end = "+str(max_rev)+" "+
+                    "WHERE "+branch+"_rev_end = "+str(rev))
+            scur.execute("UPDATE "+table+" "+
+                    "SET "+branch+"_rev_begin = "+str(max_rev+1)+" "+
+                    "WHERE "+branch+"_rev_begin = "+str(rev+1))
 
+            # insert inserted and modified
+            scur.execute("INSERT INTO "+table+" ("+cols+") "+
+                "SELECT "+cols+" FROM "+table+"_diff "+
+                "WHERE "+branch+"_rev_begin > "+str(rev))
+
+            # update deleted and modified 
+            sql=("REPLACE INTO "+table+" ("+cols+") "+
+                "SELECT "+cols+" FROM "+table+"_diff AS src "+
+                "WHERE "+table+".hid = src.hid")
+            print sql
+            scur.execute(sql)
             scon.commit()
             scon.close()
+        QMessageBox.information( self.iface.mainWindow(), "Notice", "Your are up to date with revision "+str(max_rev)+".")
 
 
     def checkout(self):
@@ -395,7 +479,7 @@ class Versioning:
                 pcur.execute("CREATE SCHEMA "+diff_schema)
             pcur.execute( "DROP TABLE IF EXISTS "+diff_schema+"."+table+"_diff")
             pcon.commit()
-            cmd = "ogr2ogr -f PostgreSQL PG:\""+conn_info+" active_schema="+diff_schema+"\" -lco GEOMETRY_NAME=geom "+uri.database()+" "+table+"_diff"
+            cmd = "ogr2ogr -preserve_fid -f PostgreSQL PG:\""+conn_info+" active_schema="+diff_schema+"\" -lco GEOMETRY_NAME=geom "+uri.database()+" "+table+"_diff"
             print cmd
             os.system(cmd)
 

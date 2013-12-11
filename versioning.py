@@ -162,6 +162,8 @@ class Versioning:
                     "SELECT "+cols+", geom::geometry('"+geom_type+"', "+str(srid)+") AS geom "+
                     "FROM "+table_schema+"."+table+" "+
                     "WHERE "+branch+"_rev_end = "+str(rev)+" OR "+branch+"_rev_begin > "+str(rev))
+            pcur.execute( "ALTER TABLE "+diff_schema+"."+table+"_diff "+
+                    "ADD CONSTRAINT "+table+"_"+branch+"__hid_pk PRIMARY KEY (hid)") 
             pcon.commit()
 
             # import the diff to spatialite
@@ -180,10 +182,10 @@ class Versioning:
             # we cannot add constrain to the spatialite db in order to have spatialite
             # update parent and child when we bump inserted hid above the max hid in the diff
             # we must do this manually
-            scur.execute("SELECT MAX(hid) FROM "+table+"_diff")
+            scur.execute("SELECT MAX(OGC_FID) FROM "+table+"_diff")
             [max_pg_hid] = scur.fetchone()
             print "max pg hid", max_pg_hid
-            scur.execute("SELECT MIN(hid) "+
+            scur.execute("SELECT MIN(OGC_FID) "+
                 "FROM "+table+" "+
                 "WHERE "+branch+"_rev_begin = "+str(rev+1))
             [min_sl_hid] = scur.fetchone()
@@ -193,7 +195,7 @@ class Versioning:
                 if bump > 0:
                     # now bump the hids of inserted rows in working copy
                     scur.execute("UPDATE "+table+" "+
-                            "SET hid = hid + "+str(bump)+" "+
+                            "SET OGC_FID = OGC_FID + "+str(bump)+" "+
                             "WHERE "+branch+"_rev_begin = "+str(rev+1))
                     # and bump the hid in the child field
                     # not that we don't care for nulls since adding something to null is null
@@ -205,8 +207,8 @@ class Versioning:
 
                 # detect conflicts: conflict occur if two lines with the same hid have
                 # been modified (i.e. have a non null child) or removed/modified
-                sql=("SELECT sl.hid, pg.hid FROM "+table+" AS sl, "+table+"_diff AS pg "
-                        "WHERE sl.hid = pg.hid "+
+                sql=("SELECT sl.OGC_FID, pg.OGC_FID FROM "+table+" AS sl, "+table+"_diff AS pg "
+                        "WHERE sl.OGC_FID = pg.OGC_FID "+
                         "AND ((sl."+branch+"_child IS NOT NULL AND pg."+branch+"_child IS NOT NULL) "+
                         "OR (sl."+branch+"_rev_end IS NOT NULL AND pg."+branch+"_child IS NOT NULL) "+
                         "OR (sl."+branch+"_child IS NOT NULL AND pg."+branch+"_rev_end IS NOT NULL))")
@@ -222,8 +224,7 @@ class Versioning:
 
             scur.execute("PRAGMA table_info("+table+")")
             cols = ""
-            for c in scur: 
-                if c[1] != "OGC_FID": cols += c[1]+", "
+            for c in scur: cols += c[1]+", "
             cols = cols[:-2] # remove last coma and space
             
             # update revision
@@ -234,17 +235,11 @@ class Versioning:
                     "SET "+branch+"_rev_begin = "+str(max_rev+1)+" "+
                     "WHERE "+branch+"_rev_begin = "+str(rev+1))
 
-            # insert inserted and modified
-            scur.execute("INSERT INTO "+table+" ("+cols+") "+
-                "SELECT "+cols+" FROM "+table+"_diff "+
-                "WHERE "+branch+"_rev_begin > "+str(rev))
+            scur.execute("CREATE UNIQUE INDEX IF NOT EXISTS "+table+"_diff_idx ON "+table+"_diff(OGC_FID)")
+            # insert inserted and modified and update deleted and modified
+            scur.execute("INSERT OR REPLACE INTO "+table+" ("+cols+") "+
+                "SELECT "+cols+" FROM "+table+"_diff ")
 
-            # update deleted and modified 
-            sql=("REPLACE INTO "+table+" ("+cols+") "+
-                "SELECT "+cols+" FROM "+table+"_diff AS src "+
-                "WHERE "+table+".hid = src.hid")
-            print sql
-            scur.execute(sql)
             scon.commit()
             scon.close()
         QMessageBox.information( self.iface.mainWindow(), "Notice", "Your are up to date with revision "+str(max_rev)+".")
@@ -334,7 +329,6 @@ class Versioning:
                 elif r[1][-8:]  == "_rev_end" : hcols["rev_end"] = r[1]
                 elif r[1][-6:]  == "_child" : hcols["child"] = r[1]
                 elif r[1][-7:]  == "_parent" : hcols["parent"] = r[1]
-                elif r[1]  == "hid" : pass
                 elif r[1]  == "OGC_FID" : pass
                 else : 
                     cols += r[1] + ", "
@@ -345,7 +339,7 @@ class Versioning:
             print hcols
             con = db.connect(filename)
             cur = con.cursor()
-            sql = "CREATE VIEW "+table+"_view "+"AS SELECT ROWID AS ROWID, hid, "+cols+" FROM "+table+" WHERE "+hcols['rev_end']+" IS NULL"
+            sql = "CREATE VIEW "+table+"_view "+"AS SELECT ROWID AS ROWID, OGC_FID, "+cols+" FROM "+table+" WHERE "+hcols['rev_end']+" IS NULL"
             print sql
             cur.execute(sql)
 
@@ -356,10 +350,10 @@ class Versioning:
             sql =("CREATE TRIGGER update_"+table+" INSTEAD OF UPDATE ON "+table+"_view\n"+
                   "BEGIN\n"+
                     "INSERT INTO "+table+" "
-                    "(OGC_FID, hid, "+cols+", "+hcols['rev_begin']+", "+hcols['parent']+") "+
+                    "(OGC_FID, "+cols+", "+hcols['rev_begin']+", "+hcols['parent']+") "+
                     "VALUES "
-                    "((SELECT MAX(OGC_FID) + 1 FROM "+table+"),(SELECT MAX(hid) + 1 FROM "+table+"), "+newcols+", (SELECT rev+1 FROM initial_revision WHERE table_name = '"+table+"'), old.hid);\n"+
-                    "UPDATE "+table+" SET trunk_rev_end = (SELECT rev FROM initial_revision WHERE table_name = '"+table+"'), "+hcols['child']+" = (SELECT MAX(hid) FROM "+table+") WHERE hid = old.hid;\n"+
+                    "((SELECT MAX(OGC_FID) + 1 FROM "+table+"), "+newcols+", (SELECT rev+1 FROM initial_revision WHERE table_name = '"+table+"'), old.OGC_FID);\n"+
+                    "UPDATE "+table+" SET trunk_rev_end = (SELECT rev FROM initial_revision WHERE table_name = '"+table+"'), "+hcols['child']+" = (SELECT MAX(OGC_FID) FROM "+table+") WHERE OGC_FID = old.OGC_FID;\n"+
                   "END")
             print sql
             cur.execute(sql)  
@@ -367,16 +361,16 @@ class Versioning:
             sql =("CREATE TRIGGER insert_"+table+" INSTEAD OF INSERT ON "+table+"_view\n"+
                   "BEGIN\n"+
                     "INSERT INTO "+table+" "+ 
-                    "(OGC_FID, hid, "+cols+", "+hcols['rev_begin']+") "+
+                    "(OGC_FID, "+cols+", "+hcols['rev_begin']+") "+
                     "VALUES "+
-                    "((SELECT MAX(OGC_FID) + 1 FROM "+table+"),(SELECT MAX(hid) + 1 FROM "+table+"), "+newcols+", (SELECT rev+1 FROM initial_revision WHERE table_name = '"+table+"'));\n"+
+                    "((SELECT MAX(OGC_FID) + 1 FROM "+table+"), "+newcols+", (SELECT rev+1 FROM initial_revision WHERE table_name = '"+table+"'));\n"+
                   "END")
             print sql
             cur.execute(sql)  
 
             sql =("CREATE TRIGGER delete_"+table+" INSTEAD OF DELETE ON "+table+"_view\n"+
                   "BEGIN\n"+
-                    "UPDATE "+table+" SET "+hcols['rev_end']+" = (SELECT rev FROM initial_revision WHERE table_name = '"+table+"') WHERE hid = old.hid;\n"+
+                    "UPDATE "+table+" SET "+hcols['rev_end']+" = (SELECT rev FROM initial_revision WHERE table_name = '"+table+"') WHERE OGC_FID = old.OGC_FID;\n"+
                   "END")
             print sql 
             cur.execute(sql)
@@ -461,7 +455,7 @@ class Versioning:
                     "SELECT * "+
                     "FROM "+table+" "+
                     "WHERE "+branch+"_rev_end = "+str(rev)+" OR "+branch+"_rev_begin > "+str(rev))
-            scur.execute( "SELECT hid FROM "+table+"_diff")
+            scur.execute( "SELECT OGC_FID FROM "+table+"_diff")
             there_is_something_to_commit = scur.fetchone()
             print "there_is_something_to_commit ", there_is_something_to_commit
             scon.commit()
@@ -479,7 +473,7 @@ class Versioning:
                 pcur.execute("CREATE SCHEMA "+diff_schema)
             pcur.execute( "DROP TABLE IF EXISTS "+diff_schema+"."+table+"_diff")
             pcon.commit()
-            cmd = "ogr2ogr -preserve_fid -f PostgreSQL PG:\""+conn_info+" active_schema="+diff_schema+"\" -lco GEOMETRY_NAME=geom "+uri.database()+" "+table+"_diff"
+            cmd = "ogr2ogr -preserve_fid -f PostgreSQL PG:\""+conn_info+" active_schema="+diff_schema+"\" -lco GEOMETRY_NAME=geom -lco FID=hid "+uri.database()+" "+table+"_diff"
             print cmd
             os.system(cmd)
 
@@ -503,7 +497,6 @@ class Versioning:
             # update the new hid and have posgres update the child hid fields accordingly
             # since those fields where updated through views, its pretty sure it will work
             pcur.execute("ALTER TABLE "+diff_schema+"."+table+"_diff "+
-                "ADD CONSTRAINT "+table+"_"+branch+"__hid_unique UNIQUE(hid), "+
                 "ADD CONSTRAINT "+table+"_"+branch+"__child_fkey "+
                 "FOREIGN KEY("+branch+"_child) "+
                 "REFERENCES "+diff_schema+"."+table+"_diff (hid) ON UPDATE CASCADE")
@@ -525,7 +518,7 @@ class Versioning:
                     "WHERE table_schema = '"+table_schema+"' AND table_name = '"+table+"'")
             cols = ""
             for c in pcur: 
-                if c[0] != "fid": cols += c[0]+", "
+                if c[0] != "hid": cols += c[0]+", "
             cols = cols[:-2] # remove last coma and space
             # insert inserted and modified
             pcur.execute("INSERT INTO "+table_schema+"."+table+" ("+cols+") "+

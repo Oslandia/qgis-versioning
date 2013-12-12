@@ -129,7 +129,6 @@ class Versioning:
                 "FROM initial_revision "+
                 "WHERE table_name = '"+table+"'")
             [rev, branch, table_schema, conn_info] = scur.fetchone()
-            scur.close()
 
             pcon = psycopg2.connect(conn_info)
             pcur = pcon.cursor()
@@ -166,18 +165,24 @@ class Versioning:
                     "ADD CONSTRAINT "+table+"_"+branch+"__hid_pk PRIMARY KEY (hid)") 
             pcon.commit()
 
+            scur.execute( "DROP TABLE IF EXISTS "+table+"_diff")
+            scon.commit()
+
             # import the diff to spatialite
             cmd = "ogr2ogr -preserve_fid -f SQLite -update "+uri.database()+" PG:\""+conn_info+" active_schema="+diff_schema+"\" "+table+"_diff"
             print cmd
             os.system(cmd)
 
             # cleanup in postgis
-            #pcur.execute("DROP SCHEMA "+diff_schema+" CASCADE")
-            #pcon.commit()
+            pcur.execute("DROP SCHEMA "+diff_schema+" CASCADE")
+            pcon.commit()
             pcon.close()
 
-            scon = db.connect(uri.database())
-            scur = scon.cursor()
+
+            scur.execute("PRAGMA table_info("+table+")")
+            cols = ""
+            for c in scur: cols += c[1]+", "
+            cols = cols[:-2] # remove last coma and space
             
             # we cannot add constrain to the spatialite db in order to have spatialite
             # update parent and child when we bump inserted hid above the max hid in the diff
@@ -206,26 +211,73 @@ class Versioning:
                     print "our min added hid is superior to the max added hid in the posgtgis database"
 
                 # detect conflicts: conflict occur if two lines with the same hid have
-                # been modified (i.e. have a non null child) or removed/modified
-                sql=("SELECT sl.OGC_FID, pg.OGC_FID FROM "+table+" AS sl, "+table+"_diff AS pg "
-                        "WHERE sl.OGC_FID = pg.OGC_FID "+
-                        "AND ((sl."+branch+"_child IS NOT NULL AND pg."+branch+"_child IS NOT NULL) "+
-                        "OR (sl."+branch+"_rev_end IS NOT NULL AND pg."+branch+"_child IS NOT NULL) "+
-                        "OR (sl."+branch+"_child IS NOT NULL AND pg."+branch+"_rev_end IS NOT NULL))")
+                # been modified (i.e. have a non null child) or one has been removed
+                # and the other modified
+                scur.execute("DROP VIEW  IF EXISTS "+table+"_conflicts_ogc_fid")
+                sql=("CREATE VIEW "+table+"_conflicts_ogc_fid AS "+
+                    "SELECT sl.OGC_FID as conflict_deleted_fid "+
+                    "FROM "+table+" AS sl, "+table+"_diff AS pg "+
+                    "WHERE sl.OGC_FID = pg.OGC_FID "+
+                        "AND (sl."+branch+"_child != pg."+branch+"_child "+
+                            "OR (sl."+branch+"_child IS NULL AND pg."+branch+"_child IS NOT NULL) "
+                            "OR (sl."+branch+"_child IS NOT NULL AND pg."+branch+"_child IS NULL))")
                 print sql
                 scur.execute(sql)
-                if scur.fetchone():
-                    QMessageBox.warning(self.iface.mainWindow(), "Warning", "Conflicts detected.\n\nPlease resolve conflicts before continuing.")
+                scur.execute("SELECT * FROM  "+table+"_conflicts_ogc_fid" )
+                sl_pg = scur.fetchall()
+                if sl_pg:
                     print "there are conflicts"
-                    assert(False)
+                    # add layer for conflicts
+                    scur.execute("DROP TABLE IF EXISTS "+table+"_conflicts ")
+                    sql=("CREATE TABLE "+table+"_conflicts AS "+
+                        # insert new features from mine
+                        "SELECT "+branch+"_parent AS conflict_id, 'mine' AS origin, 'modified' AS action, "+cols+" FROM "+table+", "+table+"_conflicts_ogc_fid AS cflt "+
+                        "WHERE OGC_FID = (SELECT "+branch+"_child FROM "+table+" "+
+                                             "WHERE OGC_FID = conflict_deleted_fid) "+
+                        "UNION ALL "
+                        # insert new features from theirs
+                        "SELECT "+branch+"_parent AS conflict_id, 'theirs' AS origin, 'modified' AS action, "+cols+" FROM "+table+"_diff "+", "+table+"_conflicts_ogc_fid AS cflt "+
+                        "WHERE OGC_FID = (SELECT "+branch+"_child FROM "+table+"_diff "+
+                                             "WHERE OGC_FID = conflict_deleted_fid) "+
+                         # insert deleted features from mine
+                        "UNION ALL "+
+                        "SELECT "+branch+"_parent AS conflict_id, 'mine' AS origin, 'deleted' AS action, "+cols+" FROM "+table+", "+table+"_conflicts_ogc_fid AS cflt "+
+                        "WHERE OGC_FID = conflict_deleted_fid AND "+branch+"_child IS NULL " +
+                         # insert deleted features from theirs
+                        "UNION ALL "+
+                        "SELECT "+branch+"_parent AS conflict_id, 'theirs' AS origin, 'deleted' AS action, "+cols+" FROM "+table+"_diff, "+table+"_conflicts_ogc_fid AS cflt "+
+                        "WHERE OGC_FID = conflict_deleted_fid AND "+branch+"_child IS NULL " )
+                    print sql
+                    scur.execute(sql)
+
+                    # identify conflicts for deleted 
+                    scur.execute("UPDATE "+table+"_conflicts "+
+                            "SET conflict_id = OGC_FID "+
+                            "WHERE action = 'deleted'")
+                    scur.execute("DELETE FROM geometry_columns WHERE f_table_name = '"+table+"_conflicts'")
+                    scur.execute("SELECT RecoverGeometryColumn('"+table+"_conflicts', 'GEOMETRY', (SELECT srid FROM geometry_columns WHERE f_table_name='"+table+"'), (SELECT type FROM geometry_columns WHERE f_table_name='"+table+"'), 'XY')")
+                    
+
+                    # create trigers such that on delete
+                    
+
+
+                    scon.commit()
+
+                    self.iface.addVectorLayer("dbname="+uri.database()+" key=\"OGC_FID\" table=\""+table+"_conflicts\"(GEOMETRY)",table+"_conflicts",'spatialite')
+
+                    QMessageBox.warning(self.iface.mainWindow(), "Warning", "Conflicts detected.\n\nPlease resolve conflicts before continuing.")
+                    return
+
+
+
+
+
+
 
             # in case no conflicts are detected, update the initial revision and integrate changes
             scur.execute("UPDATE initial_revision SET rev = "+str(max_rev)+" WHERE table_name = '"+table+"'")
 
-            scur.execute("PRAGMA table_info("+table+")")
-            cols = ""
-            for c in scur: cols += c[1]+", "
-            cols = cols[:-2] # remove last coma and space
             
             # update revision
             scur.execute("UPDATE "+table+" "+
@@ -343,6 +395,7 @@ class Versioning:
             print sql
             cur.execute(sql)
 
+            cur.execute("DELETE FROM views_geometry_columns WHERE f_table_name = '"+table+"_conflicts'")
             sql = "INSERT INTO views_geometry_columns "+"(view_name, view_geometry, view_rowid, f_table_name, f_geometry_column) "+"VALUES"+"('"+table+"_view', 'GEOMETRY', 'ROWID', '"+table+"', 'GEOMETRY')"
             print sql 
             cur.execute(sql)  

@@ -98,9 +98,33 @@ class Versioning:
         self.iface.removeToolBarIcon(self.update_action)
         self.iface.removeToolBarIcon(self.commit_action)
 
+    def unresolvedConflicts(self):
+        found = ""
+        for name,layer in QgsMapLayerRegistry.instance().mapLayers().iteritems():
+            uri = QgsDataSourceURI(layer.source())
+            if layer.providerType() == "spatialite" and uri.table()[-5:] == "_view": 
+                scon = db.connect(uri.database())
+                scur = scon.cursor()
+                table = uri.table()[:-5] # remove suffix _view
+                scur.execute("SELECT tbl_name FROM sqlite_master WHERE type='table' AND tbl_name = '"+table+"_conflicts'")
+                table_conflicts = scur.fetchone()
+                if table_conflicts:
+                    scur.execute("SELECT * FROM "+table_conflicts[0])
+                    if scur.fetchone(): found += table+", "
+                    else: scur.execute("DROP  TABLE "+table_conflicts[0])
+                scon.commit()
+                scon.close()
+            
+        if found: 
+            QMessageBox.warning( self.iface.mainWindow(), "Warning", "Unresolved conflics for layer(s) "+found[:-2]+".\n\nPlease resolve conflicts by deleting either 'mine' or 'theirs' in the conflict layers before continuing.")
+            return True
+        else:
+            return False
+
     def update(self):
         """merge modifiactions since last update into working copy"""
         print "update"
+        if self.unresolvedConflicts(): return
         # get the target revision from the spatialite db
         # create the diff in postgres
         # load the diff in spatialite
@@ -120,7 +144,9 @@ class Versioning:
         else:
             print "updating ", versionned_layers
 
+        all_max_rev = 0
         for name,layer in versionned_layers.iteritems():
+            conflict_for_this_layer = False
             uri = QgsDataSourceURI(layer.source())
             scon = db.connect(uri.database())
             scur = scon.cursor()
@@ -134,6 +160,7 @@ class Versioning:
             pcur = pcon.cursor()
             pcur.execute("SELECT MAX(rev) FROM "+table_schema+".revisions WHERE branch = '"+branch+"'")
             [max_rev] = pcur.fetchone()
+            all_max_rev = max (max_rev, all_max_rev)
             if max_rev == rev: 
                 print "Nothing new in branch "+branch+" in "+table+"."+table_schema+" since last update"
                 continue
@@ -178,11 +205,20 @@ class Versioning:
             pcon.commit()
             pcon.close()
 
-
             scur.execute("PRAGMA table_info("+table+")")
             cols = ""
             for c in scur: cols += c[1]+", "
             cols = cols[:-2] # remove last coma and space
+
+            # update the initial revision 
+            scur.execute("UPDATE initial_revision SET rev = "+str(max_rev)+" WHERE table_name = '"+table+"'")
+            
+            scur.execute("UPDATE "+table+" "+
+                    "SET "+branch+"_rev_end = "+str(max_rev)+" "+
+                    "WHERE "+branch+"_rev_end = "+str(rev))
+            scur.execute("UPDATE "+table+" "+
+                    "SET "+branch+"_rev_begin = "+str(max_rev+1)+" "+
+                    "WHERE "+branch+"_rev_begin = "+str(rev+1))
             
             # we cannot add constrain to the spatialite db in order to have spatialite
             # update parent and child when we bump inserted hid above the max hid in the diff
@@ -192,7 +228,7 @@ class Versioning:
             print "max pg hid", max_pg_hid
             scur.execute("SELECT MIN(OGC_FID) "+
                 "FROM "+table+" "+
-                "WHERE "+branch+"_rev_begin = "+str(rev+1))
+                "WHERE "+branch+"_rev_begin = "+str(max_rev+1))
             [min_sl_hid] = scur.fetchone()
             print "min sl hid", min_sl_hid
             if max_pg_hid and min_sl_hid: # one of them is empty, no conflict possible
@@ -201,12 +237,12 @@ class Versioning:
                     # now bump the hids of inserted rows in working copy
                     scur.execute("UPDATE "+table+" "+
                             "SET OGC_FID = OGC_FID + "+str(bump)+" "+
-                            "WHERE "+branch+"_rev_begin = "+str(rev+1))
+                            "WHERE "+branch+"_rev_begin = "+str(max_rev+1))
                     # and bump the hid in the child field
                     # not that we don't care for nulls since adding something to null is null
                     scur.execute("UPDATE "+table+" "+
                             "SET "+branch+"_child = "+branch+"_child  + "+str(bump)+" "+
-                            "WHERE "+branch+"_rev_end = "+str(rev))
+                            "WHERE "+branch+"_rev_end = "+str(max_rev))
                 else:
                     print "our min added hid is superior to the max added hid in the posgtgis database"
 
@@ -257,44 +293,162 @@ class Versioning:
                     scur.execute("DELETE FROM geometry_columns WHERE f_table_name = '"+table+"_conflicts'")
                     scur.execute("SELECT RecoverGeometryColumn('"+table+"_conflicts', 'GEOMETRY', (SELECT srid FROM geometry_columns WHERE f_table_name='"+table+"'), (SELECT type FROM geometry_columns WHERE f_table_name='"+table+"'), 'XY')")
                     
+                    scur.execute("CREATE UNIQUE INDEX IF NOT EXISTS "+table+"_conflicts_idx ON "+table+"_conflicts(OGC_FID)")
 
-                    # create trigers such that on delete
-                    
+                    # create trigers such that on delete the conflict is resolved
+                    # for modified on both side:
+                    #   - if we delete 'mine' 
+                    #           - we delete the inserted on our side, 
+                    #           - copy their inserted 
+                    #           - and change our parent's child (replace by theirs)
+                    #   - if we delete 'theirs' 
+                    #           - we change the parent on our side to match theirs
+                    #           - we then insert their child
+                    #           - and set the end_revision and child of this record to point to our child
+                    # for deleted on our side and modified on theirs:
+                    #   - if we delete 'mine' 
+                    #           - we just replace ours parent's child (delete) by theirs (modified) 
+                    #           - and insert their child
+                    #   - if we delete 'theirs' 
+                    #           - we do the same thing, 
+                    #           - plus we set the end revision on their child
+                    # for modified on our side and deleted on theirs:
+                    #   - if we delete 'mine' 
+                    #           - we remove our child 
+                    #           - and set the parent as theirs (deleted)
+                    #   - if we delete 'theirs' 
+                    #           - we set our parent as theirs (deleted without children)
+                    #           - we update our child to set the parent to null
+                    # in all case we end by deleting the 2 conflict rows in the conflict table
+                    # and remove their parent and child from the diff
 
+                    modified_on_both_sides_delete_mine = ("old.action = 'modified' AND old.origin = 'mine' "+
+                        "AND (SELECT action FROM "+table+"_conflicts WHERE origin = 'theirs' AND conflict_id = old.conflict_id ) = 'modified'")
+
+                    modified_on_both_sides_delete_theirs = ("old.action = 'modified' AND old.origin = 'theirs' "+
+                        "AND (SELECT action FROM "+table+"_conflicts WHERE origin = 'mine' AND conflict_id = old.conflict_id ) = 'modified'")
+
+                    deleted_on_our_sides_modified_on_theirs_delete_mine = ("old.action = 'deleted' AND old.origin = 'mine' "+
+                        "AND (SELECT action FROM "+table+"_conflicts WHERE origin = 'theirs' AND conflict_id = old.conflict_id ) = 'modified'")
+
+                    deleted_on_our_sides_modified_on_theirs_delete_theirs = ("old.action = 'modified' AND old.origin = 'theirs' "+
+                        "AND (SELECT action FROM "+table+"_conflicts WHERE origin = 'mine' AND conflict_id = old.conflict_id ) = 'deleted'")
+
+                    modified_on_our_sides_deleted_on_theirs_delete_mine = ("old.action = 'modified' AND old.origin = 'mine' "+
+                        "AND (SELECT action FROM "+table+"_conflicts WHERE origin = 'theirs' AND conflict_id = old.conflict_id ) = 'deleted'")
+
+                    modified_on_our_sides_deleted_on_theirs_delete_theirs = ("old.action = 'deleted' AND old.origin = 'theirs' "+
+                        "AND (SELECT action FROM "+table+"_conflicts WHERE origin = 'mine' AND conflict_id = old.conflict_id ) = 'modified'")
+
+                    scur.execute("DROP TRIGGER IF EXISTS delete_"+table+"_conflicts")
+                    sql =("CREATE TRIGGER delete_"+table+"_conflicts AFTER DELETE ON "+table+"_conflicts\n"+
+                        "BEGIN\n"+
+                            "DELETE FROM "+table+" "+
+                            "WHERE OGC_FID = old.OGC_FID AND "+modified_on_both_sides_delete_mine+";\n"+
+
+                            "INSERT INTO "+table+"("+cols+") "+
+                            "SELECT "+cols+" FROM "+table+"_diff "+
+                            "WHERE OGC_FID = (SELECT OGC_FID FROM "+table+"_conflicts WHERE origin = 'theirs' AND conflict_id = old.conflict_id ) "+
+                                "AND "+modified_on_both_sides_delete_mine+";\n"+
+
+                            "REPLACE INTO "+table+"("+cols+") "+
+                            "SELECT "+cols+" FROM "+table+"_diff "+
+                            "WHERE OGC_FID = old."+branch+"_parent AND "+modified_on_both_sides_delete_mine+";\n"+
+
+                            "UPDATE "+table+" "+
+                            "SET "+branch+"_child = (SELECT OGC_FID FROM "+table+"_conflicts WHERE origin = 'theirs' AND conflict_id = old.conflict_id) "+
+                            "WHERE OGC_FID = old."+branch+"_parent "+
+                                "AND "+modified_on_both_sides_delete_theirs+";\n"+
+
+                            "INSERT INTO "+table+"("+cols+") "+
+                            "SELECT "+cols+" FROM "+table+"_diff "+
+                            "WHERE OGC_FID = old.OGC_FID "+
+                                "AND "+modified_on_both_sides_delete_theirs+";\n"+
+
+                            "UPDATE "+table+" "+
+                            "SET "+branch+"_child = (SELECT OGC_FID FROM "+table+"_conflicts WHERE origin = 'mine' AND conflict_id = old.conflict_id), "+
+                                   branch+"_rev_end = "+str(max_rev)+" "+
+                            "WHERE OGC_FID = old.OGC_FID "+
+                                "AND "+modified_on_both_sides_delete_theirs+";\n"+
+
+                            "REPLACE INTO "+table+"("+cols+") "+
+                            "SELECT "+cols+" FROM "+table+"_diff "+
+                            "WHERE OGC_FID = old."+branch+"_parent "+
+                                "AND "+deleted_on_our_sides_modified_on_theirs_delete_mine+";\n"+
+
+                            "INSERT INTO "+table+"("+cols+") "+
+                            "SELECT "+cols+" FROM "+table+"_diff "+
+                            "WHERE OGC_FID = (SELECT OGC_FID FROM "+table+"_conflicts WHERE origin = 'theirs' AND conflict_id = old.conflict_id) "+
+                                "AND "+deleted_on_our_sides_modified_on_theirs_delete_mine+";\n"+
+
+                            "REPLACE INTO "+table+"("+cols+") "+
+                            "SELECT "+cols+" FROM "+table+"_diff "+
+                            "WHERE OGC_FID = old."+branch+"_parent "+
+                                "AND "+deleted_on_our_sides_modified_on_theirs_delete_theirs+";\n"+
+
+                            "INSERT INTO "+table+"("+cols+") "+
+                            "SELECT "+cols+" FROM "+table+"_diff "+
+                            "WHERE OGC_FID = old.OGC_FID "+
+                                "AND "+deleted_on_our_sides_modified_on_theirs_delete_theirs+";\n"+
+
+                            "UPDATE "+table+" "+
+                            "SET  "+branch+"_rev_end = "+str(max_rev)+" "+
+                            "WHERE OGC_FID = old.OGC_FID "+
+                                "AND "+deleted_on_our_sides_modified_on_theirs_delete_theirs+";\n"+
+
+                            "DELETE FROM "+table+" "+
+                            " WHERE OGC_FID = old.OGC_FID "+
+                                "AND "+modified_on_our_sides_deleted_on_theirs_delete_mine+";\n"+
+
+                            "REPLACE INTO "+table+"("+cols+") "+
+                            "SELECT "+cols+" FROM "+table+"_diff "+
+                            "WHERE OGC_FID = old."+branch+"_parent "+
+                                "AND "+modified_on_our_sides_deleted_on_theirs_delete_mine+";\n"+
+
+                            "REPLACE INTO "+table+"("+cols+") "+
+                            "SELECT "+cols+" FROM "+table+"_diff "+
+                            "WHERE OGC_FID = old."+branch+"_parent "+
+                                "AND "+deleted_on_our_sides_modified_on_theirs_delete_theirs+";\n"+
+
+                            "UPDATE "+table+" "
+                            "SET "+branch+"_parent = NULL "+
+                            "WHERE OGC_FID = old.OGC_FID "+
+                                "AND "+deleted_on_our_sides_modified_on_theirs_delete_theirs+";\n"+
+
+                            "DELETE FROM "+table+"_conflicts "+
+                            "WHERE conflict_id = old.conflict_id;\n"+
+
+                            "DELETE FROM "+table+"_diff "+
+                            "WHERE (OGC_FID = (SELECT OGC_FID FROM "+table+"_conflicts WHERE origin = 'theirs' AND conflict_id = old.conflict_id ) "+
+                                    "OR OGC_FID = (SELECT "+branch+"_parent FROM "+table+"_conflicts WHERE origin = 'theirs' AND conflict_id = old.conflict_id ));\n"+
+                        "END")
+                    print sql
+                    scur.execute(sql)
 
                     scon.commit()
 
                     self.iface.addVectorLayer("dbname="+uri.database()+" key=\"OGC_FID\" table=\""+table+"_conflicts\"(GEOMETRY)",table+"_conflicts",'spatialite')
-
-                    QMessageBox.warning(self.iface.mainWindow(), "Warning", "Conflicts detected.\n\nPlease resolve conflicts before continuing.")
-                    return
-
-
-
-
-
-
-
-            # in case no conflicts are detected, update the initial revision and integrate changes
-            scur.execute("UPDATE initial_revision SET rev = "+str(max_rev)+" WHERE table_name = '"+table+"'")
-
-            
-            # update revision
-            scur.execute("UPDATE "+table+" "+
-                    "SET "+branch+"_rev_end = "+str(max_rev)+" "+
-                    "WHERE "+branch+"_rev_end = "+str(rev))
-            scur.execute("UPDATE "+table+" "+
-                    "SET "+branch+"_rev_begin = "+str(max_rev+1)+" "+
-                    "WHERE "+branch+"_rev_begin = "+str(rev+1))
+                    conflict_for_this_layer = True
 
             scur.execute("CREATE UNIQUE INDEX IF NOT EXISTS "+table+"_diff_idx ON "+table+"_diff(OGC_FID)")
-            # insert inserted and modified and update deleted and modified
-            scur.execute("INSERT OR REPLACE INTO "+table+" ("+cols+") "+
-                "SELECT "+cols+" FROM "+table+"_diff ")
+            if conflict_for_this_layer: 
+                # insert inserted and modified and update deleted and modified that have no conflicts
+                scur.execute("INSERT OR REPLACE INTO "+table+" ("+cols+") "+
+                    "SELECT "+cols+" "+
+                    "FROM "+table+"_diff "+
+                        "LEFT JOIN (SELECT OGC_FID AS conflict_id FROM "+table+"_conflicts WHERE origin = 'theirs' "+
+                             "UNION SELECT trunk_parent AS conflict_id FROM "+table+"_conflicts WHERE origin = 'theirs') AS c "+
+                        "ON OGC_FID = c.conflict_id "+
+                        "WHERE c.conflict_id IS NULL")
+            else:
+                # insert and replace all
+                scur.execute("INSERT OR REPLACE INTO "+table+" ("+cols+") "+
+                    "SELECT "+cols+" FROM "+table+"_diff")
 
             scon.commit()
             scon.close()
-        QMessageBox.information( self.iface.mainWindow(), "Notice", "Your are up to date with revision "+str(max_rev)+".")
+
+        if not self.unresolvedConflicts(): QMessageBox.information( self.iface.mainWindow(), "Notice", "Your are up to date with revision "+str(all_max_rev)+".")
 
 
     def checkout(self):
@@ -406,7 +560,7 @@ class Versioning:
                     "(OGC_FID, "+cols+", "+hcols['rev_begin']+", "+hcols['parent']+") "+
                     "VALUES "
                     "((SELECT MAX(OGC_FID) + 1 FROM "+table+"), "+newcols+", (SELECT rev+1 FROM initial_revision WHERE table_name = '"+table+"'), old.OGC_FID);\n"+
-                    "UPDATE "+table+" SET trunk_rev_end = (SELECT rev FROM initial_revision WHERE table_name = '"+table+"'), "+hcols['child']+" = (SELECT MAX(OGC_FID) FROM "+table+") WHERE OGC_FID = old.OGC_FID;\n"+
+                    "UPDATE "+table+" SET "+hcols['rev_end']+" = (SELECT rev FROM initial_revision WHERE table_name = '"+table+"'), "+hcols['child']+" = (SELECT MAX(OGC_FID) FROM "+table+") WHERE OGC_FID = old.OGC_FID;\n"+
                   "END")
             print sql
             cur.execute(sql)  
@@ -440,6 +594,7 @@ class Versioning:
     def commit(self):
         """merge modifiactions into database"""
         print "commit"
+        if self.unresolvedConflicts(): return
 
         versionned_layers = {}
         for name,layer in QgsMapLayerRegistry.instance().mapLayers().iteritems():

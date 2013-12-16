@@ -251,17 +251,14 @@ class Versioning:
                 # and the other modified
                 scur.execute("DROP VIEW  IF EXISTS "+table+"_conflicts_ogc_fid")
                 sql=("CREATE VIEW "+table+"_conflicts_ogc_fid AS "+
-                    "SELECT sl.OGC_FID as conflict_deleted_fid "+
+                    "SELECT DISTINCT sl.OGC_FID as conflict_deleted_fid "+
                     "FROM "+table+" AS sl, "+table+"_diff AS pg "+
                     "WHERE sl.OGC_FID = pg.OGC_FID "+
-                        "AND (sl."+branch+"_child != pg."+branch+"_child "+
-                            "OR (sl."+branch+"_child IS NULL AND pg."+branch+"_child IS NOT NULL) "
-                            "OR (sl."+branch+"_child IS NOT NULL AND pg."+branch+"_child IS NULL))")
+                        "AND sl."+branch+"_child != pg."+branch+"_child")
                 print sql
                 scur.execute(sql)
                 scur.execute("SELECT * FROM  "+table+"_conflicts_ogc_fid" )
-                sl_pg = scur.fetchall()
-                if sl_pg:
+                if scur.fetchone():
                     print "there are conflicts"
                     # add layer for conflicts
                     scur.execute("DROP TABLE IF EXISTS "+table+"_conflicts ")
@@ -278,11 +275,11 @@ class Versioning:
                          # insert deleted features from mine
                         "UNION ALL "+
                         "SELECT "+branch+"_parent AS conflict_id, 'mine' AS origin, 'deleted' AS action, "+cols+" FROM "+table+", "+table+"_conflicts_ogc_fid AS cflt "+
-                        "WHERE OGC_FID = conflict_deleted_fid AND "+branch+"_child IS NULL " +
+                        "WHERE OGC_FID = conflict_deleted_fid AND "+branch+"_child IS NULL "+
                          # insert deleted features from theirs
                         "UNION ALL "+
                         "SELECT "+branch+"_parent AS conflict_id, 'theirs' AS origin, 'deleted' AS action, "+cols+" FROM "+table+"_diff, "+table+"_conflicts_ogc_fid AS cflt "+
-                        "WHERE OGC_FID = conflict_deleted_fid AND "+branch+"_child IS NULL " )
+                        "WHERE OGC_FID = conflict_deleted_fid AND "+branch+"_child IS NULL")
                     print sql
                     scur.execute(sql)
 

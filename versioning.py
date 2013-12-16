@@ -30,6 +30,7 @@ from pyspatialite import dbapi2 as db
 import psycopg2
 import commit_msg_ui
 import connections_ui
+import versioning_base
 
 qset = QSettings( "oslandia", "horao_qgis_plugin" )
 

@@ -272,7 +272,7 @@ def update(sqlite_filename):
                     # insert new features from mine
                     "SELECT "+branch+"_parent AS conflict_id, 'mine' AS origin, 'modified' AS action, "+cols+" FROM "+table+", "+table+"_conflicts_ogc_fid AS cflt "+
                     "WHERE OGC_FID = (SELECT "+branch+"_child FROM "+table+" "+
-                                         "WHERE OGC_FID = conflict_deleted_fid ) "+ # TODO FIX THIS
+                                         "WHERE OGC_FID = conflict_deleted_fid) "+
                     "UNION ALL "
                     # insert new features from theirs
                     "SELECT "+branch+"_parent AS conflict_id, 'theirs' AS origin, 'modified' AS action, "+cols+" FROM "+table+"_diff "+", "+table+"_conflicts_ogc_fid AS cflt "+
@@ -281,7 +281,7 @@ def update(sqlite_filename):
                      # insert deleted features from mine
                     "UNION ALL "+
                     "SELECT "+branch+"_parent AS conflict_id, 'mine' AS origin, 'deleted' AS action, "+cols+" FROM "+table+", "+table+"_conflicts_ogc_fid AS cflt "+
-                    "WHERE OGC_FID = conflict_deleted_fid AND "+branch+"_child IS NULL" +
+                    "WHERE OGC_FID = conflict_deleted_fid AND "+branch+"_child IS NULL "+
                      # insert deleted features from theirs
                     "UNION ALL "+
                     "SELECT "+branch+"_parent AS conflict_id, 'theirs' AS origin, 'deleted' AS action, "+cols+" FROM "+table+"_diff, "+table+"_conflicts_ogc_fid AS cflt "+

@@ -179,6 +179,44 @@ and
 SELECT * FROM epanet_trunk_rev_head.pipes;
 </pre>
 
+<h4>Creating a view on a given revision</h4>
+
+<p>
+If you want to see the scheme at revision 3, issue this command in your postgis client:
+</p>
+<pre>
+CREATE SCHEMA epanet_trunk_rev_3;
+
+CREATE VIEW epanet_trunk_rev_3.junctions
+AS SELECT hid, id, elevation, base_demand_flow, demand_pattern_id, geom
+   FROM epanet.junctions
+   WHERE ( trunk_rev_end IS NULL OR trunk_rev_end &gt;=3 ) AND trunk_rev_begin &lt;= 3;
+  
+CREATE VIEW epanet_trunk_rev_3.pipes
+AS SELECT  hid, id, start_node, end_node, length, diameter, roughness, minor_loss_coefficient, status, geom 
+   FROM epanet.pipes
+   WHERE ( trunk_rev_end IS NULL OR trunk_rev_end &gt;=3 ) AND trunk_rev_begin &lt;= 3;
+</pre>
+
+<h4>Creating a diff between two revision</h4>
+
+<p>
+If you want to see the the list of changed features in table junctions between revision 1 and 2, issue this command in your postgis client:
+</p>
+<pre>
+SELECT hid AS insert_hid 
+FROM epanet.junctions 
+WHERE trunk_rev_begin = 2 AND trunk_parent IS NULL;
+
+SELECT hid AS delete_hid 
+FROM epanet.junctions 
+WHERE trunk_rev_end = 1 AND trunk_child IS NULL;
+
+SELECT trunk_parent AS old_hid, hid AS new_hid
+FROM epanet.junctions 
+WHERE trunk_rev_begin = 2 AND trunk_parent IS NOT NULL;
+</pre>
+
 <h4>Using the QGIS plugin</h4>
 
 <p>

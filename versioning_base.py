@@ -257,8 +257,8 @@ def update(sqlite_filename):
         os.system(' '.join(cmd))
 
         # cleanup in postgis
-        #pcur.execute("DROP SCHEMA "+diff_schema+" CASCADE")
-        #pcur.commit()
+        pcur.execute("DROP SCHEMA "+diff_schema+" CASCADE")
+        pcur.commit()
         pcur.close()
 
         scur.execute("PRAGMA table_info("+table+")")
@@ -599,14 +599,14 @@ def commit(sqlite_filename, commit_msg):
                 "FROM information_schema.columns "+
                 "WHERE table_schema = '"+table_schema+"' AND table_name = '"+table+"'")
         cols = ""
-        for c in pcur.fetchall(): 
-            if c[0] != "hid": cols += c[0]+", "
+        for c in pcur.fetchall(): cols += c[0]+", "
         cols = cols[:-2] # remove last coma and space
         # insert inserted and modified
         pcur.execute("INSERT INTO "+table_schema+"."+table+" ("+cols+") "+
             "SELECT "+cols+" FROM "+diff_schema+"."+table+"_diff "+
             "WHERE "+branch+"_rev_begin = "+str(rev+1))
 
+        pcur.commit()
         # update deleted and modified 
         pcur.execute("UPDATE "+table_schema+"."+table+" AS dest "+
                 "SET ("+branch+"_rev_end, "+branch+"_child)=(src."+branch+"_rev_end, src."+branch+"_child) "+

@@ -18,3 +18,4 @@ os.system("psql epanet_test_db -f "+test_data_dir+"/issue287_pg_dump.sql")
 # try the update
 shutil.copyfile(test_data_dir+"/issue287_wc.sqlite", tmp_dir+"/issue287_wc.sqlite")
 versioning_base.update(tmp_dir+"/issue287_wc.sqlite")
+versioning_base.commit(tmp_dir+"/issue287_wc.sqlite","test message")

@@ -1,8 +1,49 @@
 import os
 import pwd
-import os.path
 from pyspatialite import dbapi2
 import psycopg2
+
+class Db:
+   def __init__(self, con, filename = ''):
+       self.con = con
+       if isinstance(con, dbapi2.Connection): self.db_type = 'sp : '
+       else : self.db_type = 'pg : '
+       self.cur = self.con.cursor()
+       if filename : 
+           self.log = open( filename, 'w' )
+           self.log.write('-- openning connection\n')
+       else :
+           self.log = None
+       self.begun = False
+
+   def execute(self, sql):
+       if not self.begun:
+           self.begun = True
+           print self.db_type, 'BEGIN;'
+           if self.log : self.log.write( 'BEGIN;\n')
+       print self.db_type, sql, ';'
+       if self.log : self.log.write(sql+';\n')
+       self.cur.execute( sql )
+
+   def fetchall(self):
+       return self.cur.fetchall()
+
+   def fetchone(self):
+       return self.cur.fetchone()
+
+   def commit(self):
+       print self.db_type, 'END;'
+       if self.log : self.log.write('END;\n')
+       self.begun = False;
+       self.con.commit()
+
+   def close(self):
+       if self.begun : 
+           print self.db_type, 'END;'
+           if self.log : self.log.write('END;\n')
+       if self.log : self.log.write('-- closing connection\n')
+       self.con.close()
+
 
 def escapeQuotes(s):
     return str.replace(str(s),"'","''");
@@ -13,16 +54,15 @@ def get_username():
 def unresolvedConflicts(sqlite_filename):
     """return a list of tables with unresolved conflicts"""
     found = []
-    scon = dbapi2.connect(sqlite_filename)
-    scur = scon.cursor()
+    scur = Db(dbapi2.connect(sqlite_filename))
     scur.execute("SELECT tbl_name FROM sqlite_master WHERE type='table' AND tbl_name LIKE '%_conflicts'")
     for table_conflicts in scur.fetchall():
         print 'table_conflicts:',table_conflicts[0]
         scur.execute("SELECT * FROM "+table_conflicts[0])
         if scur.fetchone():
             found.append( table_conflicts[0][:-10] )
-    scon.commit()
-    scon.close()
+    scur.commit()
+    scur.close()
     return found
 
 def checkout(pg_conn_info, pg_table_names, sqlite_filename):
@@ -38,9 +78,7 @@ def checkout(pg_conn_info, pg_table_names, sqlite_filename):
         [schema, table] = pg_table_name.split('.')
         if not ( schema and table and schema[-9:] == "_rev_head"): raise RuntimeError("Schema names must end with suffix _branch_rev_head")
 
-    pcon = psycopg2.connect(pg_conn_info)
-    pcur = pcon.cursor()
-
+    pcur = Db(psycopg2.connect(pg_conn_info))
 
     first_table = True
     for pg_table_name in pg_table_names:
@@ -58,13 +96,12 @@ def checkout(pg_conn_info, pg_table_names, sqlite_filename):
         # use ogr2ogr to create spatialite db
         if first_table:
             first_table = False
-            cmd = "ogr2ogr -preserve_fid -f SQLite -dsco SPATIALITE=yes "+sqlite_filename+" PG:\""+pg_conn_info+" active_schema="+schema+"\" "+table
-            print cmd
-            os.system(cmd)
+            cmd = ['ogr2ogr', '-preserve_fid', '-f', 'SQLite', '-dsco', 'SPATIALITE=yes', sqlite_filename, 'PG:"'+pg_conn_info+' active_schema='+schema+'"', table]
+            print ' '.join(cmd)
+            os.system(' '.join(cmd))
 
             # save target revision in a table
-            scon = dbapi2.connect(sqlite_filename)
-            scur = scon.cursor()
+            scur = Db(dbapi2.connect(sqlite_filename))
             scur.execute("CREATE TABLE initial_revision AS SELECT "+
                     str(current_rev)+" AS rev, '"+
                     branch+"' AS branch, '"+
@@ -72,31 +109,29 @@ def checkout(pg_conn_info, pg_table_names, sqlite_filename):
                     table+"' AS table_name, '"+
                     escapeQuotes(pg_conn_info)+"' AS conn_info, "+
                     str(max_pg_hid)+" AS max_hid")
-            scon.commit()
-            scon.close()
+            scur.commit()
+            scur.close()
             
         else:
-            cmd = "ogr2ogr -preserve_fid -f SQLite -update "+sqlite_filename+" PG:\""+pg_conn_info+" active_schema="+schema+"\" "+table
-            print cmd
-            os.system(cmd)
+            cmd = ['ogr2ogr', '-preserve_fid', '-f', 'SQLite', '-update', sqlite_filename, 'PG:"'+pg_conn_info+' active_schema='+schema+'"', table]
+            print ' '.join(cmd)
+            os.system(' '.join(cmd))
 
             # save target revision in a table if not in there
-            scon = dbapi2.connect(sqlite_filename)
-            scur = scon.cursor()
+            scur = Db(dbapi2.connect(sqlite_filename))
             if not scur.fetchone(): # no record, insert
                 scur.execute("INSERT INTO initial_revision(rev, branch, table_schema, table_name, conn_info, max_hid) VALUES ("+str(current_rev)+", '"+branch+"', '"+schema+"', '"+table+"', '"+escapeQuotes(pg_conn_info)+"', "+str(max_pg_hid)+")" )
-            scon.commit()
-            scon.close()
+            scur.commit()
+            scur.close()
 
-        scon = dbapi2.connect(sqlite_filename)
-        scur = scon.cursor()
+        scur = Db(dbapi2.connect(sqlite_filename))
 
         # create views and triggers in spatilite db
         scur.execute("PRAGMA table_info("+table+")")
         cols = ""
         newcols = ""
         hcols = {}
-        for r in scur:
+        for r in scur.fetchall():
             if   r[1][-10:] == "_rev_begin" : pass
             elif r[1][-8:]  == "_rev_end" : pass
             elif r[1][-6:]  == "_child" : pass
@@ -148,9 +183,9 @@ def checkout(pg_conn_info, pg_table_names, sqlite_filename):
         print sql 
         scur.execute(sql)
         
-        scon.commit()
-        scon.close()
-    pcon.close()
+        scur.commit()
+        scur.close()
+    pcur.close()
 
 def update(sqlite_filename):
     """merge modifiactions since last update into working copy"""
@@ -163,8 +198,7 @@ def update(sqlite_filename):
     # merge changes and update target_revision
     # delete diff
     
-    scon = dbapi2.connect(sqlite_filename)
-    scur = scon.cursor()
+    scur = Db(dbapi2.connect(sqlite_filename),'update_spatialite_log.sql')
     scur.execute("SELECT rev, branch, table_schema, conn_info, table_name, max_hid "+
         "FROM initial_revision")
     versioned_layers = scur.fetchall()
@@ -172,17 +206,19 @@ def update(sqlite_filename):
     for [rev, branch, table_schema, conn_info, table, current_max_hid] in versioned_layers:
         conflict_for_this_layer = False
 
-        pcon = psycopg2.connect(conn_info)
-        pcur = pcon.cursor()
+        print conn_info
+        pcur = Db(psycopg2.connect(conn_info))
         pcur.execute("SELECT MAX(rev) FROM "+table_schema+".revisions WHERE branch = '"+branch+"'")
         [max_rev] = pcur.fetchone()
         if max_rev == rev: 
             print "Nothing new in branch "+branch+" in "+table_schema+"."+table+" since last update"
+            pcur.close()
             continue
 
         # get the max hid 
         pcur.execute("SELECT MAX(hid) FROM "+table_schema+"."+table)
         [max_pg_hid] = pcur.fetchone()
+        print 'max_pg_hid ',max_pg_hid
 
         # create the diff
         diff_schema = table_schema+"_"+branch+"_"+str(rev)+"_to_"+str(max_rev)+"_diff"
@@ -193,7 +229,7 @@ def update(sqlite_filename):
                 "FROM information_schema.columns "+
                 "WHERE table_schema = '"+table_schema+"' AND table_name = '"+table+"'")
         cols = ""
-        for c in pcur: 
+        for c in pcur.fetchall(): 
             if c[0] != "geom": cols += c[0]+", "
         cols = cols[:-2] # remove last coma and space
 
@@ -208,24 +244,26 @@ def update(sqlite_filename):
                 "WHERE "+branch+"_rev_end = "+str(rev)+" OR "+branch+"_rev_begin > "+str(rev))
         pcur.execute( "ALTER TABLE "+diff_schema+"."+table+"_diff "+
                 "ADD CONSTRAINT "+table+"_"+branch+"__hid_pk PRIMARY KEY (hid)") 
-        pcon.commit()
+        pcur.commit()
 
-        scur.execute( "DROP TABLE IF EXISTS "+table+"_diff")
-        scon.commit()
+        scur.execute("DROP TABLE IF EXISTS "+table+"_diff")
+        scur.execute("DROP TABLE IF EXISTS idx_"+table+"_diff_GEOMETRY")
+        scur.execute("DELETE FROM geometry_columns WHERE f_table_name = '"+table+"_diff'")
+        scur.commit()
 
         # import the diff to spatialite
-        cmd = "ogr2ogr -preserve_fid -f SQLite -update "+sqlite_filename+" PG:\""+conn_info+" active_schema="+diff_schema+"\" "+table+"_diff"
-        print cmd
-        os.system(cmd)
+        cmd = ['ogr2ogr', '-preserve_fid', '-f', 'SQLite', '-update', sqlite_filename, 'PG:"'+conn_info+' active_schema='+diff_schema+'"', table+"_diff"]
+        print ' '.join(cmd)
+        os.system(' '.join(cmd))
 
         # cleanup in postgis
-        pcur.execute("DROP SCHEMA "+diff_schema+" CASCADE")
-        pcon.commit()
-        pcon.close()
+        #pcur.execute("DROP SCHEMA "+diff_schema+" CASCADE")
+        #pcur.commit()
+        pcur.close()
 
         scur.execute("PRAGMA table_info("+table+")")
         cols = ""
-        for c in scur: cols += c[1]+", "
+        for c in scur.fetchall(): cols += c[1]+", "
         cols = cols[:-2] # remove last coma and space
 
         # update the initial revision 
@@ -244,9 +282,13 @@ def update(sqlite_filename):
         bump = max_pg_hid - current_max_hid
         assert( bump >= 0) 
         # now bump the hids of inserted rows in working copy
+        # note that to do that, we need to set a negative value because the UPDATE is
+        # not implemented correctly according to:
+        # http://stackoverflow.com/questions/19381350/simulate-order-by-in-sqlite-update-to-handle-uniqueness-constraint
         scur.execute("UPDATE "+table+" "+
-                "SET OGC_FID = OGC_FID + "+str(bump)+" "+
+                "SET OGC_FID = -(OGC_FID + "+str(bump)+") "+
                 "WHERE "+branch+"_rev_begin = "+str(max_rev+1))
+        scur.execute("UPDATE "+table+" SET OGC_FID = -OGC_FID WHERE OGC_FID < 0")
         # and bump the hid in the child field
         # not that we don't care for nulls since adding something to null is null
         scur.execute("UPDATE "+table+" "+
@@ -257,13 +299,11 @@ def update(sqlite_filename):
         # been modified (i.e. have a non null child) or one has been removed
         # and the other modified
         scur.execute("DROP VIEW  IF EXISTS "+table+"_conflicts_ogc_fid")
-        sql=("CREATE VIEW "+table+"_conflicts_ogc_fid AS "+
+        scur.execute("CREATE VIEW "+table+"_conflicts_ogc_fid AS "+
             "SELECT DISTINCT sl.OGC_FID as conflict_deleted_fid "+
             "FROM "+table+" AS sl, "+table+"_diff AS pg "+
             "WHERE sl.OGC_FID = pg.OGC_FID "+
                 "AND sl."+branch+"_child != pg."+branch+"_child")
-        print sql
-        scur.execute(sql)
         scur.execute("SELECT * FROM  "+table+"_conflicts_ogc_fid" )
         if scur.fetchone():
             print "there are conflicts"
@@ -429,7 +469,7 @@ def update(sqlite_filename):
             print sql
             scur.execute(sql)
 
-            scon.commit()
+            scur.commit()
 
             conflict_for_this_layer = True
 
@@ -448,13 +488,12 @@ def update(sqlite_filename):
             scur.execute("INSERT OR REPLACE INTO "+table+" ("+cols+") "+
                 "SELECT "+cols+" FROM "+table+"_diff")
 
-    scon.commit()
-    scon.close()
+    scur.commit()
+    scur.close()
 
 def late(sqlite_filename):
     """Return 0 if up to date, the number of commits in between otherwize"""
-    scon = dbapi2.connect(sqlite_filename)
-    scur = scon.cursor()
+    scur = Db(dbapi2.connect(sqlite_filename))
     scur.execute("SELECT rev, branch, table_schema, conn_info, table_name "+
         "FROM initial_revision")
     versioned_layers = scur.fetchall()
@@ -463,8 +502,7 @@ def late(sqlite_filename):
     lateBy = 0;
 
     for [rev, branch, table_schema, conn_info, table] in versioned_layers:
-        pcon = psycopg2.connect(conn_info)
-        pcur = pcon.cursor()
+        pcur = Db(psycopg2.connect(conn_info))
         pcur.execute("SELECT MAX(rev) FROM "+table_schema+".revisions WHERE branch = '"+branch+"'")
         [max_rev] = pcur.fetchone()
         lateBy = max(max_rev - rev, lateBy)
@@ -472,8 +510,7 @@ def late(sqlite_filename):
     return lateBy
 
 def revision( sqlite_filename ):
-    scon = dbapi2.connect(sqlite_filename)
-    scur = scon.cursor()
+    scur = Db(dbapi2.connect(sqlite_filename))
     scur.execute("SELECT rev "+ "FROM initial_revision")
     rev = scur.fetchall()
     revision = 0
@@ -490,8 +527,7 @@ def commit(sqlite_filename, commit_msg):
     lateBy = late(sqlite_filename)
     if lateBy:  raise RuntimeError("The table '"+table+"' in file '"+sqlite_filename+"' is not up to date. It's late by "+str(lateBy)+" commit(s).\n\nPlease update before commiting your modifications")
 
-    scon = dbapi2.connect(sqlite_filename)
-    scur = scon.cursor()
+    scur = Db(dbapi2.connect(sqlite_filename))
     scur.execute("SELECT rev, branch, table_schema, conn_info, table_name "+
         "FROM initial_revision")
     versioned_layers = scur.fetchall()
@@ -527,10 +563,9 @@ def commit(sqlite_filename, commit_msg):
         scur.execute( "SELECT OGC_FID FROM "+table+"_diff")
         there_is_something_to_commit = scur.fetchone()
         print "there_is_something_to_commit ", there_is_something_to_commit
-        scon.commit()
+        scur.commit()
 
-        pcon = psycopg2.connect(conn_info)
-        pcur = pcon.cursor()
+        pcur = Db(psycopg2.connect(conn_info))
 
         # import layers in postgis schema
         pcur.execute("SELECT schema_name FROM information_schema.schemata WHERE schema_name = '"+diff_schema+"'")
@@ -538,10 +573,10 @@ def commit(sqlite_filename, commit_msg):
             schema_list[diff_schema] = conn_info
             pcur.execute("CREATE SCHEMA "+diff_schema)
         pcur.execute( "DROP TABLE IF EXISTS "+diff_schema+"."+table+"_diff")
-        pcon.commit()
-        cmd = "ogr2ogr -preserve_fid -f PostgreSQL PG:\""+conn_info+" active_schema="+diff_schema+"\" -lco GEOMETRY_NAME=geom -lco FID=hid "+sqlite_filename+" "+table+"_diff"
-        print cmd
-        os.system(cmd)
+        pcur.commit()
+        cmd = ['ogr2ogr', '-preserve_fid', '-f', 'PostgreSQL', 'PG:"'+conn_info+' active_schema='+diff_schema+'"', '-lco', 'GEOMETRY_NAME=geom', '-lco', 'FID=hid', sqlite_filename, table+"_diff"]
+        print ' '.join(cmd)
+        os.system(' '.join(cmd))
 
         # remove dif table and geometry column
         scur.execute("DELETE FROM geometry_columns WHERE f_table_name = '"+table+"_diff'")
@@ -550,7 +585,7 @@ def commit(sqlite_filename, commit_msg):
 
         if not there_is_something_to_commit: 
             print "nothing to commit for ", table
-            pcon.close()
+            pcur.close()
             continue
 
         nb_of_updated_layer += 1
@@ -564,7 +599,7 @@ def commit(sqlite_filename, commit_msg):
                 "FROM information_schema.columns "+
                 "WHERE table_schema = '"+table_schema+"' AND table_name = '"+table+"'")
         cols = ""
-        for c in pcur: 
+        for c in pcur.fetchall(): 
             if c[0] != "hid": cols += c[0]+", "
         cols = cols[:-2] # remove last coma and space
         # insert inserted and modified
@@ -577,24 +612,23 @@ def commit(sqlite_filename, commit_msg):
                 "SET ("+branch+"_rev_end, "+branch+"_child)=(src."+branch+"_rev_end, src."+branch+"_child) "+
                 "FROM "+diff_schema+"."+table+"_diff AS src "+
                 "WHERE dest.hid = src.hid AND src."""+branch+"_rev_end = "+str(rev))
-        pcon.commit()
-        pcon.close()
+        pcur.commit()
+        pcur.close()
 
-        scon.commit()
+        scur.commit()
 
     if nb_of_updated_layer:
         scur.execute("UPDATE initial_revision SET rev = rev+1 WHERE table_schema = '"+table_schema+"' AND branch = '"+branch+"'")
-        scon.commit()
+        scur.commit()
 
-    scon.close()
+    scur.close()
 
     # cleanup diffs in postgis
     for schema, conn_info in schema_list.iteritems(): 
-        pcon = psycopg2.connect(conn_info)
-        pcur = pcon.cursor()
+        pcur = Db(psycopg2.connect(conn_info))
         pcur.execute("DROP SCHEMA "+schema+" CASCADE")
-        pcon.commit()
-        pcon.close()
+        pcur.commit()
+        pcur.close()
 
     return nb_of_updated_layer
 

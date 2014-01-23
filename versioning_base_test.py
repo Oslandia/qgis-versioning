@@ -1,10 +1,11 @@
+#!/usr/bin/python
 import versioning_base
 from pyspatialite import dbapi2
 import psycopg2
 import os
 
-sqlite_test_filename1 = "versionning_base_test1.sqlite"
-sqlite_test_filename2 = "versionning_base_test2.sqlite"
+sqlite_test_filename1 = "versioning_base_test1.sqlite"
+sqlite_test_filename2 = "versioning_base_test2.sqlite"
 if os.path.isfile(sqlite_test_filename1): os.remove(sqlite_test_filename1)
 if os.path.isfile(sqlite_test_filename2): os.remove(sqlite_test_filename2)
 
@@ -42,8 +43,6 @@ scon.commit()
 scur.execute("SELECT COUNT(*) FROM junctions")
 assert( scur.fetchone()[0] == 3 )
 scon.close()
-
-# commit
 versioning_base.commit(sqlite_test_filename1, 'first test commit')
 pcon = psycopg2.connect("dbname=epanet_test_db")
 pcur = pcon.cursor()
@@ -51,5 +50,6 @@ pcur.execute("SELECT COUNT(*) FROM epanet.junctions")
 assert( pcur.fetchone()[0] == 3 )
 pcur.execute("SELECT COUNT(*) FROM epanet.revisions")
 assert( pcur.fetchone()[0] == 2 )
+
 
 

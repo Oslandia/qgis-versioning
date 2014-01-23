@@ -1,5 +1,6 @@
 cmake_minimum_required( VERSION 2.8 )
 project( versioning )
+enable_testing()
 
 file(GLOB Files 
     ${CMAKE_CURRENT_SOURCE_DIR}/metadata.txt
@@ -31,3 +32,5 @@ add_custom_command( OUTPUT commit_msg_ui.py
     DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/commit_msg.ui )
 
 add_custom_target(qgis_plugin ALL DEPENDS resources_rc.py commit_msg_ui.py connections_ui.py ${Files})
+
+add_test(issue287_test ../test_data/issue287_test.py)

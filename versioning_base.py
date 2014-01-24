@@ -15,13 +15,17 @@ class Db:
        else :
            self.log = None
        self.begun = False
+       self._verbose = False
+
+   def verbose(self, v):
+       self._verbose = v
 
    def execute(self, sql):
        if not self.begun:
            self.begun = True
-           print self.db_type, 'BEGIN;'
+           if self._verbose: print self.db_type, 'BEGIN;'
            if self.log : self.log.write( 'BEGIN;\n')
-       print self.db_type, sql, ';'
+       if self._verbose: print self.db_type, sql, ';'
        if self.log : self.log.write(sql+';\n')
        self.cur.execute( sql )
 
@@ -32,14 +36,14 @@ class Db:
        return self.cur.fetchone()
 
    def commit(self):
-       print self.db_type, 'END;'
+       if self._verbose: print self.db_type, 'END;'
        if self.log : self.log.write('END;\n')
        self.begun = False;
        self.con.commit()
 
    def close(self):
        if self.begun : 
-           print self.db_type, 'END;'
+           if self._verbose: print self.db_type, 'END;'
            if self.log : self.log.write('END;\n')
        if self.log : self.log.write('-- closing connection\n')
        self.con.close()
@@ -142,46 +146,47 @@ def checkout(pg_conn_info, pg_table_names, sqlite_filename):
                 newcols += "new."+r[1]+", "
         cols = cols[:-2]
         newcols = newcols[:-2] # remove last coma
-        print cols
-        print hcols
-        sql = "CREATE VIEW "+table+"_view "+"AS SELECT ROWID AS ROWID, OGC_FID, "+cols+" FROM "+table+" WHERE "+branch+"_rev_end IS NULL"
-        print sql
-        scur.execute(sql)
+
+        scur.execute( "CREATE VIEW "+table+"_view "+"AS SELECT ROWID AS ROWID, OGC_FID, "+cols+" FROM "+table+" WHERE "+branch+"_rev_end IS NULL")
 
         max_fid_sub = "( SELECT MAX(max_fid) FROM ( SELECT MAX(OGC_FID) AS max_fid FROM "+table+" UNION SELECT max_hid AS max_fid FROM initial_revision WHERE table_name = '"+table+"') )"
+        current_rev_sub = "(SELECT rev FROM initial_revision WHERE table_name = '"+table+"')"
 
         scur.execute("DELETE FROM views_geometry_columns WHERE f_table_name = '"+table+"_conflicts'")
-        sql = "INSERT INTO views_geometry_columns "+"(view_name, view_geometry, view_rowid, f_table_name, f_geometry_column) "+"VALUES"+"('"+table+"_view', 'GEOMETRY', 'ROWID', '"+table+"', 'GEOMETRY')"
-        print sql 
-        scur.execute(sql)  
+        scur.execute("INSERT INTO views_geometry_columns "+"(view_name, view_geometry, view_rowid, f_table_name, f_geometry_column) "+"VALUES"+"('"+table+"_view', 'GEOMETRY', 'ROWID', '"+table+"', 'GEOMETRY')")
          
-        sql =("CREATE TRIGGER update_"+table+" INSTEAD OF UPDATE ON "+table+"_view\n"+
+        # when we edit something old, we insert and update parent
+        scur.execute("CREATE TRIGGER update_old_"+table+" INSTEAD OF UPDATE ON "+table+"_view "+
+              "WHEN (SELECT COUNT(*) FROM "+table+" WHERE OGC_FID = new.OGC_FID AND ("+branch+"_rev_begin <= "+current_rev_sub+" ) ) \n"+
               "BEGIN\n"+
                 "INSERT INTO "+table+" "
                 "(OGC_FID, "+cols+", "+branch+"_rev_begin, "+branch+"_parent) "+
                 "VALUES "
-                "("+max_fid_sub+"+1, "+newcols+", (SELECT rev+1 FROM initial_revision WHERE table_name = '"+table+"'), old.OGC_FID);\n"+
-                "UPDATE "+table+" SET "+branch+"_rev_end = (SELECT rev FROM initial_revision WHERE table_name = '"+table+"'), "+branch+"_child = "+max_fid_sub+" WHERE OGC_FID = old.OGC_FID;\n"+
+                "("+max_fid_sub+"+1, "+newcols+", "+current_rev_sub+"+1, old.OGC_FID);\n"+
+                "UPDATE "+table+" SET "+branch+"_rev_end = "+current_rev_sub+", "+branch+"_child = "+max_fid_sub+" WHERE OGC_FID = old.OGC_FID;\n"+
               "END")
-        print sql
-        scur.execute(sql)  
+        # when we edit something new, we just update
+        scur.execute("CREATE TRIGGER update_new_"+table+" INSTEAD OF UPDATE ON "+table+"_view "+
+              "WHEN (SELECT COUNT(*) FROM "+table+" WHERE OGC_FID = new.OGC_FID AND ("+branch+"_rev_begin > "+current_rev_sub+" ) ) \n"+
+              "BEGIN\n"+
+                "REPLACE INTO "+table+" "
+                "(OGC_FID, "+cols+", "+branch+"_rev_begin, "+branch+"_parent) "+
+                "VALUES "
+                "(new.OGC_FID, "+newcols+", "+current_rev_sub+"+1, (SELECT "+branch+"_parent FROM "+table+" WHERE OGC_FID = new.OGC_FID));\n"+
+              "END")
 
-        sql =("CREATE TRIGGER insert_"+table+" INSTEAD OF INSERT ON "+table+"_view\n"+
+        scur.execute("CREATE TRIGGER insert_"+table+" INSTEAD OF INSERT ON "+table+"_view\n"+
               "BEGIN\n"+
                 "INSERT INTO "+table+" "+ 
                 "(OGC_FID, "+cols+", "+branch+"_rev_begin) "+
                 "VALUES "+
-                "("+max_fid_sub+"+1, "+newcols+", (SELECT rev+1 FROM initial_revision WHERE table_name = '"+table+"'));\n"+
+                "("+max_fid_sub+"+1, "+newcols+", "+current_rev_sub+"+1);\n"+
               "END")
-        print sql
-        scur.execute(sql)  
 
-        sql =("CREATE TRIGGER delete_"+table+" INSTEAD OF DELETE ON "+table+"_view\n"+
+        scur.execute("CREATE TRIGGER delete_"+table+" INSTEAD OF DELETE ON "+table+"_view\n"+
               "BEGIN\n"+
-                "UPDATE "+table+" SET "+branch+"_rev_end = (SELECT rev FROM initial_revision WHERE table_name = '"+table+"') WHERE OGC_FID = old.OGC_FID;\n"+
+                "UPDATE "+table+" SET "+branch+"_rev_end = "+current_rev_sub+" WHERE OGC_FID = old.OGC_FID;\n"+
               "END")
-        print sql 
-        scur.execute(sql)
         
         scur.commit()
         scur.close()
@@ -206,7 +211,6 @@ def update(sqlite_filename):
     for [rev, branch, table_schema, conn_info, table, current_max_hid] in versioned_layers:
         conflict_for_this_layer = False
 
-        print conn_info
         pcur = Db(psycopg2.connect(conn_info))
         pcur.execute("SELECT MAX(rev) FROM "+table_schema+".revisions WHERE branch = '"+branch+"'")
         [max_rev] = pcur.fetchone()
@@ -218,7 +222,6 @@ def update(sqlite_filename):
         # get the max hid 
         pcur.execute("SELECT MAX(hid) FROM "+table_schema+"."+table)
         [max_pg_hid] = pcur.fetchone()
-        print 'max_pg_hid ',max_pg_hid
 
         # create the diff
         diff_schema = table_schema+"_"+branch+"_"+str(rev)+"_to_"+str(max_rev)+"_diff"
@@ -243,7 +246,7 @@ def update(sqlite_filename):
                 "FROM "+table_schema+"."+table+" "+
                 "WHERE "+branch+"_rev_end = "+str(rev)+" OR "+branch+"_rev_begin > "+str(rev))
         pcur.execute( "ALTER TABLE "+diff_schema+"."+table+"_diff "+
-                "ADD CONSTRAINT "+table+"_"+branch+"__hid_pk PRIMARY KEY (hid)") 
+                "ADD CONSTRAINT "+table+"_"+branch+"_hid_pk PRIMARY KEY (hid)") 
         pcur.commit()
 
         scur.execute("DROP TABLE IF EXISTS "+table+"_diff")
@@ -282,13 +285,13 @@ def update(sqlite_filename):
         bump = max_pg_hid - current_max_hid
         assert( bump >= 0) 
         # now bump the hids of inserted rows in working copy
-        # note that to do that, we need to set a negative value because the UPDATE is
-        # not implemented correctly according to:
+        # note that to do that, we need to set a negative value because 
+        # the UPDATE is not implemented correctly according to:
         # http://stackoverflow.com/questions/19381350/simulate-order-by-in-sqlite-update-to-handle-uniqueness-constraint
         scur.execute("UPDATE "+table+" "+
-                "SET OGC_FID = -(OGC_FID + "+str(bump)+") "+
+                "SET OGC_FID = -OGC_FID  "+
                 "WHERE "+branch+"_rev_begin = "+str(max_rev+1))
-        scur.execute("UPDATE "+table+" SET OGC_FID = -OGC_FID WHERE OGC_FID < 0")
+        scur.execute("UPDATE "+table+" SET OGC_FID = "+str(bump)+"-OGC_FID WHERE OGC_FID < 0")
         # and bump the hid in the child field
         # not that we don't care for nulls since adding something to null is null
         scur.execute("UPDATE "+table+" "+
@@ -309,7 +312,7 @@ def update(sqlite_filename):
             print "there are conflicts"
             # add layer for conflicts
             scur.execute("DROP TABLE IF EXISTS "+table+"_conflicts ")
-            sql=("CREATE TABLE "+table+"_conflicts AS "+
+            scur.execute("CREATE TABLE "+table+"_conflicts AS "+
                 # insert new features from mine
                 "SELECT "+branch+"_parent AS conflict_id, 'mine' AS origin, 'modified' AS action, "+cols+" FROM "+table+", "+table+"_conflicts_ogc_fid AS cflt "+
                 "WHERE OGC_FID = (SELECT "+branch+"_child FROM "+table+" "+
@@ -327,8 +330,6 @@ def update(sqlite_filename):
                 "UNION ALL "+
                 "SELECT "+branch+"_parent AS conflict_id, 'theirs' AS origin, 'deleted' AS action, "+cols+" FROM "+table+"_diff, "+table+"_conflicts_ogc_fid AS cflt "+
                 "WHERE OGC_FID = conflict_deleted_fid AND "+branch+"_child IS NULL" )
-            print sql
-            scur.execute(sql)
 
             # identify conflicts for deleted 
             scur.execute("UPDATE "+table+"_conflicts "+
@@ -385,7 +386,7 @@ def update(sqlite_filename):
                 "AND (SELECT action FROM "+table+"_conflicts WHERE origin = 'mine' AND conflict_id = old.conflict_id ) = 'modified'")
 
             scur.execute("DROP TRIGGER IF EXISTS delete_"+table+"_conflicts")
-            sql =("CREATE TRIGGER delete_"+table+"_conflicts AFTER DELETE ON "+table+"_conflicts\n"+
+            scur.execute("CREATE TRIGGER delete_"+table+"_conflicts AFTER DELETE ON "+table+"_conflicts\n"+
                 "BEGIN\n"+
                     "DELETE FROM "+table+" "+
                     "WHERE OGC_FID = old.OGC_FID AND "+modified_on_both_sides_delete_mine+";\n"+
@@ -466,8 +467,6 @@ def update(sqlite_filename):
                     "WHERE (OGC_FID = (SELECT OGC_FID FROM "+table+"_conflicts WHERE origin = 'theirs' AND conflict_id = old.conflict_id ) "+
                             "OR OGC_FID = (SELECT "+branch+"_parent FROM "+table+"_conflicts WHERE origin = 'theirs' AND conflict_id = old.conflict_id ));\n"+
                 "END")
-            print sql
-            scur.execute(sql)
 
             scur.commit()
 
@@ -522,7 +521,8 @@ def revision( sqlite_filename ):
 def commit(sqlite_filename, commit_msg):
     """merge modifiactions into database
     returns the number of updated layers"""
-    if unresolvedConflicts(sqlite_filename): raise RuntimeError("There are unresolved conflicts in "+sqlite_filename)
+    unresolved = unresolvedConflicts(sqlite_filename)
+    if unresolved: raise RuntimeError("There are unresolved conflicts in "+sqlite_filename+" for table(s) "+', '.join(unresolved) )
 
     lateBy = late(sqlite_filename)
     if lateBy:  raise RuntimeError("The table '"+table+"' in file '"+sqlite_filename+"' is not up to date. It's late by "+str(lateBy)+" commit(s).\n\nPlease update before commiting your modifications")

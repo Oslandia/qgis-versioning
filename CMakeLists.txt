@@ -34,3 +34,4 @@ add_custom_command( OUTPUT commit_msg_ui.py
 add_custom_target(qgis_plugin ALL DEPENDS resources_rc.py commit_msg_ui.py connections_ui.py ${Files})
 
 add_test(issue287_test ../test_data/issue287_test.py)
+add_test(issue358_test ../test_data/issue358_test.py)

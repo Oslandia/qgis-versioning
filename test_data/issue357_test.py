@@ -28,55 +28,66 @@ scur[0].execute("INSERT INTO pipes_view(id, start_node, end_node, GEOMETRY) VALU
 scur[0].execute("INSERT INTO pipes_view(id, start_node, end_node, GEOMETRY) VALUES ('3','1','2',GeomFromText('LINESTRING(1 -1,0 1)',2154))")
 scur[0].commit()
 
-exit(0)
+
 versioning_base.commit( wc[0], 'commit 1 wc0')
 versioning_base.update( wc[1] )
 
 scur[0].execute("UPDATE pipes_view SET length = 1")
 scur[0].commit()
 scur[1].execute("UPDATE pipes_view SET length = 2")
+scur[1].execute("UPDATE pipes_view SET length = 3")
 scur[1].commit()
 
 versioning_base.commit( wc[0], "commit 2 wc0" )
+scur[0].execute("SELECT OGC_FID,length,trunk_rev_begin,trunk_rev_end,trunk_parent,trunk_child FROM pipes")
+print '################'
+for r in scur[0].fetchall():
+    print r
+
+scur[0].execute("UPDATE pipes_view SET length = 2")
+scur[0].execute("DELETE FROM pipes_view WHERE OGC_FID = 9")
+scur[0].commit()
+versioning_base.commit( wc[0], "commit 3 wc0" )
+
+scur[0].execute("SELECT OGC_FID,length,trunk_rev_begin,trunk_rev_end,trunk_parent,trunk_child FROM pipes")
+print '################'
+for r in scur[0].fetchall():
+    print r
 
 versioning_base.update( wc[1] )
+
+scur[1].execute("SELECT OGC_FID,length,trunk_rev_begin,trunk_rev_end,trunk_parent,trunk_child FROM pipes_diff")
+print '################ diff'
+for r in scur[1].fetchall():
+    print r
+
+scur[1].execute("SELECT conflict_id FROM pipes_conflicts")
+assert( len(scur[1].fetchall()) == 6 ) # there must be conflicts
 
 scur[1].execute("SELECT conflict_id,origin,action,OGC_FID,trunk_parent,trunk_child FROM pipes_conflicts")
 print '################'
 for r in scur[1].fetchall():
     print r
-scur[1].execute("SELECT conflict_id FROM pipes_conflicts")
-assert( len(scur[1].fetchall()) == 6 ) # there must be conflicts
-
 
 scur[1].execute("DELETE FROM pipes_conflicts WHERE origin='theirs' AND conflict_id=1")
 scur[1].commit()
-exit(0)
+scur[1].execute("SELECT conflict_id FROM pipes_conflicts")
+assert( len(scur[1].fetchall()) == 4 ) # there must be two removed entries
+
+scur[1].execute("SELECT conflict_id,origin,action,OGC_FID,trunk_parent,trunk_child FROM pipes_conflicts")
+print '################'
+for r in scur[1].fetchall():
+    print r
+
+scur[1].execute("DELETE FROM pipes_conflicts WHERE origin='mine' AND OGC_FID = 11")
+scur[1].execute("DELETE FROM pipes_conflicts WHERE origin='theirs'")
+scur[1].commit()
 scur[1].execute("SELECT conflict_id FROM pipes_conflicts")
 assert( len(scur[1].fetchall()) == 0 ) # there must be no conflict
 
 
-versioning_base.commit( wc[1], "commit 1 wc1" )
-
-scur[0].execute("UPDATE pipes_view SET length = 3")
-scur[0].commit()
-
-scur[0].execute( "SELECT OGC_FID,trunk_rev_begin,trunk_rev_end,trunk_parent,trunk_child FROM pipes")
+scur[1].execute("SELECT OGC_FID,length,trunk_rev_begin,trunk_rev_end,trunk_parent,trunk_child FROM pipes")
 print '################'
-for r in scur[0].fetchall():
-    print r
-
-versioning_base.update( wc[0] )
-
-scur[0].execute( "SELECT OGC_FID,trunk_rev_begin,trunk_rev_end,trunk_parent,trunk_child FROM pipes")
-print '################'
-for r in scur[0].fetchall():
-    print r
-
-exit(0)
-
-scur[0].execute("SELECT conflict_id,origin,action,OGC_FID,trunk_parent,trunk_child FROM pipes_conflicts")
-print '################'
-for r in scur[0].fetchall():
+for r in scur[1].fetchall():
     print r
 

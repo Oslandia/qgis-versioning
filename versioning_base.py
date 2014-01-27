@@ -307,165 +307,78 @@ def update(sqlite_filename):
             "FROM "+table+" AS sl, "+table+"_diff AS pg "+
             "WHERE sl.OGC_FID = pg.OGC_FID "+
                 "AND sl."+branch+"_child != pg."+branch+"_child")
-        scur.execute("SELECT * FROM  "+table+"_conflicts_ogc_fid" )
+        scur.execute("SELECT conflict_deleted_fid FROM  "+table+"_conflicts_ogc_fid" )
         if scur.fetchone():
             print "there are conflicts"
             # add layer for conflicts
             scur.execute("DROP TABLE IF EXISTS "+table+"_conflicts ")
             scur.execute("CREATE TABLE "+table+"_conflicts AS "+
                 # insert new features from mine
-                "SELECT "+branch+"_parent AS conflict_id, 'mine' AS origin, 'modified' AS action, "+cols+" FROM "+table+", "+table+"_conflicts_ogc_fid AS cflt "+
+                "SELECT "+branch+"_parent AS conflict_id, 'mine' AS origin, 'modified' AS action, "+cols+" "+
+                "FROM "+table+", "+table+"_conflicts_ogc_fid AS cflt "+
                 "WHERE OGC_FID = (SELECT "+branch+"_child FROM "+table+" "+
                                      "WHERE OGC_FID = conflict_deleted_fid) "+
                 "UNION ALL "
                 # insert new features from theirs
-                "SELECT "+branch+"_parent AS conflict_id, 'theirs' AS origin, 'modified' AS action, "+cols+" FROM "+table+"_diff "+", "+table+"_conflicts_ogc_fid AS cflt "+
+                "SELECT "+branch+"_parent AS conflict_id, 'theirs' AS origin, 'modified' AS action, "+cols+" "+
+                "FROM "+table+"_diff "+", "+table+"_conflicts_ogc_fid AS cflt "+
                 "WHERE OGC_FID = (SELECT "+branch+"_child FROM "+table+"_diff "+
                                      "WHERE OGC_FID = conflict_deleted_fid) "+
                  # insert deleted features from mine
                 "UNION ALL "+
-                "SELECT "+branch+"_parent AS conflict_id, 'mine' AS origin, 'deleted' AS action, "+cols+" FROM "+table+", "+table+"_conflicts_ogc_fid AS cflt "+
+                "SELECT "+branch+"_parent AS conflict_id, 'mine' AS origin, 'deleted' AS action, "+cols+" "+
+                "FROM "+table+", "+table+"_conflicts_ogc_fid AS cflt "+
                 "WHERE OGC_FID = conflict_deleted_fid AND "+branch+"_child IS NULL "+
                  # insert deleted features from theirs
                 "UNION ALL "+
-                "SELECT "+branch+"_parent AS conflict_id, 'theirs' AS origin, 'deleted' AS action, "+cols+" FROM "+table+"_diff, "+table+"_conflicts_ogc_fid AS cflt "+
+                "SELECT "+branch+"_parent AS conflict_id, 'theirs' AS origin, 'deleted' AS action, "+cols+" "+
+                "FROM "+table+"_diff, "+table+"_conflicts_ogc_fid AS cflt "+
                 "WHERE OGC_FID = conflict_deleted_fid AND "+branch+"_child IS NULL" )
 
             # identify conflicts for deleted 
-            scur.execute("UPDATE "+table+"_conflicts "+
-                    "SET conflict_id = OGC_FID "+
-                    "WHERE action = 'deleted'")
+            scur.execute("UPDATE "+table+"_conflicts "+ "SET conflict_id = OGC_FID "+ "WHERE action = 'deleted'")
+
+            # now follow child if any for 'theirs' 'modified' since several edition could be made
+            # we want the very last child
+            while True:
+                scur.execute("SELECT conflict_id, OGC_FID, "+branch+"_child FROM "+table+"_conflicts WHERE origin='theirs' AND action='modified' AND "+branch+"_child IS NOT NULL");
+                r = scur.fetchall()
+                if not r : break
+                # replaces each entries by it's child
+                for [cflt_id, fid, child] in r:
+                    scur.execute("DELETE FROM "+table+"_conflicts WHERE OGC_FID = "+str(fid))
+                    scur.execute("INSERT INTO "+table+"_conflicts "+
+                        "SELECT "+str(cflt_id)+" AS conflict_id, 'theirs' AS origin, 'modified' AS action, "+cols+" FROM "+table+"_diff "+
+                        "WHERE OGC_FID = "+str(child)+" AND "+branch+"_rev_end IS NULL" );
+                    scur.execute("INSERT INTO "+table+"_conflicts "+
+                        "SELECT "+str(cflt_id)+" AS conflict_id, 'theirs' AS origin, 'deleted' AS action, "+cols+" FROM "+table+"_diff "+
+                        "WHERE OGC_FID = "+str(child)+" AND "+branch+"_rev_end IS NOT NULL" );
+
             scur.execute("DELETE FROM geometry_columns WHERE f_table_name = '"+table+"_conflicts'")
             scur.execute("SELECT RecoverGeometryColumn('"+table+"_conflicts', 'GEOMETRY', (SELECT srid FROM geometry_columns WHERE f_table_name='"+table+"'), (SELECT type FROM geometry_columns WHERE f_table_name='"+table+"'), 'XY')")
             
             scur.execute("CREATE UNIQUE INDEX IF NOT EXISTS "+table+"_conflicts_idx ON "+table+"_conflicts(OGC_FID)")
 
             # create trigers such that on delete the conflict is resolved
-            # for modified on both side:
-            #   - if we delete 'mine' 
-            #           - we delete the inserted on our side, 
-            #           - copy their inserted 
-            #           - and change our parent's child (replace by theirs)
-            #   - if we delete 'theirs' 
-            #           - we change the parent on our side to match theirs
-            #           - we then insert their child
-            #           - and set the end_revision and child of this record to point to our child
-            # for deleted on our side and modified on theirs:
-            #   - if we delete 'mine' 
-            #           - we just replace ours parent's child (delete) by theirs (modified) 
-            #           - and insert their child
-            #   - if we delete 'theirs' 
-            #           - we do the same thing, 
-            #           - plus we set the end revision on their child
-            # for modified on our side and deleted on theirs:
-            #   - if we delete 'mine' 
-            #           - we remove our child 
-            #           - and set the parent as theirs (deleted)
-            #   - if we delete 'theirs' 
-            #           - we set our parent as theirs (deleted without children)
-            #           - we update our child to set the parent to null
-            # in all case we end by deleting the 2 conflict rows in the conflict table
-            # and remove their parent and child from the diff
-
-            modified_on_both_sides_delete_mine = ("old.action = 'modified' AND old.origin = 'mine' "+
-                "AND (SELECT action FROM "+table+"_conflicts WHERE origin = 'theirs' AND conflict_id = old.conflict_id ) = 'modified'")
-
-            modified_on_both_sides_delete_theirs = ("old.action = 'modified' AND old.origin = 'theirs' "+
-                "AND (SELECT action FROM "+table+"_conflicts WHERE origin = 'mine' AND conflict_id = old.conflict_id ) = 'modified'")
-
-            deleted_on_our_sides_modified_on_theirs_delete_mine = ("old.action = 'deleted' AND old.origin = 'mine' "+
-                "AND (SELECT action FROM "+table+"_conflicts WHERE origin = 'theirs' AND conflict_id = old.conflict_id ) = 'modified'")
-
-            deleted_on_our_sides_modified_on_theirs_delete_theirs = ("old.action = 'modified' AND old.origin = 'theirs' "+
-                "AND (SELECT action FROM "+table+"_conflicts WHERE origin = 'mine' AND conflict_id = old.conflict_id ) = 'deleted'")
-
-            modified_on_our_sides_deleted_on_theirs_delete_mine = ("old.action = 'modified' AND old.origin = 'mine' "+
-                "AND (SELECT action FROM "+table+"_conflicts WHERE origin = 'theirs' AND conflict_id = old.conflict_id ) = 'deleted'")
-
-            modified_on_our_sides_deleted_on_theirs_delete_theirs = ("old.action = 'deleted' AND old.origin = 'theirs' "+
-                "AND (SELECT action FROM "+table+"_conflicts WHERE origin = 'mine' AND conflict_id = old.conflict_id ) = 'modified'")
+            # if we delete 'theirs', we set their child to our fid and their rev_end
+            # if we delete 'mine'... well, we delete 'mine'
 
             scur.execute("DROP TRIGGER IF EXISTS delete_"+table+"_conflicts")
             scur.execute("CREATE TRIGGER delete_"+table+"_conflicts AFTER DELETE ON "+table+"_conflicts\n"+
                 "BEGIN\n"+
                     "DELETE FROM "+table+" "+
-                    "WHERE OGC_FID = old.OGC_FID AND "+modified_on_both_sides_delete_mine+";\n"+
-
-                    "INSERT INTO "+table+"("+cols+") "+
-                    "SELECT "+cols+" FROM "+table+"_diff "+
-                    "WHERE OGC_FID = (SELECT OGC_FID FROM "+table+"_conflicts WHERE origin = 'theirs' AND conflict_id = old.conflict_id ) "+
-                        "AND "+modified_on_both_sides_delete_mine+";\n"+
-
-                    "REPLACE INTO "+table+"("+cols+") "+
-                    "SELECT "+cols+" FROM "+table+"_diff "+
-                    "WHERE OGC_FID = old."+branch+"_parent AND "+modified_on_both_sides_delete_mine+";\n"+
+                    "WHERE OGC_FID = old.OGC_FID AND old.origin = 'mine';\n"+
 
                     "UPDATE "+table+" "+
-                    "SET "+branch+"_child = (SELECT OGC_FID FROM "+table+"_conflicts WHERE origin = 'theirs' AND conflict_id = old.conflict_id) "+
-                    "WHERE OGC_FID = old."+branch+"_parent "+
-                        "AND "+modified_on_both_sides_delete_theirs+";\n"+
-
-                    "INSERT INTO "+table+"("+cols+") "+
-                    "SELECT "+cols+" FROM "+table+"_diff "+
-                    "WHERE OGC_FID = old.OGC_FID "+
-                        "AND "+modified_on_both_sides_delete_theirs+";\n"+
+                    "SET "+branch+"_child = (SELECT OGC_FID FROM "+table+"_conflicts WHERE origin = 'mine' AND conflict_id = old.conflict_id), "+branch+"_rev_end = "+str(max_rev)+" "
+                    "WHERE OGC_FID = old.OGC_FID AND old.origin = 'theirs';\n"+
 
                     "UPDATE "+table+" "+
-                    "SET "+branch+"_child = (SELECT OGC_FID FROM "+table+"_conflicts WHERE origin = 'mine' AND conflict_id = old.conflict_id), "+
-                           branch+"_rev_end = "+str(max_rev)+" "+
-                    "WHERE OGC_FID = old.OGC_FID "+
-                        "AND "+modified_on_both_sides_delete_theirs+";\n"+
-
-                    "REPLACE INTO "+table+"("+cols+") "+
-                    "SELECT "+cols+" FROM "+table+"_diff "+
-                    "WHERE OGC_FID = old."+branch+"_parent "+
-                        "AND "+deleted_on_our_sides_modified_on_theirs_delete_mine+";\n"+
-
-                    "INSERT INTO "+table+"("+cols+") "+
-                    "SELECT "+cols+" FROM "+table+"_diff "+
-                    "WHERE OGC_FID = (SELECT OGC_FID FROM "+table+"_conflicts WHERE origin = 'theirs' AND conflict_id = old.conflict_id) "+
-                        "AND "+deleted_on_our_sides_modified_on_theirs_delete_mine+";\n"+
-
-                    "REPLACE INTO "+table+"("+cols+") "+
-                    "SELECT "+cols+" FROM "+table+"_diff "+
-                    "WHERE OGC_FID = old."+branch+"_parent "+
-                        "AND "+deleted_on_our_sides_modified_on_theirs_delete_theirs+";\n"+
-
-                    "INSERT INTO "+table+"("+cols+") "+
-                    "SELECT "+cols+" FROM "+table+"_diff "+
-                    "WHERE OGC_FID = old.OGC_FID "+
-                        "AND "+deleted_on_our_sides_modified_on_theirs_delete_theirs+";\n"+
-
-                    "UPDATE "+table+" "+
-                    "SET  "+branch+"_rev_end = "+str(max_rev)+" "+
-                    "WHERE OGC_FID = old.OGC_FID "+
-                        "AND "+deleted_on_our_sides_modified_on_theirs_delete_theirs+";\n"+
-
-                    "DELETE FROM "+table+" "+
-                    " WHERE OGC_FID = old.OGC_FID "+
-                        "AND "+modified_on_our_sides_deleted_on_theirs_delete_mine+";\n"+
-
-                    "REPLACE INTO "+table+"("+cols+") "+
-                    "SELECT "+cols+" FROM "+table+"_diff "+
-                    "WHERE OGC_FID = old."+branch+"_parent "+
-                        "AND "+modified_on_our_sides_deleted_on_theirs_delete_mine+";\n"+
-
-                    "REPLACE INTO "+table+"("+cols+") "+
-                    "SELECT "+cols+" FROM "+table+"_diff "+
-                    "WHERE OGC_FID = old."+branch+"_parent "+
-                        "AND "+deleted_on_our_sides_modified_on_theirs_delete_theirs+";\n"+
-
-                    "UPDATE "+table+" "
-                    "SET "+branch+"_parent = NULL "+
-                    "WHERE OGC_FID = old.OGC_FID "+
-                        "AND "+deleted_on_our_sides_modified_on_theirs_delete_theirs+";\n"+
+                    "SET "+branch+"_parent = old.OGC_FID "+
+                    "WHERE OGC_FID = (SELECT OGC_FID FROM "+table+"_conflicts WHERE origin = 'mine' AND conflict_id = old.conflict_id) AND old.origin = 'theirs';\n"+
 
                     "DELETE FROM "+table+"_conflicts "+
                     "WHERE conflict_id = old.conflict_id;\n"+
-
-                    "DELETE FROM "+table+"_diff "+
-                    "WHERE (OGC_FID = (SELECT OGC_FID FROM "+table+"_conflicts WHERE origin = 'theirs' AND conflict_id = old.conflict_id ) "+
-                            "OR OGC_FID = (SELECT "+branch+"_parent FROM "+table+"_conflicts WHERE origin = 'theirs' AND conflict_id = old.conflict_id ));\n"+
                 "END")
 
             scur.commit()
@@ -473,22 +386,14 @@ def update(sqlite_filename):
             conflict_for_this_layer = True
 
         scur.execute("CREATE UNIQUE INDEX IF NOT EXISTS "+table+"_diff_idx ON "+table+"_diff(OGC_FID)")
-        if conflict_for_this_layer: 
-            # insert inserted and modified and update deleted and modified that have no conflicts
-            scur.execute("INSERT OR REPLACE INTO "+table+" ("+cols+") "+
-                "SELECT "+cols+" "+
-                "FROM "+table+"_diff "+
-                    "LEFT JOIN (SELECT OGC_FID AS conflict_id FROM "+table+"_conflicts WHERE origin = 'theirs' "+
-                         "UNION SELECT trunk_parent AS conflict_id FROM "+table+"_conflicts WHERE origin = 'theirs') AS c "+
-                    "ON OGC_FID = c.conflict_id "+
-                    "WHERE c.conflict_id IS NULL")
-        else:
-            # insert and replace all
-            scur.execute("INSERT OR REPLACE INTO "+table+" ("+cols+") "+
-                "SELECT "+cols+" FROM "+table+"_diff")
+        # insert and replace all in diff
+        scur.execute("INSERT OR REPLACE INTO "+table+" ("+cols+") "+
+            "SELECT "+cols+" FROM "+table+"_diff")
 
     scur.commit()
     scur.close()
+
+    #bug: il faut remplacer par 'deleted' si le dernier enfant a un rev end
 
 def late(sqlite_filename):
     """Return 0 if up to date, the number of commits in between otherwize"""

@@ -15,6 +15,7 @@ SELECT * FROM test;
 -- SELECT vsleaf( id, child ) FROM test WHERE id > 1;
 -- SELECT vsleaf( id, child ) FROM test WHERE id = 1;
 
+PRAGMA recursive_triggers = TRUE;
 
 CREATE TEMP TABLE Path (id INTEGER, child INTEGER);
 

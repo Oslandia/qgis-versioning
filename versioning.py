@@ -182,6 +182,9 @@ class Versioning:
                 tables_for_conninfo[conn_info] = set([table])
 
         filename = QFileDialog.getSaveFileName(self.iface.mainWindow(), 'Save Versionned Layers As', '.', '*.sqlite')
+        if not filename:
+            print "aborted"
+            return
 
         if os.path.isfile(filename): os.remove(filename)
 

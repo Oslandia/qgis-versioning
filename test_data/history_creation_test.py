@@ -78,3 +78,20 @@ assert( failed )
 
 versioning_base.add_branch( pg_conn_info, 'epanet', 'mybranch', 'test msg' )
 
+
+pcur = versioning_base.Db(psycopg2.connect(pg_conn_info))
+pcur.execute("SELECT * FROM epanet_mybranch_rev_head.junctions")
+assert( len(pcur.fetchall()) == 2 )
+pcur.execute("SELECT * FROM epanet_mybranch_rev_head.pipes")
+assert( len(pcur.fetchall()) == 1 )
+
+versioning_base.add_revision_view( pg_conn_info, 'epanet', 'mybranch', 2)
+pcur.execute("SELECT * FROM epanet_mybranch_rev_2.junctions")
+assert( len(pcur.fetchall()) == 2 )
+pcur.execute("SELECT * FROM epanet_mybranch_rev_2.pipes")
+assert( len(pcur.fetchall()) == 1 )
+
+pcur.close()
+
+
+

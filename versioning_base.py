@@ -567,7 +567,7 @@ def add_branch( pg_conn_info, schema, branch, commit_msg, base_branch='trunk', b
     [max_rev] = pcur.fetchone()
     if base_rev != 'head' and (int(base_rev) > max_rev or int(base_rev) <= 0): 
         pcur.close()
-        raise RuntimeError("Revision "+base_rev+" doesn't exist")
+        raise RuntimeError("Revision "+str(base_rev)+" doesn't exist")
 
     pcur.execute("INSERT INTO "+schema+".revisions(branch, commit_msg ) VALUES ('"+branch+"', '"+commit_msg+"')")
     pcur.execute("CREATE SCHEMA "+schema+"_"+branch+"_rev_head")
@@ -608,8 +608,47 @@ def add_branch( pg_conn_info, schema, branch, commit_msg, base_branch='trunk', b
         for [c] in pcur.fetchall(): 
             if c not in history_columns: cols = c+", "+cols
         cols = cols[:-2] # remove last coma and space
-        pcur.execute("CREATE VIEW "+schema+"_"+branch+"_rev_head."+table+" "+
-            "AS SELECT "+cols+" FROM "+schema+"."+table+" "+
+        pcur.execute("CREATE VIEW "+schema+"_"+branch+"_rev_head."+table+" AS "+
+            "SELECT "+cols+" FROM "+schema+"."+table+" "+
             "WHERE "+branch+"_rev_end IS NULL AND "+branch+"_rev_begin IS NOT NULL")
     pcur.commit()
     pcur.close()
+
+def add_revision_view(pg_conn_info, schema, branch, rev):
+    pcur = Db(psycopg2.connect(pg_conn_info))
+
+    pcur.execute("SELECT * FROM "+schema+".revisions WHERE branch = '"+branch+"'")
+    if not pcur.fetchone(): 
+        pcur.close()
+        raise RuntimeError("Branch "+base_branch+" doesn't exist")
+    pcur.execute("SELECT MAX(rev) FROM "+schema+".revisions")
+    [max_rev] = pcur.fetchone()
+    if int(rev) > max_rev or int(rev) <= 0: 
+        pcur.close()
+        raise RuntimeError("Revision "+str(rev)+" doesn't exist")
+
+    history_columns = [] 
+    pcur.execute("SELECT DISTINCT branch FROM "+schema+".revisions")
+    for [b] in pcur.fetchall():
+        history_columns.extend([b+'_rev_end', b+'_rev_begin', b+'_child', b+'_parent'])
+
+    rev_schema = schema+"_"+branch+"_rev_"+str(rev)
+    pcur.execute("CREATE SCHEMA "+rev_schema)
+
+    pcur.execute("SELECT table_name FROM information_schema.tables WHERE table_schema = '"+schema+"'")
+    for [table] in pcur.fetchall():
+        if table == 'revisions': continue
+        pcur.execute("SELECT column_name "+
+                "FROM information_schema.columns "+
+                "WHERE table_schema = '"+schema+"' AND table_name = '"+table+"'")
+        cols = ""
+        for [c] in pcur.fetchall(): 
+            if c not in history_columns: cols = c+", "+cols
+        cols = cols[:-2] # remove last coma and space
+        pcur.execute("CREATE VIEW "+rev_schema+"."+table+" AS "+
+           "SELECT "+cols+" FROM "+schema+"."+table+" "+
+           "WHERE ( "+branch+"_rev_end IS NULL OR "+branch+"_rev_end >= "+str(rev)+" ) AND "+branch+"_rev_begin <= "+str(rev))
+          
+    pcur.commit()
+    pcur.close()
+

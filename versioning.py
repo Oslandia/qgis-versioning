@@ -157,6 +157,8 @@ class Versioning:
             if   a.text() == 'checkout' : a.setVisible(False)
             elif a.text() == 'update'   : a.setVisible(False)
             elif a.text() == 'commit'   : a.setVisible(False)
+            elif a.text() == 'view'     : a.setVisible(False)
+            elif a.text() == 'branch'   : a.setVisible(False)
         if current: 
             print 'click', current.text(0)
             name = current.text(0)
@@ -193,7 +195,8 @@ class Versioning:
             else:
                 previous_conn = (uri.database(), uri.schema())
 
-        assert( self.currentLayers )
+        if not self.currentLayers: return
+
         layer = QgsMapLayerRegistry.instance().mapLayer( self.currentLayers[0] )
         uri = QgsDataSourceURI( layer.source() )
         selectionType = ''
@@ -223,13 +226,17 @@ class Versioning:
             for a in self.actions:
                 if   a.text() == 'checkout' : a.setVisible(True)
         elif selectionType == 'versioned':
-            pass
+            for a in self.actions:
+                if   a.text() == 'view'     : a.setVisible(True)
+                elif a.text() == 'branch'   : a.setVisible(True)
         elif selectionType == 'head':
             for a in self.actions:
                 if   a.text() == 'checkout' : a.setVisible(True)
+                elif a.text() == 'view'     : a.setVisible(True)
+                elif a.text() == 'branch'   : a.setVisible(True)
         elif selectionType == 'working copy':
             for a in self.actions:
-                if a.text() == 'update'   : a.setVisible(True)
+                if   a.text() == 'update'   : a.setVisible(True)
                 elif a.text() == 'commit'   : a.setVisible(True)
 
     def initGui(self):
@@ -267,6 +274,20 @@ class Versioning:
         self.actions[-1].triggered.connect(self.commit)
         self.actions[-1].setVisible(False)
 
+        self.actions.append( QAction(
+            QIcon(":/plugins/versioning/view.svg"),
+            u"view", self.iface.mainWindow()) )
+        self.actions[-1].setWhatsThis("see revision")
+        self.actions[-1].triggered.connect(self.view)
+        self.actions[-1].setVisible(False)
+
+        self.actions.append( QAction(
+            QIcon(":/plugins/versioning/branch.svg"),
+            u"branch", self.iface.mainWindow()) )
+        self.actions[-1].setWhatsThis("create branch")
+        self.actions[-1].triggered.connect(self.view)
+        self.actions[-1].setVisible(False)
+
         # add actions in menus
         for a in self.actions:
             self.iface.addToolBarIcon(a)
@@ -282,7 +303,56 @@ class Versioning:
         pass
 
     def view(self):
-        pass
+        layer = QgsMapLayerRegistry.instance().mapLayer( self.currentLayers[0] )
+        uri = QgsDataSourceURI(layer.source())
+        m = re.match('(.+)_([^_]+)_rev_(head|\d+)', uri.schema())
+        schema = m.group(1) 
+        assert(schema)
+        d = QDialog()
+        layout = QVBoxLayout(d)
+        buttonBox = QDialogButtonBox(d)
+        buttonBox.setStandardButtons(QDialogButtonBox.Cancel|QDialogButtonBox.Ok)
+
+        pcur = versioning_base.Db( psycopg2.connect(uri.connectionInfo()) ) 
+        pcur.execute("SELECT rev, commit_msg, branch, date, author FROM "+schema+".revisions") 
+        revs = pcur.fetchall()
+        pcur.close()
+        tw = QTableWidget( d )
+        tw.setRowCount(len(revs));
+        tw.setColumnCount(5);
+        tw.setSortingEnabled(True)
+        tw.setHorizontalHeaderLabels(['Revision','Commit Message', 'Branch', 'Date','Author'])
+        tw.verticalHeader().setVisible(False)
+        for i,r in enumerate(revs):
+            for j,item in enumerate(r):
+                tw.setItem(i,j,QTableWidgetItem( str(item) ))
+        layout.addWidget( tw )
+        layout.addWidget( buttonBox )
+        buttonBox.accepted.connect(d.accept)
+        buttonBox.rejected.connect(d.reject)
+        d.resize( 600, 300 )
+        if not d.exec_() : return
+        
+        rows = set()
+        for i in tw.selectedIndexes(): rows.add(i.row())
+        for r in rows:
+            branch = revs[r][2]
+            rev = revs[r][0]
+            versioning_base.add_revision_view(uri.connectionInfo(), schema, branch, rev )
+            groupName = branch+' revision '+str(rev)
+            groupIdx = self.iface.legendInterface().addGroup( groupName )
+            for layerId in reversed(self.currentLayers):
+                layer = QgsMapLayerRegistry.instance().mapLayer(layerId)
+                newUri = QgsDataSourceURI(layer.source())
+                newUri.setDataSource(schema+'_'+branch+'_rev_'+str(rev), 
+                        newUri.table(), 
+                        newUri.geometryColumn(),
+                        newUri.sql(),
+                        newUri.keyColumn())
+                display_name =  QgsMapLayerRegistry.instance().mapLayer(layerId).name()
+                print "iface.addVectorLayer("+newUri.uri()+", "+display_name+", 'postgres')"
+                newLayer = self.iface.addVectorLayer(newUri.uri(), display_name, 'postgres')
+                self.iface.legendInterface().moveLayer( newLayer, groupIdx)
 
     def unresolvedConflicts(self):
         layer = QgsMapLayerRegistry.instance().mapLayer( self.currentLayers[0] )

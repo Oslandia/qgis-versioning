@@ -124,8 +124,7 @@ def checkout(pg_conn_info, pg_table_names, sqlite_filename):
 
             # save target revision in a table if not in there
             scur = Db(dbapi2.connect(sqlite_filename))
-            if not scur.fetchone(): # no record, insert
-                scur.execute("INSERT INTO initial_revision(rev, branch, table_schema, table_name, conn_info, max_hid) VALUES ("+str(current_rev)+", '"+branch+"', '"+schema+"', '"+table+"', '"+escapeQuotes(pg_conn_info)+"', "+str(max_pg_hid)+")" )
+            scur.execute("INSERT INTO initial_revision(rev, branch, table_schema, table_name, conn_info, max_hid) VALUES ("+str(current_rev)+", '"+branch+"', '"+schema+"', '"+table+"', '"+escapeQuotes(pg_conn_info)+"', "+str(max_pg_hid)+")" )
             scur.commit()
             scur.close()
 
@@ -581,7 +580,6 @@ def add_branch( pg_conn_info, schema, branch, commit_msg, base_branch='trunk', b
 
     pcur.execute("INSERT INTO "+schema+".revisions(branch, commit_msg ) VALUES ('"+branch+"', '"+commit_msg+"')")
     pcur.execute("CREATE SCHEMA "+schema+"_"+branch+"_rev_head")
-
    
     history_columns = [] 
     pcur.execute("SELECT DISTINCT branch FROM "+schema+".revisions")
@@ -698,3 +696,140 @@ def revisions(pg_conn_info, schema):
     for [r] in pcur.fetchall(): revs.append(r)
     pcur.close()
     return revs
+
+
+# functions checkout, update and commit for a posgres working copy
+# we don't want to duplicate data
+# we need the initial_revision table all the same
+# for each table we need a diff and a view and triggers
+
+def pg_checkout(pg_conn_info, pg_table_names, working_copy_schema):
+    """create posgress working copy from versioned database tables
+    pg_table_names must be complete schema.table names
+    the schema name must end with _branch_rev_head
+    the working_copy_schema must not exists
+    the views and trigger for local edition will be created
+    along with the tables and triggers for conflict resolution"""
+    pcur = Db(psycopg2.connect(pg_conn_info))
+    pcur.execute("SELECT schema_name FROM information_schema.schemata WHERE schema_name = '"+working_copy_schema+"'")
+    if pcur.fetchone(): raise RuntimeError("Schema "+working_copy_schema+" already exists")
+
+    for pg_table_name in pg_table_names:
+        [schema, table] = pg_table_name.split('.')
+        if not ( schema and table and schema[-9:] == "_rev_head"): raise RuntimeError("Schema names must end with suffix _branch_rev_head")
+
+
+    pcur.verbose(True)
+    pcur.execute("CREATE SCHEMA "+working_copy_schema)
+    
+    first_table = True
+    for pg_table_name in pg_table_names:
+        [schema, table] = pg_table_name.split('.')
+        [schema, sep, branch] = schema[:-9].rpartition('_')
+
+        history_columns = ['hid'] 
+        pcur.execute("SELECT DISTINCT branch FROM "+schema+".revisions")
+        for [b] in pcur.fetchall():
+            history_columns.extend([b+'_rev_end', b+'_rev_begin', b+'_child', b+'_parent'])
+
+        # fetch the current rev
+        pcur.execute("SELECT MAX(rev) FROM "+schema+".revisions")
+        current_rev = int(pcur.fetchone()[0])
+
+        # max hid for this table
+        pcur.execute("SELECT MAX(hid) FROM "+schema+"."+table)
+        max_pg_hid = int(pcur.fetchone()[0])
+        if first_table:
+            first_table = False
+            pcur.execute("CREATE TABLE "+working_copy_schema+".initial_revision AS SELECT "+
+                    str(current_rev)+" AS rev, '"+
+                    branch+"'::varchar AS branch, '"+
+                    schema+"'::varchar AS table_schema, '"+
+                    table+"'::varchar AS table_name, "+
+                    str(max_pg_hid)+" AS max_hid")
+        else:
+            pcur.execute("INSERT INTO "+working_copy_schema+".initial_revision(rev, branch, table_schema, table_name, max_hid) VALUES ("+str(current_rev)+", '"+branch+"', '"+schema+"', '"+table+"', "+str(max_pg_hid)+")" )
+
+        # create diff, views and triggers
+        pcur.execute("SELECT column_name "+
+                "FROM information_schema.columns "+
+                "WHERE table_schema = '"+schema+"' AND table_name = '"+table+"'")
+        cols = ""
+        newcols = ""
+        for [c] in pcur.fetchall(): 
+            if c not in history_columns:
+                cols = c+", "+cols
+                newcols = "new."+c+", "+newcols
+        cols = cols[:-2] 
+        newcols = newcols[:-2] # remove last coma and space
+        hcols = branch+"_rev_begin, "+branch+"_rev_end, "+branch+"_parent, "+branch+"_child"
+
+        pcur.execute("CREATE TABLE "+working_copy_schema+"."+table+"_diff "+
+                "AS SELECT hid, "+cols+", "+branch+"_rev_begin, "+branch+"_rev_end, "+branch+"_parent, "+branch+"_child "+
+                "FROM "+schema+"."+table+" WHERE False")
+
+        current_rev_sub = "(SELECT MAX(rev) FROM "+working_copy_schema+".initial_revision)"
+        pcur.execute("CREATE VIEW "+working_copy_schema+"."+table+"_view AS "+
+                "SELECT hid, "+cols+" "+
+                "FROM (SELECT DISTINCT ON (hid) * "+ 
+                    "FROM (SELECT hid, "+cols+", "+hcols+" FROM "+working_copy_schema+"."+table+"_diff "+
+                          "UNION ALL "+
+                          "SELECT hid, "+cols+", "+hcols+" FROM epanet."+table+" "+
+                          "WHERE "+branch+"_rev_begin <= "+current_rev_sub+" AND ("+branch+"_rev_end IS NULL OR "+branch+"_rev_end >= "+current_rev_sub+" ) ) AS src "+
+                    "ORDER BY hid, "+branch+"_rev_end ASC ) AS merged "+
+                "WHERE "+branch+"_rev_end IS NULL")
+
+        max_fid_sub = "( SELECT MAX(max_fid) FROM ( SELECT MAX(hid) AS max_fid FROM "+working_copy_schema+"."+table+"_diff UNION SELECT max_hid AS max_fid FROM "+working_copy_schema+".initial_revision WHERE table_name = '"+table+"') AS src )"
+
+        # when we edit something old, we insert in diff and update parent
+        pcur.execute("CREATE FUNCTION "+working_copy_schema+".update_old_"+table+"(oldhid int, newhid int) RETURNS int "+
+            "AS $$"+
+                "INSERT INTO "+working_copy_schema+"."+table+"_diff "+
+                "(hid, "+cols+", "+branch+"_rev_begin, "+branch+"_parent) "+
+                "VALUES "+
+                "("+max_fid_sub+"+1, "+newcols+", "+current_rev_sub+"+1, oldhid);\n"+
+                "INSERT INTO "+working_copy_schema+"."+table+"_diff "+
+                "SELECT hid, "+cols+", "+hcols+" FROM epanet."+table+" "+
+                "WHERE hid = oldhid;\n"+
+                "UPDATE "+working_copy_schema+"."+table+"_diff SET "+branch+"_rev_end = "+current_rev_sub+", "+branch+"_child = "+max_fid_sub+" WHERE hid = oldhid;\n"+
+                "SELECT 1 "+
+            "$$ LANGUAGE SQL")
+
+        pcur.execute("CREATE TRIGGER update_old_"+table+" INSTEAD OF UPDATE ON "+working_copy_schema+"."+table+"_view "+
+              "WHEN ((SELECT COUNT(*) FROM "+working_copy_schema+"."+table+"_diff WHERE hid = NEW.hid) = 0) "+
+              "EXECUTE PROCEDURE "+working_copy_schema+".update_old_"+table+"(OLD.hid, NEW.hid)")
+
+        # when we edit something new, we just update the diff
+        pcur.execute("CREATE TRIGGER update_new_"+table+" INSTEAD OF UPDATE ON "+working_copy_schema+"."+table+"_view "+
+              "WHEN ((SELECT COUNT(*) FROM "+working_copy_schema+"."+table+"_diff WHERE hid = NEW.hid) = 1)\n"+
+              "BEGIN\n"+
+                "REPLACE INTO "+working_copy_schema+"."+table+"_diff "+
+                "(hid, "+cols+", "+branch+"_rev_begin, "+branch+"_parent) "+
+                "VALUES "
+                "(NEW.hid, "+newcols+", "+current_rev_sub+"+1, (SELECT "+branch+"_parent FROM "+working_copy_schema+"."+table+"_diff WHERE hid = NEW.hid));\n"+
+              "END")
+
+        pcur.execute("CREATE TRIGGER insert_"+table+" INSTEAD OF INSERT ON "+working_copy_schema+"."+table+"_view\n"+
+              "BEGIN\n"+
+                "INSERT INTO "+working_copy_schema+"."+table+"_diff "+ 
+                "(hid, "+cols+", "+branch+"_rev_begin) "+
+                "VALUES "+
+                "("+max_fid_sub+"+1, "+newcols+", "+current_rev_sub+"+1);\n"+
+              "END")
+
+        pcur.execute("CREATE TRIGGER delete_"+table+" INSTEAD OF DELETE ON "+working_copy_schema+"."+table+"_view\n"+
+              "BEGIN\n"+
+                "INSERT INTO "+working_copy_schema+"."+table+"_diff "+
+                "SELECT hid, "+cols+", "+hcols+" FROM epanet."+table+" "+
+                "WHERE hid = OLD.hid;\n"+
+                "UPDATE "+working_copy_schema+"."+table+" SET "+branch+"_rev_end = "+current_rev_sub+" WHERE hid = OLD.hid;\n"+
+              "END")
+
+    pcur.commit()
+    pcur.close()
+
+def pg_update(pg_conn_info, working_copy_schema):
+    pass
+
+def pg_commit(pg_conn_info, working_copy_schema, commit_msg):
+    pass

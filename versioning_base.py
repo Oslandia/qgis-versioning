@@ -1,3 +1,4 @@
+import re
 import os
 import pwd
 from pyspatialite import dbapi2
@@ -587,6 +588,12 @@ def add_branch( pg_conn_info, schema, branch, commit_msg, base_branch='trunk', b
     for [b] in pcur.fetchall():
         history_columns.extend([b+'_rev_end', b+'_rev_begin', b+'_child', b+'_parent'])
 
+    security = ' WITH (security_barrier)'
+    pcur.execute("SELECT version()")
+    [version] = pcur.fetchone()
+    m = re.match( '^PostgreSQL (\d+)\.(\d+)\.(\d+) ', version )
+    if m and int(m.group(1)) <= 9 and int(m.group(2)) <= 2 : security = ''
+
     pcur.execute("SELECT table_name FROM information_schema.tables WHERE table_schema = '"+schema+"'")
     for [table] in pcur.fetchall():
         if table == 'revisions': continue
@@ -617,7 +624,7 @@ def add_branch( pg_conn_info, schema, branch, commit_msg, base_branch='trunk', b
         for [c] in pcur.fetchall(): 
             if c not in history_columns: cols = c+", "+cols
         cols = cols[:-2] # remove last coma and space
-        pcur.execute("CREATE VIEW "+schema+"_"+branch+"_rev_head."+table+" AS "+
+        pcur.execute("CREATE VIEW "+schema+"_"+branch+"_rev_head."+table+" "+security+" AS "+
             "SELECT "+cols+" FROM "+schema+"."+table+" "+
             "WHERE "+branch+"_rev_end IS NULL AND "+branch+"_rev_begin IS NOT NULL")
     pcur.commit()
@@ -648,9 +655,16 @@ def add_revision_view(pg_conn_info, schema, branch, rev):
         print rev_schema, ' already exists'
         return
 
+    security = ' WITH (security_barrier)'
+    pcur.execute("SELECT version()")
+    [version] = pcur.fetchone()
+    m = re.match( '^PostgreSQL (\d+)\.(\d+)\.(\d+) ', version )
+    if m and int(m.group(1)) <= 9 and int(m.group(2)) <= 2 : security = ''
+
     pcur.execute("CREATE SCHEMA "+rev_schema)
 
     pcur.execute("SELECT table_name FROM information_schema.tables WHERE table_schema = '"+schema+"'")
+
     for [table] in pcur.fetchall():
         if table == 'revisions': continue
         pcur.execute("SELECT column_name "+
@@ -660,7 +674,7 @@ def add_revision_view(pg_conn_info, schema, branch, rev):
         for [c] in pcur.fetchall(): 
             if c not in history_columns: cols = c+", "+cols
         cols = cols[:-2] # remove last coma and space
-        pcur.execute("CREATE VIEW "+rev_schema+"."+table+" AS "+
+        pcur.execute("CREATE VIEW "+rev_schema+"."+table+" "+security+" AS "+
            "SELECT "+cols+" FROM "+schema+"."+table+" "+
            "WHERE ( "+branch+"_rev_end IS NULL OR "+branch+"_rev_end >= "+str(rev)+" ) AND "+branch+"_rev_begin <= "+str(rev))
           

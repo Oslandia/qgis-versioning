@@ -15,23 +15,19 @@ foreach(File ${Files})
     configure_file(${File} ${CMAKE_BINARY_DIR}/${BaseName} COPYONLY)
 endforeach()
 
-file(GLOB SVG *.svg)
-add_custom_command( OUTPUT resources_rc.py 
-    COMMAND pyrcc4 -o resources_rc.py resources.qrc 
-    WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
-    DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/resources.qrc ${SVG} )
-
-add_custom_command( OUTPUT connections_ui.py 
-    COMMAND pyuic4 -o connections_ui.py connections.ui
-    WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
-    DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/connections.ui )
-
 add_custom_command( OUTPUT commit_msg_ui.py 
     COMMAND pyuic4 -o commit_msg_ui.py commit_msg.ui
     WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
     DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/commit_msg.ui )
 
-add_custom_target(qgis_plugin ALL DEPENDS resources_rc.py commit_msg_ui.py connections_ui.py ${Files})
+add_custom_command( OUTPUT versioning_menu_ui.py 
+    COMMAND pyuic4 -o versioning_menu_ui.py versioning_menu.ui
+    WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
+    DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/versioning_menu.ui )
+
+add_custom_target(qgis_plugin ALL DEPENDS versioning_menu_ui.py commit_msg_ui.py ${Files})
 
 add_test(issue287_test ../test_data/issue287_test.py)
 add_test(issue358_test ../test_data/issue358_test.py)
+add_test(issue357_test ../test_data/issue357_test.py)
+add_test(history_creation_test ../test_data/history_creation_test.py)

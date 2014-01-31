@@ -414,6 +414,7 @@ def late(sqlite_filename):
     return lateBy
 
 def revision( sqlite_filename ):
+    """returns the revision the working copy was created from plus one"""
     scur = Db(dbapi2.connect(sqlite_filename))
     scur.execute("SELECT rev "+ "FROM initial_revision")
     rev = scur.fetchall()
@@ -421,11 +422,19 @@ def revision( sqlite_filename ):
     for [r] in rev:
         if revision : assert( r == revision )
         else : revision = r
-    return revision
+    scur.close()
+    return revision + 1
 
 def commit(sqlite_filename, commit_msg):
     """merge modifiactions into database
     returns the number of updated layers"""
+    # get the target revision from the spatialite db
+    # create the diff in postgres
+    # load the diff in spatialite
+    # detect conflicts
+    # merge changes and update target_revision
+    # delete diff
+
     unresolved = unresolvedConflicts(sqlite_filename)
     if unresolved: raise RuntimeError("There are unresolved conflicts in "+sqlite_filename+" for table(s) "+', '.join(unresolved) )
 
@@ -620,7 +629,7 @@ def add_revision_view(pg_conn_info, schema, branch, rev):
     pcur.execute("SELECT * FROM "+schema+".revisions WHERE branch = '"+branch+"'")
     if not pcur.fetchone(): 
         pcur.close()
-        raise RuntimeError("Branch "+base_branch+" doesn't exist")
+        raise RuntimeError("Branch "+branch+" doesn't exist")
     pcur.execute("SELECT MAX(rev) FROM "+schema+".revisions")
     [max_rev] = pcur.fetchone()
     if int(rev) > max_rev or int(rev) <= 0: 
@@ -633,6 +642,12 @@ def add_revision_view(pg_conn_info, schema, branch, rev):
         history_columns.extend([b+'_rev_end', b+'_rev_begin', b+'_child', b+'_parent'])
 
     rev_schema = schema+"_"+branch+"_rev_"+str(rev)
+
+    pcur.execute("SELECT schema_name FROM information_schema.schemata WHERE schema_name = '"+rev_schema+"'")
+    if pcur.fetchone():
+        print rev_schema, ' already exists'
+        return
+
     pcur.execute("CREATE SCHEMA "+rev_schema)
 
     pcur.execute("SELECT table_name FROM information_schema.tables WHERE table_schema = '"+schema+"'")
@@ -652,3 +667,20 @@ def add_revision_view(pg_conn_info, schema, branch, rev):
     pcur.commit()
     pcur.close()
 
+def branches(pg_conn_info, schema):
+    """returns a list of branches for this schema"""
+    pcur = Db(psycopg2.connect(pg_conn_info))
+    pcur.execute("SELECT DISTINCT branch FROM "+schema+".revisions")
+    branches = []
+    for [b] in pcur.fetchall(): branches.append(b)
+    pcur.close()
+    return branches
+
+def revisions(pg_conn_info, schema):
+    """returns a list of revisions for this schema"""
+    pcur = Db(psycopg2.connect(pg_conn_info))
+    pcur.execute("SELECT rev FROM "+schema+".revisions")
+    revs = []
+    for [r] in pcur.fetchall(): revs.append(r)
+    pcur.close()
+    return revs

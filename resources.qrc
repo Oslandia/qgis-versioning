@@ -1,7 +1,0 @@
-<RCC>
-    <qresource prefix="/plugins/versioning" >
-        <file>commit.svg</file>
-        <file>checkout.svg</file>
-        <file>update.svg</file>
-    </qresource>
-</RCC>

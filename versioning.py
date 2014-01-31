@@ -24,6 +24,7 @@ from PyQt4.QtCore import *
 from PyQt4.QtGui import *
 from qgis.core import *
 import resources_rc
+import re
 import os
 import os.path
 from pyspatialite import dbapi2 as db
@@ -38,7 +39,20 @@ WIN_TITLE = "versioning"
 def escapeQuotes(s):
     return str.replace(str(s),"'","''");
 
+# We start from layers comming from one or more postgis non-versionned schemata
+# A widget group is displayed for each distinct schema (identified with 'dbname schema')
+# The widget goup contains a branch and version combobox extracted from layers
+# You can only chechout head revision
+# If you select a new branch, you have to enter the name and it will be created from either the current working copy or the current branch/rev
+# If you select a revision, the corresponding view in the db will be created and the layers replaced
+
+# The list of postgres connections can be found either in layers, or in working copy
+# The list of working copies can be found either in layers or in filesystem
+
+# BRANCHES have no underscore, no spaces
+
 class Versioning:
+
     def __init__(self, iface):
         # Save reference to the QGIS interface
         self.iface = iface
@@ -49,82 +63,239 @@ class Versioning:
         self.commitMsgDialog =commit_msg_ui.Ui_CommitMsgDialog()
         self.commitMsgDialog.setupUi(self.qCommitMsgDialog)
 
+        self.currentLayers = []
+        self.actions = []
+
+    #def updateConnectionBox(self):
+    #    # list pg connections from layers
+    #    self.connectionComboBox.clear()
+
+    #    for name,layer in QgsMapLayerRegistry.instance().mapLayers().iteritems():
+    #        uri = QgsDataSourceURI(layer.source())
+    #        print "layer ", name," : ", layer.source()
+    #        if layer.providerType() == "postgres":
+    #            m = re.match('(.+)_([^_]+)_rev_(head|\d+)', uri.schema())
+    #            if m: 
+    #                connection = uri.database()+'/'+m.group(1)
+    #                if self.connectionComboBox.findText( connection ) == -1:
+    #                    self.connectionComboBox.addItem( connection, (uri.connectionInfo(),m.group(1))) 
+    #                    print '-----------',self.connectionComboBox.itemData(0)
+    #        if layer.providerType() == "spatialite" and uri.table()[-5:] == "_view": 
+    #            if self.connectionComboBox.findText( uri.database() ) == -1:
+    #                self.connectionComboBox.addItem( uri.database() )
+
+    #    self.updateBranchBox()
+    #    self.updateRevisionBox()
+
+    #    #self.branchComboBox.clear()
+    #    #self.revisionComboBox.clear()
+    #    #            for b in versioning_base.branches( uri.connectionInfo(), m.group(1) ):
+    #    #                self.branchComboBox.addItem( b )
+    #    #            for r in versioning_base.revisions( uri.connectionInfo(), m.group(1) ):
+    #    #                self.revisionComboBox.addItems( str(r) )
+
+    #def updateBranchBox(self):
+    #    self.branchComboBox.clear()
+    #    i = self.connectionComboBox.currentIndex()
+    #    text = self.connectionComboBox.itemText(i)
+    #    data  = self.connectionComboBox.itemData(i)
+    #    if data:
+    #        self.branchComboBox.show()
+    #        (conn_info, schema) = data
+    #        print versioning_base.branches( conn_info, schema )
+    #        for b in versioning_base.branches( conn_info, schema ):
+    #            print "here",b
+    #            self.branchComboBox.addItem( b )
+    #    else:
+    #        self.branchComboBox.hide()
+
+    #def updateRevisionBox(self):
+    #    self.revisionComboBox.clear()
+    #    i = self.connectionComboBox.currentIndex()
+    #    text = self.connectionComboBox.itemText(i)
+    #    data  = self.connectionComboBox.itemData(i)
+    #    if data:
+    #        self.revisionComboBox.show()
+    #        (conn_info, schema) = data
+    #        for r in versioning_base.revisions( conn_info, schema ):
+    #            self.revisionComboBox.addItem( str(r) )
+    #    else:
+    #        print "hiding"
+    #        #scur = Db(dbapi2.connect(sqlite_filename),'update_spatialite_log.sql')
+    #        #scur.execute("SELECT rev, branch FROM initial_revision")
+    #        #scur.close()
+    #        self.revisionComboBox.hide()
+
+
+    def connectionChanged(self, con):
+        self.updateBranchBox()
+        self.updateRevisionBox()
+        print "connectionChanged ",con
+
+    def currentLayerChanged(self):
+        print "currentLayerChanged"
+        print self.iface.legendInterface().selectedLayers()
+
+
+    def updateGroups(self):
+        self.iface.legendInterface().groupLayerRelationship()
+
+    def groupRelationsChanged(self):
+        # update list of connections
+        # the top level layers have an empty group name and
+        print "groupRelationsChanged "
+        for g in self.iface.legendInterface().groupLayerRelationship():
+            # to be usable, the group should share the same connection
+            for l in g:
+                print QgsMapLayerRegistry.instance().mapLayer( l )
+
+    def onLegendClick(self, current, column=0):
+        name = ''
+        self.currentLayers = []
+        self.info.setText('No group selected')
+        for a in self.actions:
+            if   a.text() == 'checkout' : a.setVisible(False)
+            elif a.text() == 'update'   : a.setVisible(False)
+            elif a.text() == 'commit'   : a.setVisible(False)
+        if current: 
+            print 'click', current.text(0)
+            name = current.text(0)
+        # we could look if we have something in selected layers
+        # but we prefer impose grouping, otherwize it'll be easy to make errors
+
+        # need to get all layers including subgroups
+        rel = self.iface.legendInterface().groupLayerRelationship()
+        relMap = {}
+        for g,l in rel: relMap[g] = l
+
+        if name not in relMap: # not a group
+            return
+        
+        replaced = True
+        while replaced:
+            replaced = False
+            for i,item in enumerate(relMap[name]):
+                if item in relMap: 
+                    relMap[name][i:i+1] = relMap[item]
+                    replaced = True
+
+        self.currentLayers = relMap[name]
+        # we should check that the selection is homogeneous
+        previous_conn = ()
+        for layerId in self.currentLayers:
+            layer = QgsMapLayerRegistry.instance().mapLayer( layerId )
+            uri = QgsDataSourceURI(layer.source())
+            if previous_conn:
+                if (uri.database(), uri.schema()) != previous_conn:
+                    currentLayers = []
+                    self.info.setText("Selected group doesn't share the same database and/or schema")
+                    return
+            else:
+                previous_conn = (uri.database(), uri.schema())
+
+        assert( self.currentLayers )
+        layer = QgsMapLayerRegistry.instance().mapLayer( self.currentLayers[0] )
+        uri = QgsDataSourceURI( layer.source() )
+        selectionType = ''
+        if layer.providerType() == "spatialite": 
+            rev = 0
+            try: 
+                rev = versioning_base.revision( uri.database() )
+            except:
+                currentLayers = []
+                self.info.setText("The selected group is not a working copy")
+                return
+            self.info.setText( uri.database() +' rev='+str(rev))
+            selectionType = 'working copy'
+        if layer.providerType() == "postgres": 
+            m = re.match('(.+)_([^_]+)_rev_(head|\d+)', uri.schema())
+            if m: 
+                self.info.setText(uri.database()+' '+m.group(1)+' branch='+m.group(2)+' rev='+m.group(3))
+                if m.group(3) == 'head': selectionType = 'head'
+                else: selectionType = 'versioned'
+            else:
+                selectionType = 'unversioned'
+        
+        # refresh the available commands
+        assert( selectionType )
+        print selectionType
+        if selectionType == 'unversioned':
+            for a in self.actions:
+                if   a.text() == 'checkout' : a.setVisible(True)
+        elif selectionType == 'versioned':
+            pass
+        elif selectionType == 'head':
+            for a in self.actions:
+                if   a.text() == 'checkout' : a.setVisible(True)
+        elif selectionType == 'working copy':
+            for a in self.actions:
+                if a.text() == 'update'   : a.setVisible(True)
+                elif a.text() == 'commit'   : a.setVisible(True)
+
     def initGui(self):
-        # Create action  checkout
-        self.checkout_action = QAction(
+
+        self.info = QLabel()
+        self.info.setText('No group selected')
+        self.actions.append( self.iface.addToolBarWidget( self.info ) )
+
+        # we can have a checkbox to either replace/add layers
+
+        # this is not really nice since this is hidden in the interface
+        # but nothing else is available to get a selected group in the legend
+        self.legend = self.iface.mainWindow().findChild(QTreeWidget,'theMapLegend')
+        self.legend.itemClicked.connect(self.onLegendClick)
+        self.legend.itemChanged.connect(self.onLegendClick)
+
+        self.actions.append( QAction(
             QIcon(":/plugins/versioning/checkout.svg"),
-            u"checkout", self.iface.mainWindow())
-        self.checkout_action.setWhatsThis("checkout")
-        # connect the action to the run method
-        self.checkout_action.triggered.connect(self.checkout)
+            u"checkout", self.iface.mainWindow()) )
+        self.actions[-1].setWhatsThis("checkout")
+        self.actions[-1].triggered.connect(self.checkout)
+        self.actions[-1].setVisible(False)
 
-        # Add toolbar button and menu item
-        self.iface.addToolBarIcon(self.checkout_action)
-        self.iface.addPluginToMenu( WIN_TITLE, self.checkout_action)
-
-        self.update_action = QAction(
+        self.actions.append( QAction(
             QIcon(":/plugins/versioning/update.svg"),
-            u"update", self.iface.mainWindow())
-        self.update_action.setWhatsThis("update working copy")
-        # connect the action to the run method
-        self.update_action.triggered.connect(self.update)
+            u"update", self.iface.mainWindow()) )
+        self.actions[-1].setWhatsThis("update working copy")
+        self.actions[-1].triggered.connect(self.update)
+        self.actions[-1].setVisible(False)
 
-        # Add toolbar button and menu item
-        self.iface.addToolBarIcon(self.update_action)
-        self.iface.addPluginToMenu( WIN_TITLE, self.update_action)
-
-        # Create action commit
-        self.commit_action = QAction(
+        self.actions.append( QAction(
             QIcon(":/plugins/versioning/commit.svg"),
-            u"commit", self.iface.mainWindow())
-        self.commit_action.setWhatsThis("commit modifications")
-        # connect the action to the run method
-        self.commit_action.triggered.connect(self.commit)
+            u"commit", self.iface.mainWindow()) )
+        self.actions[-1].setWhatsThis("commit modifications")
+        self.actions[-1].triggered.connect(self.commit)
+        self.actions[-1].setVisible(False)
 
-        # Add toolbar button and menu item
-        self.iface.addToolBarIcon(self.commit_action)
-        self.iface.addPluginToMenu( WIN_TITLE, self.commit_action)
+        # add actions in menus
+        for a in self.actions:
+            self.iface.addToolBarIcon(a)
 
     def unload(self):
         # Remove the plugin menu item and icon
-        self.iface.removePluginMenu( WIN_TITLE, self.checkout_action)
-        self.iface.removePluginMenu( WIN_TITLE, self.update_action)
-        self.iface.removePluginMenu( WIN_TITLE, self.commit_action)
-        self.iface.removeToolBarIcon(self.checkout_action)
-        self.iface.removeToolBarIcon(self.update_action)
-        self.iface.removeToolBarIcon(self.commit_action)
+        for a in self.actions:
+            self.iface.removeToolBarIcon(a)
+        self.legend.itemClicked.disconnect(self.onLegendClick)
+        self.legend.itemChanged.disconnect(self.onLegendClick)
 
-    def versionnedLayers(self):
-        """Return a map of versionned layers with theys name as key()
-        versionned layer are spatialite layers pointing to a table 
-        with a name ending with _view """
-        versionned_layers = {}
-        for name,layer in QgsMapLayerRegistry.instance().mapLayers().iteritems():
-            uri = QgsDataSourceURI(layer.source())
-            if layer.providerType() == "spatialite" and uri.table()[-5:] == "_view": 
-                versionned_layers[name] = layer
-        return versionned_layers
+    def branch(self):
+        pass
 
-    def sqliteFilenames(self):
-        """Returns a list of sqlite filenames for all versionned layers"""
-        sqlite_filenames = set();
-        for name, layer in self.versionnedLayers().iteritems():
-            uri = QgsDataSourceURI(layer.source())
-            sqlite_filenames.add( uri.database() );
-        return list(sqlite_filenames)
+    def view(self):
+        pass
 
     def unresolvedConflicts(self):
-        found = []
-        for f in self.sqliteFilenames(): 
-            unresolved = versioning_base.unresolvedConflicts( f )
-            found.extend( unresolved )
-            for c in unresolved:
-                table = c+"_conflicts"
-                if not QgsMapLayerRegistry.instance().mapLayersByName(table):
-                    self.iface.addVectorLayer("dbname="+f+" key=\"OGC_FID\" table=\""+table+"\"(GEOMETRY)",table,'spatialite')
+        layer = QgsMapLayerRegistry.instance().mapLayer( self.currentLayers[0] )
+        uri = QgsDataSourceURI(layer.source())
 
-        if found: 
-            QMessageBox.warning( self.iface.mainWindow(), "Warning", "Unresolved conflics for layer(s) "+', '.join(found)+".\n\nPlease resolve conflicts by openning the conflict layer atribute table and deleting either 'mine' or 'theirs' before continuing.\n\nPlease note that the attribute table is not refreshed on save (known bug), once you have deleted the unwanted change in the conflict layer, close and reopen the attribute table to check it's empty.")
+        unresolved = versioning_base.unresolvedConflicts( uri.database() )
+        for c in unresolved:
+            table = c+"_conflicts"
+            if not QgsMapLayerRegistry.instance().mapLayersByName(table):
+                self.iface.addVectorLayer("dbname="+f+" key=\"OGC_FID\" table=\""+table+"\"(GEOMETRY)",table,'spatialite')
+
+        if unresolved: 
+            QMessageBox.warning( self.iface.mainWindow(), "Warning", "Unresolved conflics for layer(s) "+', '.join(unresolved)+".\n\nPlease resolve conflicts by openning the conflict layer atribute table and deleting either 'mine' or 'theirs' before continuing.\n\nPlease note that the attribute table is not refreshed on save (known bug), once you have deleted the unwanted change in the conflict layer, close and reopen the attribute table to check it's empty.")
             return True
         else:
             return False
@@ -133,46 +304,23 @@ class Versioning:
         """merge modifiactions since last update into working copy"""
         print "update"
         if self.unresolvedConflicts(): return
-        # get the target revision from the spatialite db
-        # create the diff in postgres
-        # load the diff in spatialite
-        # detect conflicts
-        # merge changes and update target_revision
-        # delete diff
-        if not self.versionnedLayers(): 
-            print "No versionned layer found"
-            QMessageBox.information( self.iface.mainWindow(), "Notice", "No versionned layer found")
-            return
-        else:
-            print "updating ", self.versionnedLayers()
-
         up_to_date = ""
-        for f in self.sqliteFilenames(): 
-            rev = versioning_base.update( f )
-            up_to_date = up_to_date + f + " at revision "+str(versioning_base.revision(f))+", "
+        layer = QgsMapLayerRegistry.instance().mapLayer( self.currentLayers[0] )
+        uri = QgsDataSourceURI(layer.source())
 
-        if not self.unresolvedConflicts(): QMessageBox.information( self.iface.mainWindow(), "Notice", "Your are up to date with "+up_to_date[:-2]+".")
+        versioning_base.update( uri.database() )
+        rev = versioning_base.revision( uri.database() )
+
+        if not self.unresolvedConflicts(): QMessageBox.information( self.iface.mainWindow(), "Notice", "Your are up to date with revision "+str(rev-1)+".")
 
 
 
     def checkout(self):
         """create working copy from versionned database layers"""
-        pg_versionned_layers = {}
-        for name,layer in QgsMapLayerRegistry.instance().mapLayers().iteritems():
-            uri = QgsDataSourceURI(layer.source())
-            if layer.providerType() == "postgres" and uri.schema()[-9:] == "_rev_head": 
-                pg_versionned_layers[name] = layer
-        
-        if not pg_versionned_layers: 
-            print "No versionned layer found"
-            QMessageBox.information( self.iface.mainWindow(), "Notice", "No versionned layer found")
-            return
-        else:
-            print "converting ", pg_versionned_layers
-
         # for each connection, we need the list of tables
         tables_for_conninfo = {}
-        for name,layer in pg_versionned_layers.iteritems():
+        for layerId in self.currentLayers:
+            layer = QgsMapLayerRegistry.instance().mapLayer( layerId )
             uri = QgsDataSourceURI(layer.source())
             conn_info = uri.connectionInfo()
             table =  uri.schema()+"."+uri.table()
@@ -191,16 +339,20 @@ class Versioning:
         for conn_info, tables in tables_for_conninfo.iteritems():
             print "checkin out ", tables, " from ", conn_info
             versioning_base.checkout( conn_info, list(tables), filename )
-
         
-        # replace layers by their offline version
-        for name,layer in pg_versionned_layers.iteritems():
+        # add layers from offline version
+        groupName = 'working copy'
+        if groupName in self.iface.legendInterface().groups():
+            groupName = filename 
+        groupIdx = self.iface.legendInterface().addGroup( groupName )
+        for layerId in reversed(self.currentLayers):
+            layer = QgsMapLayerRegistry.instance().mapLayer( layerId )
             uri = QgsDataSourceURI(layer.source())
             table = uri.table()
             display_name = layer.name()
             print "replacing ", display_name
-            QgsMapLayerRegistry.instance().removeMapLayer(name)
-            self.iface.addVectorLayer("dbname="+filename+" key=\"OGC_FID\" table=\""+table+"_view\" (GEOMETRY)",display_name,'spatialite')
+            newLayer = self.iface.addVectorLayer("dbname="+filename+" key=\"OGC_FID\" table=\""+table+"_view\" (GEOMETRY)",display_name,'spatialite')
+            self.iface.legendInterface().moveLayer( newLayer, groupIdx)
 
 
     def commit(self):
@@ -208,19 +360,14 @@ class Versioning:
         print "commit"
         if self.unresolvedConflicts(): return
 
-        if not self.versionnedLayers(): 
-            print "No versionned layer found"
-            QMessageBox.information( self.iface.mainWindow(), "Notice", "No versionned layer found")
+        layer = QgsMapLayerRegistry.instance().mapLayer( self.currentLayers[0] )
+        uri = QgsDataSourceURI(layer.source())
+        f = uri.database()
+        lateBy = versioning_base.late( f )
+        if lateBy: 
+            QMessageBox.warning(self.iface.mainWindow(), "Warning", "The working copy in "+f+" is not up to date (late by "+str(lateBy)+" commit(s)).\n\nPlease update before commiting your modifications")
+            print "aborted"
             return
-        else:
-            print "commiting ", self.versionnedLayers()
-
-        for f in self.sqliteFilenames():
-            lateBy = versioning_base.late( f )
-            if lateBy: 
-                QMessageBox.warning(self.iface.mainWindow(), "Warning", "The working copy in "+f+" is not up to date (late by "+str(lateBy)+" commit(s)).\n\nPlease update before commiting your modifications")
-                print "aborted"
-                return
 
         # time to get the commit message
         if not self.qCommitMsgDialog.exec_(): return
@@ -230,12 +377,10 @@ class Versioning:
             print "aborted"
             return
 
-        for f in self.sqliteFilenames():
-            nb_of_updated_layer = versioning_base.commit( f, commit_msg )
-            if nb_of_updated_layer:
+        nb_of_updated_layer = versioning_base.commit( f, commit_msg )
+        if nb_of_updated_layer:
 
-                QMessageBox.information(self.iface.mainWindow(), "Info", "You have successfully commited revision "+str( versioning_base.revision(f) ) )
-            else:
-                QMessageBox.information(self.iface.mainWindow(), "Info", "There was no modification to commit")
-
+            QMessageBox.information(self.iface.mainWindow(), "Info", "You have successfully commited revision "+str( versioning_base.revision(f) ) )
+        else:
+            QMessageBox.information(self.iface.mainWindow(), "Info", "There was no modification to commit")
 

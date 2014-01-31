@@ -66,89 +66,6 @@ class Versioning:
         self.currentLayers = []
         self.actions = []
 
-    #def updateConnectionBox(self):
-    #    # list pg connections from layers
-    #    self.connectionComboBox.clear()
-
-    #    for name,layer in QgsMapLayerRegistry.instance().mapLayers().iteritems():
-    #        uri = QgsDataSourceURI(layer.source())
-    #        print "layer ", name," : ", layer.source()
-    #        if layer.providerType() == "postgres":
-    #            m = re.match('(.+)_([^_]+)_rev_(head|\d+)', uri.schema())
-    #            if m: 
-    #                connection = uri.database()+'/'+m.group(1)
-    #                if self.connectionComboBox.findText( connection ) == -1:
-    #                    self.connectionComboBox.addItem( connection, (uri.connectionInfo(),m.group(1))) 
-    #                    print '-----------',self.connectionComboBox.itemData(0)
-    #        if layer.providerType() == "spatialite" and uri.table()[-5:] == "_view": 
-    #            if self.connectionComboBox.findText( uri.database() ) == -1:
-    #                self.connectionComboBox.addItem( uri.database() )
-
-    #    self.updateBranchBox()
-    #    self.updateRevisionBox()
-
-    #    #self.branchComboBox.clear()
-    #    #self.revisionComboBox.clear()
-    #    #            for b in versioning_base.branches( uri.connectionInfo(), m.group(1) ):
-    #    #                self.branchComboBox.addItem( b )
-    #    #            for r in versioning_base.revisions( uri.connectionInfo(), m.group(1) ):
-    #    #                self.revisionComboBox.addItems( str(r) )
-
-    #def updateBranchBox(self):
-    #    self.branchComboBox.clear()
-    #    i = self.connectionComboBox.currentIndex()
-    #    text = self.connectionComboBox.itemText(i)
-    #    data  = self.connectionComboBox.itemData(i)
-    #    if data:
-    #        self.branchComboBox.show()
-    #        (conn_info, schema) = data
-    #        print versioning_base.branches( conn_info, schema )
-    #        for b in versioning_base.branches( conn_info, schema ):
-    #            print "here",b
-    #            self.branchComboBox.addItem( b )
-    #    else:
-    #        self.branchComboBox.hide()
-
-    #def updateRevisionBox(self):
-    #    self.revisionComboBox.clear()
-    #    i = self.connectionComboBox.currentIndex()
-    #    text = self.connectionComboBox.itemText(i)
-    #    data  = self.connectionComboBox.itemData(i)
-    #    if data:
-    #        self.revisionComboBox.show()
-    #        (conn_info, schema) = data
-    #        for r in versioning_base.revisions( conn_info, schema ):
-    #            self.revisionComboBox.addItem( str(r) )
-    #    else:
-    #        print "hiding"
-    #        #scur = Db(dbapi2.connect(sqlite_filename),'update_spatialite_log.sql')
-    #        #scur.execute("SELECT rev, branch FROM initial_revision")
-    #        #scur.close()
-    #        self.revisionComboBox.hide()
-
-
-    def connectionChanged(self, con):
-        self.updateBranchBox()
-        self.updateRevisionBox()
-        print "connectionChanged ",con
-
-    def currentLayerChanged(self):
-        print "currentLayerChanged"
-        print self.iface.legendInterface().selectedLayers()
-
-
-    def updateGroups(self):
-        self.iface.legendInterface().groupLayerRelationship()
-
-    def groupRelationsChanged(self):
-        # update list of connections
-        # the top level layers have an empty group name and
-        print "groupRelationsChanged "
-        for g in self.iface.legendInterface().groupLayerRelationship():
-            # to be usable, the group should share the same connection
-            for l in g:
-                print QgsMapLayerRegistry.instance().mapLayer( l )
-
     def onLegendClick(self, current, column=0):
         name = ''
         self.currentLayers = []
@@ -160,7 +77,6 @@ class Versioning:
             elif a.text() == 'view'     : a.setVisible(False)
             elif a.text() == 'branch'   : a.setVisible(False)
         if current: 
-            print 'click', current.text(0)
             name = current.text(0)
         # we could look if we have something in selected layers
         # but we prefer impose grouping, otherwize it'll be easy to make errors
@@ -221,10 +137,9 @@ class Versioning:
         
         # refresh the available commands
         assert( selectionType )
-        print selectionType
         if selectionType == 'unversioned':
             for a in self.actions:
-                if   a.text() == 'checkout' : a.setVisible(True)
+                pass
         elif selectionType == 'versioned':
             for a in self.actions:
                 if   a.text() == 'view'     : a.setVisible(True)
@@ -285,7 +200,7 @@ class Versioning:
             QIcon(":/plugins/versioning/branch.svg"),
             u"branch", self.iface.mainWindow()) )
         self.actions[-1].setWhatsThis("create branch")
-        self.actions[-1].triggered.connect(self.view)
+        self.actions[-1].triggered.connect(self.branch)
         self.actions[-1].setVisible(False)
 
         # add actions in menus
@@ -300,6 +215,60 @@ class Versioning:
         self.legend.itemChanged.disconnect(self.onLegendClick)
 
     def branch(self):
+        layer = QgsMapLayerRegistry.instance().mapLayer( self.currentLayers[0] )
+        uri = QgsDataSourceURI(layer.source())
+        m = re.match('(.+)_([^_]+)_rev_(head|\d+)', uri.schema())
+        schema = m.group(1) 
+        base_branch = m.group(2) 
+        base_rev = m.group(3) 
+        assert(schema)
+        d = QDialog()
+        d.setWindowTitle('Enter branch name')
+        layout = QVBoxLayout(d)
+        buttonBox = QDialogButtonBox(d)
+        buttonBox.setStandardButtons(QDialogButtonBox.Cancel|QDialogButtonBox.Ok)
+        buttonBox.accepted.connect(d.accept)
+        buttonBox.rejected.connect(d.reject)
+
+        lineEdit = QLineEdit( d )
+        layout.addWidget( lineEdit )
+        layout.addWidget( buttonBox )
+        if not d.exec_() : return
+        branch = lineEdit.text() 
+
+        if not branch:
+            print 'aborted'
+            return
+
+        pcur = versioning_base.Db( psycopg2.connect(uri.connectionInfo()) ) 
+        pcur.execute("SELECT * FROM "+schema+".revisions WHERE branch = '"+branch+"'") 
+        if pcur.fetchone():
+            pcur.close()
+            QMessageBox.warning( self.iface.mainWindow(), "Warning", "Branch "+branch+' already exists.')
+            return
+        pcur.close()
+        
+        # get the commit message
+        if not self.qCommitMsgDialog.exec_(): return
+        commit_msg = self.commitMsgDialog.commitMessage.document().toPlainText()
+        if not commit_msg:
+            QMessageBox.warning(self.iface.mainWindow(), "Warning", "No commit message, aborting commit")
+            print "aborted"
+            return
+        versioning_base.add_branch(uri.connectionInfo(), schema, branch, commit_msg, base_branch, base_rev )
+        groupName = branch+' revision head'
+        groupIdx = self.iface.legendInterface().addGroup( groupName )
+        for layerId in reversed(self.currentLayers):
+            layer = QgsMapLayerRegistry.instance().mapLayer(layerId)
+            newUri = QgsDataSourceURI(layer.source())
+            newUri.setDataSource(schema+'_'+branch+'_rev_head', 
+                    newUri.table(), 
+                    newUri.geometryColumn(),
+                    newUri.sql(),
+                    newUri.keyColumn())
+            display_name =  QgsMapLayerRegistry.instance().mapLayer(layerId).name()
+            newLayer = self.iface.addVectorLayer(newUri.uri(), display_name, 'postgres')
+            self.iface.legendInterface().moveLayer( newLayer, groupIdx)
         pass
 
     def view(self):
@@ -312,6 +281,8 @@ class Versioning:
         layout = QVBoxLayout(d)
         buttonBox = QDialogButtonBox(d)
         buttonBox.setStandardButtons(QDialogButtonBox.Cancel|QDialogButtonBox.Ok)
+        buttonBox.accepted.connect(d.accept)
+        buttonBox.rejected.connect(d.reject)
 
         pcur = versioning_base.Db( psycopg2.connect(uri.connectionInfo()) ) 
         pcur.execute("SELECT rev, commit_msg, branch, date, author FROM "+schema+".revisions") 
@@ -328,8 +299,6 @@ class Versioning:
                 tw.setItem(i,j,QTableWidgetItem( str(item) ))
         layout.addWidget( tw )
         layout.addWidget( buttonBox )
-        buttonBox.accepted.connect(d.accept)
-        buttonBox.rejected.connect(d.reject)
         d.resize( 600, 300 )
         if not d.exec_() : return
         
@@ -350,7 +319,6 @@ class Versioning:
                         newUri.sql(),
                         newUri.keyColumn())
                 display_name =  QgsMapLayerRegistry.instance().mapLayer(layerId).name()
-                print "iface.addVectorLayer("+newUri.uri()+", "+display_name+", 'postgres')"
                 newLayer = self.iface.addVectorLayer(newUri.uri(), display_name, 'postgres')
                 self.iface.legendInterface().moveLayer( newLayer, groupIdx)
 

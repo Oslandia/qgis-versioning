@@ -607,8 +607,8 @@ def add_branch( pg_conn_info, schema, branch, commit_msg, base_branch='trunk', b
                     "WHERE "+base_branch+"_rev_end IS NULL AND "+base_branch+"_rev_begin IS NOT NULL)")
         else:
             pcur.execute("UPDATE "+schema+"."+table+" "+
-                    "SET "+branch+"_rev_begin = (SELECT MAX(rev) FROM "+schema+".revisions "+
-                    "WHERE ("+base_branch+"_rev_end IS NULL OR "+base_branch+"_rev_end > "+base_rev+") AND "+base_branch+"_rev_begin IS NOT NULL)")
+                    "SET "+branch+"_rev_begin = (SELECT MAX(rev) FROM "+schema+".revisions)"+
+                    "WHERE ("+base_branch+"_rev_end IS NULL OR "+base_branch+"_rev_end > "+base_rev+") AND "+base_branch+"_rev_begin IS NOT NULL")
 
         pcur.execute("SELECT column_name "+
                 "FROM information_schema.columns "+

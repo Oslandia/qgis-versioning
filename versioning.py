@@ -168,35 +168,35 @@ class Versioning:
         self.legend.itemChanged.connect(self.onLegendClick)
 
         self.actions.append( QAction(
-            QIcon(":/plugins/versioning/checkout.svg"),
+            QIcon(os.path.dirname(__file__) + "/checkout.svg"),
             u"checkout", self.iface.mainWindow()) )
         self.actions[-1].setWhatsThis("checkout")
         self.actions[-1].triggered.connect(self.checkout)
         self.actions[-1].setVisible(False)
 
         self.actions.append( QAction(
-            QIcon(":/plugins/versioning/update.svg"),
+            QIcon(os.path.dirname(__file__) + "/update.svg"),
             u"update", self.iface.mainWindow()) )
         self.actions[-1].setWhatsThis("update working copy")
         self.actions[-1].triggered.connect(self.update)
         self.actions[-1].setVisible(False)
 
         self.actions.append( QAction(
-            QIcon(":/plugins/versioning/commit.svg"),
+            QIcon(os.path.dirname(__file__) + "/commit.svg"),
             u"commit", self.iface.mainWindow()) )
         self.actions[-1].setWhatsThis("commit modifications")
         self.actions[-1].triggered.connect(self.commit)
         self.actions[-1].setVisible(False)
 
         self.actions.append( QAction(
-            QIcon(":/plugins/versioning/view.svg"),
+            QIcon(os.path.dirname(__file__) + "/view.svg"),
             u"view", self.iface.mainWindow()) )
         self.actions[-1].setWhatsThis("see revision")
         self.actions[-1].triggered.connect(self.view)
         self.actions[-1].setVisible(False)
 
         self.actions.append( QAction(
-            QIcon(":/plugins/versioning/branch.svg"),
+            QIcon(os.path.dirname(__file__) + "/branch.svg"),
             u"branch", self.iface.mainWindow()) )
         self.actions[-1].setWhatsThis("create branch")
         self.actions[-1].triggered.connect(self.branch)
@@ -329,7 +329,7 @@ class Versioning:
         for c in unresolved:
             table = c+"_conflicts"
             if not QgsMapLayerRegistry.instance().mapLayersByName(table):
-                self.iface.addVectorLayer("dbname="+f+" key=\"OGC_FID\" table=\""+table+"\"(GEOMETRY)",table,'spatialite')
+                self.iface.addVectorLayer("dbname="+uri.database()+" key=\"OGC_FID\" table=\""+table+"\"(GEOMETRY)",table,'spatialite')
 
         if unresolved: 
             QMessageBox.warning( self.iface.mainWindow(), "Warning", "Unresolved conflics for layer(s) "+', '.join(unresolved)+".\n\nPlease resolve conflicts by openning the conflict layer atribute table and deleting either 'mine' or 'theirs' before continuing.\n\nPlease note that the attribute table is not refreshed on save (known bug), once you have deleted the unwanted change in the conflict layer, close and reopen the attribute table to check it's empty.")

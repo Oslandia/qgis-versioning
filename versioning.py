@@ -23,7 +23,6 @@
 from PyQt4.QtCore import *
 from PyQt4.QtGui import *
 from qgis.core import *
-import resources_rc
 import re
 import os
 import os.path

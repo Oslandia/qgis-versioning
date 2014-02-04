@@ -4,9 +4,6 @@ import pwd
 from pyspatialite import dbapi2
 import psycopg2
 
-def history_columns( branch ):
-    return [branch+'_rev_begin', branch+'_rev_end', branch+'_parent', branch+'_child']
-
 class Db:
    def __init__(self, con, filename = ''):
        self.con = con
@@ -219,8 +216,6 @@ def update(sqlite_filename):
     versioned_layers = scur.fetchall()
 
     for [rev, branch, table_schema, conn_info, table, current_max_hid] in versioned_layers:
-        conflict_for_this_layer = False
-
         pcur = Db(psycopg2.connect(conn_info))
         pcur.execute("SELECT MAX(rev) FROM "+table_schema+".revisions WHERE branch = '"+branch+"'")
         [max_rev] = pcur.fetchone()
@@ -394,8 +389,6 @@ def update(sqlite_filename):
 
             scur.commit()
 
-            conflict_for_this_layer = True
-
         scur.execute("CREATE UNIQUE INDEX IF NOT EXISTS "+table+"_diff_idx ON "+table+"_diff(OGC_FID)")
         # insert and replace all in diff
         scur.execute("INSERT OR REPLACE INTO "+table+" ("+cols+") "+
@@ -403,8 +396,6 @@ def update(sqlite_filename):
 
     scur.commit()
     scur.close()
-
-    #bug: il faut remplacer par 'deleted' si le dernier enfant a un rev end
 
 def late(sqlite_filename):
     """Return 0 if up to date, the number of commits in between otherwize"""
@@ -782,7 +773,7 @@ def pg_checkout(pg_conn_info, pg_table_names, working_copy_schema):
             "ADD COLUMN "+branch+"_rev_begin integer, "+
             "ADD COLUMN "+branch+"_rev_end   integer, "+
             "ADD COLUMN "+branch+"_parent    integer REFERENCES "+working_copy_schema+"."+table+"_diff(hid),"+
-            "ADD COLUMN "+branch+"_child     integer REFERENCES "+working_copy_schema+"."+table+"_diff(hid)")
+            "ADD COLUMN "+branch+"_child     integer REFERENCES "+working_copy_schema+"."+table+"_diff(hid) ON UPDATE CASCADE")
 
 
         current_rev_sub = "(SELECT MAX(rev) FROM "+working_copy_schema+".initial_revision)"
@@ -864,8 +855,166 @@ def pg_checkout(pg_conn_info, pg_table_names, working_copy_schema):
     pcur.close()
 
 def pg_update(pg_conn_info, working_copy_schema):
-    assert(false) # not implemented
-    pass
+    """merge modifiactions since last update into working copy"""
+    print "update"
+    if pg_unresolvedConflicts(pg_conn_info, working_copy_schema): raise RuntimeError("There are unresolved conflicts in "+working_copy_schema)
+
+    # create the diff from previous
+    # detect conflicts and create conflict layers
+    # merge changes and update target_revision
+
+
+    pcur = Db(psycopg2.connect(pg_conn_info))
+    pcur.execute("SELECT rev, branch, table_schema, table_name "+
+        "FROM "+working_copy_schema+".initial_revision")
+    versioned_layers = pcur.fetchall()
+
+    for [rev, branch, table_schema, table, current_max_hid] in versioned_layers:
+
+        pcur.execute("SELECT MAX(rev) FROM "+table_schema+".revisions WHERE branch = '"+branch+"'")
+        [max_rev] = pcur.fetchone()
+        if max_rev == rev: 
+            print "Nothing new in branch "+branch+" in "+table_schema+"."+table+" since last update"
+            pcur.close()
+            continue
+
+        # get the max hid 
+        pcur.execute("SELECT MAX(hid) FROM "+table_schema+"."+table)
+        [max_pg_hid] = pcur.fetchone()
+        
+        # create the diff
+        pcur.execute("SELECT column_name "+
+                "FROM information_schema.columns "+
+                "WHERE table_schema = '"+table_schema+"' AND table_name = '"+table+"'")
+        cols = ""
+        for c in pcur.fetchall(): 
+            if c[0] != "geom": cols += c[0]+", "
+        cols = cols[:-2] # remove last coma and space
+
+        pcur.execute("SELECT srid, type "+
+            "FROM geometry_columns "+
+            "WHERE f_table_schema = '"+table_schema+"' AND f_table_name ='"+table+"' AND f_geometry_column = 'geom'")
+        [srid, geom_type] = pcur.fetchone()
+        pcur.execute( "DROP TABLE IF EXISTS "+working_copy_schema+"."+table+"_update_diff")
+        pcur.execute( "CREATE TABLE "+working_copy_schema+"."+table+"_update_diff AS "+
+                "SELECT "+cols+", geom::geometry('"+geom_type+"', "+str(srid)+") AS geom "+
+                "FROM "+table_schema+"."+table+" "+
+                "WHERE "+branch+"_rev_end = "+str(rev)+" OR "+branch+"_rev_begin > "+str(rev))
+        pcur.execute( "ALTER TABLE "+working_copy_schema+"."+table+"_diff "+
+                "ADD CONSTRAINT "+table+"_"+branch+"_hid_pk PRIMARY KEY (hid)") 
+
+        # update the initial revision 
+        pcur.execute("UPDATE initial_revision SET rev = "+str(max_rev)+", max_hid = "+str(max_pg_hid)+" WHERE table_name = '"+table+"'")
+        
+        pcur.execute("UPDATE "+table+" "+
+                "SET "+branch+"_rev_end = "+str(max_rev)+" "+
+                "WHERE "+branch+"_rev_end = "+str(rev))
+        pcur.execute("UPDATE "+table+" "+
+                "SET "+branch+"_rev_begin = "+str(max_rev+1)+" "+
+                "WHERE "+branch+"_rev_begin = "+str(rev+1))
+
+        bump = max_pg_hid - current_max_hid
+        assert( bump >= 0) 
+        # now bump the hids of inserted rows in working copy
+        # parents will be updated thanks to the ON UPDATE CASCADE
+        pcur.execute("UPDATE "+working_copy_schema+"."+table+"_diff "+
+                "SET hid = hid + "+str(bump)+" "
+                "WHERE "+branch+"_rev_begin = "+str(max_rev+1))
+
+        assert(false) # what follows is non updated cpy paste from spatialite version of update
+
+        # detect conflicts: conflict occur if two lines with the same hid have
+        # been modified (i.e. have a non null child) or one has been removed
+        # and the other modified
+        pcur.execute("DROP VIEW  IF EXISTS "+table+"_conflicts_ogc_fid")
+        pcur.execute("CREATE VIEW "+table+"_conflicts_ogc_fid AS "+
+            "SELECT DISTINCT sl.OGC_FID as conflict_deleted_fid "+
+            "FROM "+table+" AS sl, "+table+"_diff AS pg "+
+            "WHERE sl.OGC_FID = pg.OGC_FID "+
+                "AND sl."+branch+"_child != pg."+branch+"_child")
+        pcur.execute("SELECT conflict_deleted_fid FROM  "+table+"_conflicts_ogc_fid" )
+        if pcur.fetchone():
+            print "there are conflicts"
+            # add layer for conflicts
+            pcur.execute("DROP TABLE IF EXISTS "+table+"_conflicts ")
+            pcur.execute("CREATE TABLE "+table+"_conflicts AS "+
+                # insert new features from mine
+                "SELECT "+branch+"_parent AS conflict_id, 'mine' AS origin, 'modified' AS action, "+cols+" "+
+                "FROM "+table+", "+table+"_conflicts_ogc_fid AS cflt "+
+                "WHERE OGC_FID = (SELECT "+branch+"_child FROM "+table+" "+
+                                     "WHERE OGC_FID = conflict_deleted_fid) "+
+                "UNION ALL "
+                # insert new features from theirs
+                "SELECT "+branch+"_parent AS conflict_id, 'theirs' AS origin, 'modified' AS action, "+cols+" "+
+                "FROM "+table+"_diff "+", "+table+"_conflicts_ogc_fid AS cflt "+
+                "WHERE OGC_FID = (SELECT "+branch+"_child FROM "+table+"_diff "+
+                                     "WHERE OGC_FID = conflict_deleted_fid) "+
+                 # insert deleted features from mine
+                "UNION ALL "+
+                "SELECT "+branch+"_parent AS conflict_id, 'mine' AS origin, 'deleted' AS action, "+cols+" "+
+                "FROM "+table+", "+table+"_conflicts_ogc_fid AS cflt "+
+                "WHERE OGC_FID = conflict_deleted_fid AND "+branch+"_child IS NULL "+
+                 # insert deleted features from theirs
+                "UNION ALL "+
+                "SELECT "+branch+"_parent AS conflict_id, 'theirs' AS origin, 'deleted' AS action, "+cols+" "+
+                "FROM "+table+"_diff, "+table+"_conflicts_ogc_fid AS cflt "+
+                "WHERE OGC_FID = conflict_deleted_fid AND "+branch+"_child IS NULL" )
+
+            # identify conflicts for deleted 
+            pcur.execute("UPDATE "+table+"_conflicts "+ "SET conflict_id = OGC_FID "+ "WHERE action = 'deleted'")
+
+            # now follow child if any for 'theirs' 'modified' since several edition could be made
+            # we want the very last child
+            while True:
+                pcur.execute("SELECT conflict_id, OGC_FID, "+branch+"_child FROM "+table+"_conflicts WHERE origin='theirs' AND action='modified' AND "+branch+"_child IS NOT NULL");
+                r = pcur.fetchall()
+                if not r : break
+                # replaces each entries by it's child
+                for [cflt_id, fid, child] in r:
+                    pcur.execute("DELETE FROM "+table+"_conflicts WHERE OGC_FID = "+str(fid))
+                    pcur.execute("INSERT INTO "+table+"_conflicts "+
+                        "SELECT "+str(cflt_id)+" AS conflict_id, 'theirs' AS origin, 'modified' AS action, "+cols+" FROM "+table+"_diff "+
+                        "WHERE OGC_FID = "+str(child)+" AND "+branch+"_rev_end IS NULL" );
+                    pcur.execute("INSERT INTO "+table+"_conflicts "+
+                        "SELECT "+str(cflt_id)+" AS conflict_id, 'theirs' AS origin, 'deleted' AS action, "+cols+" FROM "+table+"_diff "+
+                        "WHERE OGC_FID = "+str(child)+" AND "+branch+"_rev_end IS NOT NULL" );
+
+            pcur.execute("DELETE FROM geometry_columns WHERE f_table_name = '"+table+"_conflicts'")
+            pcur.execute("SELECT RecoverGeometryColumn('"+table+"_conflicts', 'GEOMETRY', (SELECT srid FROM geometry_columns WHERE f_table_name='"+table+"'), (SELECT type FROM geometry_columns WHERE f_table_name='"+table+"'), 'XY')")
+            
+            pcur.execute("CREATE UNIQUE INDEX IF NOT EXISTS "+table+"_conflicts_idx ON "+table+"_conflicts(OGC_FID)")
+
+            # create trigers such that on delete the conflict is resolved
+            # if we delete 'theirs', we set their child to our fid and their rev_end
+            # if we delete 'mine'... well, we delete 'mine'
+
+            pcur.execute("DROP TRIGGER IF EXISTS delete_"+table+"_conflicts")
+            pcur.execute("CREATE TRIGGER delete_"+table+"_conflicts AFTER DELETE ON "+table+"_conflicts\n"+
+                "BEGIN\n"+
+                    "DELETE FROM "+table+" "+
+                    "WHERE OGC_FID = old.OGC_FID AND old.origin = 'mine';\n"+
+
+                    "UPDATE "+table+" "+
+                    "SET "+branch+"_child = (SELECT OGC_FID FROM "+table+"_conflicts WHERE origin = 'mine' AND conflict_id = old.conflict_id), "+branch+"_rev_end = "+str(max_rev)+" "
+                    "WHERE OGC_FID = old.OGC_FID AND old.origin = 'theirs';\n"+
+
+                    "UPDATE "+table+" "+
+                    "SET "+branch+"_parent = old.OGC_FID "+
+                    "WHERE OGC_FID = (SELECT OGC_FID FROM "+table+"_conflicts WHERE origin = 'mine' AND conflict_id = old.conflict_id) AND old.origin = 'theirs';\n"+
+
+                    "DELETE FROM "+table+"_conflicts "+
+                    "WHERE conflict_id = old.conflict_id;\n"+
+                "END")
+
+            pcur.commit()
+
+        pcur.execute("CREATE UNIQUE INDEX IF NOT EXISTS "+table+"_diff_idx ON "+table+"_diff(OGC_FID)")
+        # insert and replace all in diff
+        pcur.execute("INSERT OR REPLACE INTO "+table+" ("+cols+") "+
+            "SELECT "+cols+" FROM "+table+"_diff")
+
+    pcur.commit()
+    pcur.close()
 
 def pg_commit(pg_conn_info, working_copy_schema, commit_msg):
     """merge modifications into database

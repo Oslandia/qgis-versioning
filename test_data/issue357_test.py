@@ -45,7 +45,7 @@ for r in scur[0].fetchall():
     print r
 
 scur[0].execute("UPDATE pipes_view SET length = 2")
-scur[0].execute("DELETE FROM pipes_view WHERE OGC_FID = 9")
+scur[0].execute("DELETE FROM pipes_view WHERE OGC_FID = 6")
 scur[0].commit()
 versioning_base.commit( wc[0], "commit 3 wc0" )
 

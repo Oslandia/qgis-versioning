@@ -780,79 +780,104 @@ def pg_checkout(pg_conn_info, pg_table_names, working_copy_schema):
         current_rev_sub = "(SELECT MAX(rev) FROM "+wcs+".initial_revision)"
         pcur.execute("CREATE VIEW "+wcs+"."+table+"_view AS "+
                 "SELECT hid, "+cols+" "+
-                "FROM (SELECT DISTINCT ON (hid) * "+ 
-                    "FROM (SELECT "+cols+", "+hcols+" FROM "+wcs+"."+table+"_diff "+
-                          "UNION ALL "+
-                          "SELECT "+cols+", "+hcols+" FROM "+schema+"."+table+" "+
-                          "WHERE "+branch+"_rev_begin <= "+current_rev_sub+" AND ("+branch+"_rev_end IS NULL OR "+branch+"_rev_end >= "+current_rev_sub+" ) ) AS src "+
-                    "ORDER BY hid, "+branch+"_rev_end ASC ) AS merged "+
-                "WHERE "+branch+"_rev_end IS NULL OR "+branch+"_rev_end >= "+current_rev_sub)
+                "FROM (SELECT "+cols+", "+hcols+" FROM "+wcs+"."+table+"_diff "+
+                            "WHERE "+branch+"_rev_end IS NULL OR "+branch+"_rev_end >= "+current_rev_sub+"+1 "
+                          "UNION "+
+                          "(SELECT DISTINCT ON (hid) "+cols+", t."+hcols+" FROM "+schema+"."+table+" AS t LEFT JOIN (SELECT hid FROM "+wcs+"."+table+"_diff ) AS d ON t.hid = d.hid WHERE d.hid IS NULL AND t."+branch+"_rev_begin <= "+current_rev_sub+" AND (t."+branch+"_rev_end IS NULL OR t."+branch+"_rev_end >= "+current_rev_sub+") )"+ 
+                          ") AS src ")
 
         max_fid_sub = "( SELECT MAX(max_fid) FROM ( SELECT MAX(hid) AS max_fid FROM "+wcs+"."+table+"_diff UNION SELECT max_hid AS max_fid FROM "+wcs+".initial_revision WHERE table_name = '"+table+"') AS src )"
 
-        pcur.execute("CREATE RULE update_old_"+table+" AS ON UPDATE TO "+wcs+"."+table+"_view "+
-            "DO INSTEAD ("+
-                # when we edit something already in diff, we just update
-                "UPDATE "+wcs+"."+table+"_diff "+
-                    "SET ("+cols+") "+
-                    "= ("+newcols+") "+
-                    "WHERE hid = OLD.hid ;"+
+        pcur.execute("CREATE OR REPLACE FUNCTION myprt(error_message text) RETURNS void as $$\n"+
+            "begin\n"+
+                "raise notice '%', error_message;\n"+
+            "end;\n"+
+            "$$ language plpgsql;")
+
+        pcur.execute("CREATE FUNCTION "+wcs+".update_"+table+"() RETURNS trigger AS $$\n"
+            "BEGIN\n"
+                # when we edit something we already added , we just update
+                "UPDATE "+wcs+"."+table+"_diff "
+                    "SET ("+cols+") "
+                    "= ("+newcols+") "
+                    "WHERE hid = OLD.hid AND "+branch+"_rev_begin = "+current_rev_sub+"+1 "
+                    "AND (SELECT COUNT(*) FROM "+schema+"."+table+" WHERE hid = OLD.hid AND "+branch+"_rev_begin <= "+current_rev_sub+" AND ("+branch+"_rev_end IS NULL OR "+branch+"_rev_end >= "+current_rev_sub+" ) ) = 0 ;"
+
+                "raise notice '%', OLD.hid::text||' '"
+                "||(SELECT COUNT(*) FROM "+schema+"."+table+" WHERE hid = OLD.hid AND "+branch+"_rev_begin <= "+current_rev_sub+" AND ("+branch+"_rev_end IS NULL OR "+branch+"_rev_end >= "+current_rev_sub+" ) )::text;\n"
 
                 # insert the parent in diff if not already there
-                "INSERT INTO "+wcs+"."+table+"_diff "+
-                    "SELECT "+cols+", "+hcols+" FROM "+schema+"."+table+" "+
-                    "WHERE hid = OLD.hid "+
-                    "AND (SELECT COUNT(*) FROM "+wcs+"."+table+"_diff WHERE hid = OLD.hid) = 0; "+
+                "INSERT INTO "+wcs+"."+table+"_diff "
+                    "SELECT "+cols+", "+hcols+" FROM "+schema+"."+table+" "
+                    "WHERE hid = OLD.hid AND "+branch+"_rev_begin <= "+current_rev_sub+" "
+                    "AND (SELECT COUNT(*) FROM "+wcs+"."+table+"_diff WHERE hid = OLD.hid AND "+branch+"_rev_end = "+current_rev_sub+" ) = 0 ;"
 
-                # when we edit something not in diff, we insert new
-                "INSERT INTO "+wcs+"."+table+"_diff "+
-                    "(hid, "+cols+", "+branch+"_rev_begin, "+branch+"_parent) "+
-                    "VALUES "+
-                    "("+max_fid_sub+"+1, "+newcols+", "+current_rev_sub+"+1, OLD.hid); "+
-                # since we don't have conditional insert, we delete the row if it's not needed
-                # i.e. when the parent is not in table (the parent is in only in diff)
-                "DELETE FROM "+wcs+"."+table+"_diff "+
-                    "WHERE hid = "+max_fid_sub+" "+
-                    "AND "+branch+"_rev_begin = "+current_rev_sub+"+1 "+
-                    "AND "+branch+"_parent = OLD.hid "+
-                    "AND (SELECT COUNT(*) FROM  "+schema+"."+table+" WHERE hid = OLD.hid) = 0;"+
+                "raise notice '%', OLD.hid::text||' '"
+                "||(SELECT COUNT(*) FROM "+wcs+"."+table+"_diff WHERE hid = OLD.hid AND "+branch+"_rev_end = "+current_rev_sub+" )::text;\n"
+
+                # when we edit something old, we insert new
+                "INSERT INTO "+wcs+"."+table+"_diff "
+                    "(hid, "+cols+", "+branch+"_rev_begin, "+branch+"_parent) "
+                    "SELECT "+max_fid_sub+"+1, "+newcols+", "+current_rev_sub+"+1, OLD.hid "
+                    "WHERE (SELECT COUNT(*) FROM "+schema+"."+table+" WHERE hid = OLD.hid AND "+branch+"_rev_begin <= "+current_rev_sub+" AND ("+branch+"_rev_end IS NULL OR "+branch+"_rev_end >= "+current_rev_sub+" ) ) = 1; "
+
+                "raise notice '%',  OLD.hid::text||' '"
+                "||(SELECT COUNT(*) FROM "+schema+"."+table+" WHERE hid = OLD.hid AND "+branch+"_rev_begin <= "+current_rev_sub+" AND ("+branch+"_rev_end IS NULL OR "+branch+"_rev_end >= "+current_rev_sub+" ) )::text;\n"
 
                 # update the parent in diff if it comes from the table (i.e not the diff)
-                "UPDATE "+wcs+"."+table+"_diff "+
-                    "SET ("+branch+"_rev_end, "+branch+"_child) = ("+current_rev_sub+", "+max_fid_sub+") "+
-                    "WHERE hid = OLD.hid "+
-                    "AND (SELECT COUNT(*) FROM  "+schema+"."+table+" WHERE hid = OLD.hid) = 1; )")
+                "UPDATE "+wcs+"."+table+"_diff "
+                    "SET ("+branch+"_rev_end, "+branch+"_child) = ("+current_rev_sub+", "+max_fid_sub+") "
+                    "WHERE hid = OLD.hid "
+                    "AND (SELECT COUNT(*) FROM "+schema+"."+table+" WHERE hid = OLD.hid AND "+branch+"_rev_begin <= "+current_rev_sub+" AND ("+branch+"_rev_end IS NULL OR "+branch+"_rev_end >= "+current_rev_sub+" ) ) = 1;\n"
+                "RETURN NULL;\n"
+            "END;\n"
+        "$$ LANGUAGE plpgsql;")
 
-        pcur.execute("CREATE RULE insert_"+table+" AS ON INSERT TO "+wcs+"."+table+"_view\n"+
-            "DO INSTEAD "+
+        pcur.execute("CREATE TRIGGER update_"+table+" INSTEAD OF UPDATE ON "+wcs+"."+table+"_view "
+            "FOR EACH ROW EXECUTE PROCEDURE "+wcs+".update_"+table+"();")
+
+        pcur.execute("CREATE FUNCTION "+wcs+".insert_"+table+"() RETURNS trigger AS $$\n"
+            "BEGIN\n"
                 "INSERT INTO "+wcs+"."+table+"_diff "+ 
-                    "(hid, "+cols+", "+branch+"_rev_begin) "+
-                    "VALUES "+
-                    "("+max_fid_sub+"+1, "+newcols+", "+current_rev_sub+"+1);")
+                    "(hid, "+cols+", "+branch+"_rev_begin) "
+                    "VALUES "
+                    "("+max_fid_sub+"+1, "+newcols+", "+current_rev_sub+"+1);\n"
+                "RETURN NULL;\n"
+            "END;\n"
+        "$$ LANGUAGE plpgsql;")
 
-        pcur.execute("CREATE RULE delete_"+table+" AS ON DELETE TO "+wcs+"."+table+"_view\n"+
-            "DO INSTEAD ("+
+        pcur.execute("CREATE TRIGGER insert_"+table+" INSTEAD OF INSERT ON "+wcs+"."+table+"_view "
+            "FOR EACH ROW EXECUTE PROCEDURE "+wcs+".insert_"+table+"();")
+
+        pcur.execute("CREATE FUNCTION "+wcs+".delete_"+table+"() RETURNS trigger AS $$\n"
+            "BEGIN\n"
                 # insert if not already in diff
-                "INSERT INTO "+wcs+"."+table+"_diff "+
-                    "SELECT "+cols+", "+hcols+" FROM epanet."+table+" "+
-                    "WHERE hid = OLD.hid "+
-                    "AND (SELECT COUNT(*) FROM "+wcs+"."+table+"_diff WHERE hid = OLD.hid) = 0; "+
+                "INSERT INTO "+wcs+"."+table+"_diff "
+                    "SELECT "+cols+", "+hcols+" FROM epanet."+table+" "
+                    "WHERE hid = OLD.hid "
+                    "AND (SELECT COUNT(*) FROM "+wcs+"."+table+"_diff WHERE hid = OLD.hid) = 0;\n"
                 # update if it comes from table (not diff)
-                "UPDATE "+wcs+"."+table+"_diff "+
-                    "SET "+branch+"_rev_end = "+current_rev_sub+" "+
+                "UPDATE "+wcs+"."+table+"_diff "
+                    "SET "+branch+"_rev_end = "+current_rev_sub+" "
                     "WHERE hid = OLD.hid "
                     "AND (SELECT COUNT(*) FROM  "+schema+"."+table+" WHERE hid = OLD.hid) = 1; "
 
                 # if its just in diff, remove it from child
-                "UPDATE "+wcs+"."+table+"_diff "+
+                "UPDATE "+wcs+"."+table+"_diff "
                     "SET "+branch+"_child = NULL "
                     "WHERE "+branch+"_child = OLD.hid "
-                    "AND (SELECT COUNT(*) FROM  "+schema+"."+table+" WHERE hid = OLD.hid) = 0; "+
+                    "AND (SELECT COUNT(*) FROM  "+schema+"."+table+" WHERE hid = OLD.hid) = 0;\n"
 
                 # if it's just in diff, delete it
-                "DELETE FROM  "+wcs+"."+table+"_diff "+
+                "DELETE FROM  "+wcs+"."+table+"_diff "
                     "WHERE hid = OLD.hid "
-                    "AND (SELECT COUNT(*) FROM  "+schema+"."+table+" WHERE hid = OLD.hid) = 0; )")
+                    "AND (SELECT COUNT(*) FROM  "+schema+"."+table+" WHERE hid = OLD.hid) = 0;\n"
+                "RETURN NULL;\n"
+            "END;\n"
+        "$$ LANGUAGE plpgsql;")
+
+        pcur.execute("CREATE TRIGGER delete_"+table+" INSTEAD OF DELETE ON "+wcs+"."+table+"_view "
+            "FOR EACH ROW EXECUTE PROCEDURE "+wcs+".delete_"+table+"();")
 
     pcur.commit()
     pcur.close()

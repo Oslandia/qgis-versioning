@@ -175,6 +175,13 @@ class Versioning:
         self.actions[-1].setVisible(False)
 
         self.actions.append( QAction(
+            QIcon(os.path.dirname(__file__) + "/checkout_pg.svg"),
+            u"checkout", self.iface.mainWindow()) )
+        self.actions[-1].setWhatsThis("checkout postgres")
+        self.actions[-1].triggered.connect(self.checkout_pg)
+        self.actions[-1].setVisible(False)
+
+        self.actions.append( QAction(
             QIcon(os.path.dirname(__file__) + "/update.svg"),
             u"update", self.iface.mainWindow()) )
         self.actions[-1].setWhatsThis("update working copy")
@@ -389,6 +396,57 @@ class Versioning:
             display_name = layer.name()
             print "replacing ", display_name
             newLayer = self.iface.addVectorLayer("dbname="+filename+" key=\"OGC_FID\" table=\""+table+"_view\" (GEOMETRY)",display_name,'spatialite')
+            self.iface.legendInterface().moveLayer( newLayer, groupIdx)
+
+
+    def checkout_pg(self):
+        """create postgres working copy (schema) from versionned database layers"""
+        # for each connection, we need the list of tables
+        tables_for_conninfo = {}
+        for layerId in self.currentLayers:
+            layer = QgsMapLayerRegistry.instance().mapLayer( layerId )
+            uri = QgsDataSourceURI(layer.source())
+            conn_info = uri.connectionInfo()
+            table =  uri.schema()+"."+uri.table()
+            if conn_info in tables_for_conninfo: 
+                tables_for_conninfo[conn_info].add(table)
+            else: 
+                tables_for_conninfo[conn_info] = set([table])
+
+        d = QDialog()
+        d.setWindowTitle('Enter working copy schema name')
+        layout = QVBoxLayout(d)
+        buttonBox = QDialogButtonBox(d)
+        buttonBox.setStandardButtons(QDialogButtonBox.Cancel|QDialogButtonBox.Ok)
+        buttonBox.accepted.connect(d.accept)
+        buttonBox.rejected.connect(d.reject)
+
+        lineEdit = QLineEdit( d )
+        layout.addWidget( lineEdit )
+        layout.addWidget( buttonBox )
+        if not d.exec_() : return
+        working_copy_schema = lineEdit.text() 
+        if not working_copy_schema:
+            print "aborted"
+            return
+
+        for conn_info, tables in tables_for_conninfo.iteritems():
+            print "checkin out ", tables, " from ", conn_info
+            versioning_base.pg_checkout( conn_info, list(tables), working_copy_schema )
+        
+        # add layers from offline version
+        groupIdx = self.iface.legendInterface().addGroup( working_copy_schema )
+        for layerId in reversed(self.currentLayers):
+            layer = QgsMapLayerRegistry.instance().mapLayer( layerId )
+            newUri = QgsDataSourceURI(layer.source())
+            newUri.setDataSource(working_copy_schema, 
+                    newUri.table()+"_view", 
+                    newUri.geometryColumn(),
+                    newUri.sql(),
+                    newUri.keyColumn())
+            display_name =  QgsMapLayerRegistry.instance().mapLayer(layerId).name()
+            print "replacing ", display_name
+            newLayer = self.iface.addVectorLayer(newUri.uri(),display_name,'postgres')
             self.iface.legendInterface().moveLayer( newLayer, groupIdx)
 
 

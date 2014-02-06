@@ -80,7 +80,6 @@ for r in pcur.fetchall(): print r
 prtHid(pcur, 'epanet_working_copy_cflt.pipes_view')
 prtTab(pcur, 'epanet_working_copy_cflt.pipes_diff')
 pcur.execute("UPDATE epanet_working_copy_cflt.pipes_view SET length = 8 WHERE hid = 1")
-#pcur.execute("DELETE FROM epanet_working_copy_cflt.pipes_view  WHERE hid = 1")
 pcur.commit()
 prtTab(pcur, 'epanet.pipes')
 prtTab(pcur, 'epanet_working_copy_cflt.pipes_diff')
@@ -98,13 +97,38 @@ prtTab(pcur, 'epanet_working_copy_cflt.pipes_update_diff')
 
 pcur.execute("SELECT COUNT(*) FROM epanet_working_copy_cflt.pipes_conflicts")
 assert( 2 == pcur.fetchone()[0] )
+pcur.execute("SELECT COUNT(*) FROM epanet_working_copy_cflt.pipes_conflicts WHERE origin = 'mine'")
+assert( 1 == pcur.fetchone()[0] )
+pcur.execute("SELECT COUNT(*) FROM epanet_working_copy_cflt.pipes_conflicts WHERE origin = 'theirs'")
+assert( 1 == pcur.fetchone()[0] )
 
 prtTab(pcur, 'epanet_working_copy_cflt.pipes_conflicts')
 
 pcur.execute("DELETE FROM epanet_working_copy_cflt.pipes_conflicts WHERE origin = 'theirs'")
 pcur.commit()
+pcur.execute("SELECT COUNT(*) FROM epanet_working_copy_cflt.pipes_conflicts")
+assert( 0 == pcur.fetchone()[0] )
 prtTab(pcur, 'epanet_working_copy_cflt.pipes_diff')
 prtTab(pcur, 'epanet_working_copy_cflt.pipes_conflicts')
 
 versioning_base.pg_commit("dbname=epanet_test_db", "epanet_working_copy_cflt","second test commit msg")
+
+
+pcur.execute("SELECT * FROM epanet_working_copy_cflt.initial_revision")
+print '-- epanet_working_copy_cflt.initial_revision ---'
+for r in pcur.fetchall(): print r
+
+prtHid(pcur, 'epanet_working_copy_cflt.pipes_view')
+prtTab(pcur, 'epanet_working_copy_cflt.pipes_diff')
+
+pcur.execute("UPDATE epanet_working_copy_cflt.pipes_view SET length = 8")
+pcur.commit()
+
+prtTab(pcur, 'epanet_working_copy_cflt.pipes_diff')
+versioning_base.pg_commit("dbname=epanet_test_db", "epanet_working_copy_cflt","third test commit msg")
+
+
+prtTab(pcur, 'epanet_working_copy_cflt.pipes_diff')
+pcur.execute("UPDATE epanet_working_copy_cflt.pipes_view SET length = 12")
+pcur.commit()
 

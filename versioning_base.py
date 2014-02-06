@@ -200,7 +200,7 @@ def checkout(pg_conn_info, pg_table_names, sqlite_filename):
     pcur.close()
 
 def update(sqlite_filename):
-    """merge modifiactions since last update into working copy"""
+    """merge modifications since last update into working copy"""
     print "update"
     if unresolvedConflicts(sqlite_filename): raise RuntimeError("There are unresolved conflicts in "+sqlite_filename)
     # get the target revision from the spatialite db
@@ -534,9 +534,16 @@ def commit(sqlite_filename, commit_msg):
         scur.commit()
 
     if nb_of_updated_layer:
-        scur.execute("UPDATE initial_revision SET rev = rev+1 WHERE table_schema = '"+table_schema+"' AND branch = '"+branch+"'")
-        scur.commit()
+        for [rev, branch, table_schema, conn_info, table] in versioned_layers:
+            pcur = Db(psycopg2.connect(conn_info))
+            pcur.execute("SELECT MAX(rev) FROM "+table_schema+".revisions")
+            [rev] = pcur.fetchone()
+            pcur.execute("SELECT MAX(hid) FROM "+table_schema+"."+table)
+            [max_hid] = pcur.fetchone()
+            pcur.close()
+            scur.execute("UPDATE initial_revision SET rev = "+str(rev)+", max_hid = "+str(max_hid)+"  WHERE table_schema = '"+table_schema+"' AND table_name = '"+table+"' AND branch = '"+branch+"'")
 
+    scur.commit()
     scur.close()
 
     # cleanup diffs in postgis
@@ -773,7 +780,7 @@ def pg_checkout(pg_conn_info, pg_table_names, working_copy_schema):
             "ADD COLUMN hid integer PRIMARY KEY, "+
             "ADD COLUMN "+branch+"_rev_begin integer, "+
             "ADD COLUMN "+branch+"_rev_end   integer, "+
-            "ADD COLUMN "+branch+"_parent    integer REFERENCES "+wcs+"."+table+"_diff(hid),"+
+            "ADD COLUMN "+branch+"_parent    integer,"+
             "ADD COLUMN "+branch+"_child     integer REFERENCES "+wcs+"."+table+"_diff(hid) ON UPDATE CASCADE")
 
 
@@ -803,26 +810,17 @@ def pg_checkout(pg_conn_info, pg_table_names, working_copy_schema):
                     "WHERE hid = OLD.hid AND "+branch+"_rev_begin = "+current_rev_sub+"+1 "
                     "AND (SELECT COUNT(*) FROM "+schema+"."+table+" WHERE hid = OLD.hid AND "+branch+"_rev_begin <= "+current_rev_sub+" AND ("+branch+"_rev_end IS NULL OR "+branch+"_rev_end >= "+current_rev_sub+" ) ) = 0 ;"
 
-                "raise notice '%', OLD.hid::text||' '"
-                "||(SELECT COUNT(*) FROM "+schema+"."+table+" WHERE hid = OLD.hid AND "+branch+"_rev_begin <= "+current_rev_sub+" AND ("+branch+"_rev_end IS NULL OR "+branch+"_rev_end >= "+current_rev_sub+" ) )::text;\n"
-
                 # insert the parent in diff if not already there
-                "INSERT INTO "+wcs+"."+table+"_diff "
-                    "SELECT "+cols+", "+hcols+" FROM "+schema+"."+table+" "
+                "INSERT INTO "+wcs+"."+table+"_diff ("+cols+", hid, "+branch+"_rev_begin, "+branch+"_rev_end, "+branch+"_parent ) "
+                    "SELECT "+cols+", hid, "+branch+"_rev_begin, "+branch+"_rev_end, "+branch+"_parent FROM "+schema+"."+table+" "
                     "WHERE hid = OLD.hid AND "+branch+"_rev_begin <= "+current_rev_sub+" "
                     "AND (SELECT COUNT(*) FROM "+wcs+"."+table+"_diff WHERE hid = OLD.hid AND "+branch+"_rev_end = "+current_rev_sub+" ) = 0 ;"
-
-                "raise notice '%', OLD.hid::text||' '"
-                "||(SELECT COUNT(*) FROM "+wcs+"."+table+"_diff WHERE hid = OLD.hid AND "+branch+"_rev_end = "+current_rev_sub+" )::text;\n"
 
                 # when we edit something old, we insert new
                 "INSERT INTO "+wcs+"."+table+"_diff "
                     "(hid, "+cols+", "+branch+"_rev_begin, "+branch+"_parent) "
                     "SELECT "+max_fid_sub+"+1, "+newcols+", "+current_rev_sub+"+1, OLD.hid "
                     "WHERE (SELECT COUNT(*) FROM "+schema+"."+table+" WHERE hid = OLD.hid AND "+branch+"_rev_begin <= "+current_rev_sub+" AND ("+branch+"_rev_end IS NULL OR "+branch+"_rev_end >= "+current_rev_sub+" ) ) = 1; "
-
-                "raise notice '%',  OLD.hid::text||' '"
-                "||(SELECT COUNT(*) FROM "+schema+"."+table+" WHERE hid = OLD.hid AND "+branch+"_rev_begin <= "+current_rev_sub+" AND ("+branch+"_rev_end IS NULL OR "+branch+"_rev_end >= "+current_rev_sub+" ) )::text;\n"
 
                 # update the parent in diff if it comes from the table (i.e not the diff)
                 "UPDATE "+wcs+"."+table+"_diff "
@@ -904,7 +902,6 @@ def pg_update(pg_conn_info, working_copy_schema):
         [max_rev] = pcur.fetchone()
         if max_rev == rev: 
             print "Nothing new in branch "+branch+" in "+table_schema+"."+table+" since last update"
-            pcur.close()
             continue
 
         # get the max hid 
@@ -924,7 +921,7 @@ def pg_update(pg_conn_info, working_copy_schema):
             "FROM geometry_columns "+
             "WHERE f_table_schema = '"+table_schema+"' AND f_table_name ='"+table+"' AND f_geometry_column = 'geom'")
         [srid, geom_type] = pcur.fetchone()
-        pcur.execute( "DROP TABLE IF EXISTS "+wcs+"."+table+"_update_diff")
+        pcur.execute( "DROP TABLE IF EXISTS "+wcs+"."+table+"_update_diff CASCADE")
         pcur.execute( "CREATE TABLE "+wcs+"."+table+"_update_diff AS "+
                 "SELECT "+cols+", geom::geometry('"+geom_type+"', "+str(srid)+") AS geom "+
                 "FROM "+table_schema+"."+table+" "+
@@ -968,24 +965,24 @@ def pg_update(pg_conn_info, working_copy_schema):
             pcur.execute("DROP TABLE IF EXISTS "+wcs+"."+table+"_cflt ")
             pcur.execute("CREATE TABLE "+wcs+"."+table+"_cflt AS "+
                 # insert new features from mine
-                "SELECT "+branch+"_parent AS conflict_id, 'mine' AS origin, 'modified' AS action, "+cols+" "+
+                "SELECT "+branch+"_parent AS conflict_id, 'mine' AS origin, 'modified' AS action, "+cols+", geom "+
                 "FROM "+wcs+"."+table+"_diff, "+wcs+"."+table+"_conflicts_hid AS cflt "+
                 "WHERE hid = (SELECT "+branch+"_child FROM "+wcs+"."+table+"_diff "+
                                      "WHERE hid = conflict_deleted_hid) "+
                 "UNION ALL "
                 # insert new features from theirs
-                "SELECT "+branch+"_parent AS conflict_id, 'theirs' AS origin, 'modified' AS action, "+cols+" "+
+                "SELECT "+branch+"_parent AS conflict_id, 'theirs' AS origin, 'modified' AS action, "+cols+", geom "+
                 "FROM "+wcs+"."+table+"_update_diff "+", "+wcs+"."+table+"_conflicts_hid AS cflt "+
                 "WHERE hid = (SELECT "+branch+"_child FROM "+wcs+"."+table+"_update_diff "+
                                      "WHERE hid = conflict_deleted_hid) "+
                  # insert deleted features from mine
                 "UNION ALL "+
-                "SELECT "+branch+"_parent AS conflict_id, 'mine' AS origin, 'deleted' AS action, "+cols+" "+
+                "SELECT "+branch+"_parent AS conflict_id, 'mine' AS origin, 'deleted' AS action, "+cols+", geom "+
                 "FROM "+wcs+"."+table+"_diff, "+wcs+"."+table+"_conflicts_hid AS cflt "+
                 "WHERE hid = conflict_deleted_hid AND "+branch+"_child IS NULL "+
                  # insert deleted features from theirs
                 "UNION ALL "+
-                "SELECT "+branch+"_parent AS conflict_id, 'theirs' AS origin, 'deleted' AS action, "+cols+" "+
+                "SELECT "+branch+"_parent AS conflict_id, 'theirs' AS origin, 'deleted' AS action, "+cols+", geom "+
                 "FROM "+wcs+"."+table+"_update_diff, "+wcs+"."+table+"_conflicts_hid AS cflt "+
                 "WHERE hid = conflict_deleted_hid AND "+branch+"_child IS NULL" )
 
@@ -1061,7 +1058,7 @@ def pg_commit(pg_conn_info, working_copy_schema, commit_msg):
     if unresolved: raise RuntimeError("There are unresolved conflicts in "+wcs+" for table(s) "+', '.join(unresolved) )
 
     lateBy = pg_late(pg_conn_info, wcs)
-    if lateBy:  raise RuntimeError("The table '"+table+"' in file '"+sqlite_filename+"' is not up to date. It's late by "+str(lateBy)+" commit(s).\n\nPlease update before commiting your modifications")
+    if lateBy:  raise RuntimeError("Working copy "+working_copy_schema+" is not up to date. It's late by "+str(lateBy)+" commit(s).\n\nPlease update before commiting your modifications")
 
     pcur = Db(psycopg2.connect(pg_conn_info))
     pcur.execute("SELECT rev, branch, table_schema, table_name "+
@@ -1117,9 +1114,18 @@ def pg_commit(pg_conn_info, working_copy_schema, commit_msg):
 
         # clears the diff
         pcur.execute("DELETE FROM "+wcs+"."+table+"_diff")
+        #pcur.execute("DELETE FROM "+wcs+"."+table+"_diff_pkey")
+
+    if nb_of_updated_layer:
+        for [rev, branch, table_schema, table] in versioned_layers:
+            pcur.execute("UPDATE "+wcs+".initial_revision "
+                "SET (rev, max_hid) "
+                "= ((SELECT MAX(rev) FROM "+table_schema+".revisions), (SELECT MAX(hid) FROM "+table_schema+"."+table+")) "
+                "WHERE table_schema = '"+table_schema+"' AND table_name = '"+table+"' AND branch = '"+branch+"'")
 
     pcur.commit()
     pcur.close()
+    return nb_of_updated_layer
 
 def pg_unresolvedConflicts(pg_conn_info, working_copy_schema):
     """return a list of tables with unresolved conflicts"""
@@ -1152,3 +1158,14 @@ def pg_late(pg_conn_info, working_copy_schema):
 
     return lateBy
 
+def pg_revision( pg_conn_info, working_copy_schema ):
+    """returns the revision the working copy was created from plus one"""
+    pcur = Db(psycopg2.connect(pg_conn_info))
+    pcur.execute("SELECT rev "+ "FROM "+working_copy_schema+".initial_revision")
+    rev = pcur.fetchall()
+    revision = 0
+    for [r] in rev:
+        if revision : assert( r == revision )
+        else : revision = r
+    pcur.close()
+    return revision + 1

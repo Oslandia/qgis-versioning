@@ -132,7 +132,16 @@ class Versioning:
                 if m.group(3) == 'head': selectionType = 'head'
                 else: selectionType = 'versioned'
             else:
-                selectionType = 'unversioned'
+                # check if it's a working copy
+                rev = 0
+                try: 
+                    rev = versioning_base.pg_revision( uri.connectionInfo(), uri.schema() )
+                    selectionType = 'working copy'
+                    self.info.setText( uri.database()+' '+uri.schema() +' rev='+str(rev))
+                except:
+                    currentLayers = []
+                    self.info.setText("The selected group is neither a versionned databse nor a working copy")
+                    selectionType = 'unversioned'
         
         # refresh the available commands
         assert( selectionType )
@@ -159,7 +168,7 @@ class Versioning:
         self.info.setText('No group selected')
         self.actions.append( self.iface.addToolBarWidget( self.info ) )
 
-        # we can have a checkbox to either replace/add layers
+        # we could have a checkbox to either replace/add layers
 
         # this is not really nice since this is hidden in the interface
         # but nothing else is available to get a selected group in the legend
@@ -332,11 +341,24 @@ class Versioning:
         layer = QgsMapLayerRegistry.instance().mapLayer( self.currentLayers[0] )
         uri = QgsDataSourceURI(layer.source())
 
-        unresolved = versioning_base.unresolvedConflicts( uri.database() )
-        for c in unresolved:
-            table = c+"_conflicts"
-            if not QgsMapLayerRegistry.instance().mapLayersByName(table):
-                self.iface.addVectorLayer("dbname="+uri.database()+" key=\"OGC_FID\" table=\""+table+"\"(GEOMETRY)",table,'spatialite')
+        if layer.providerType() == "spatialite":
+            unresolved = versioning_base.unresolvedConflicts( uri.database() )
+            for c in unresolved:
+                table = c+"_conflicts"
+                if not QgsMapLayerRegistry.instance().mapLayersByName(table):
+                    self.iface.addVectorLayer("dbname="+uri.database()+" key=\"OGC_FID\" table=\""+table+"\"(GEOMETRY)",table,'spatialite')
+        else: #postgres
+            unresolved = versioning_base.pg_unresolvedConflicts( uri.connectionInfo(), uri.schema() )
+            for c in unresolved:
+                table = c+"_conflicts"
+                if not QgsMapLayerRegistry.instance().mapLayersByName(table):
+                    newUri = QgsDataSourceURI(layer.source())
+                    newUri.setDataSource(uri.schema(), 
+                            table, 
+                            newUri.geometryColumn(),
+                            newUri.sql(),
+                            newUri.keyColumn())
+                    self.iface.addVectorLayer(newUri.uri(),table,'postgres')
 
         if unresolved: 
             QMessageBox.warning( self.iface.mainWindow(), "Warning", "Unresolved conflics for layer(s) "+', '.join(unresolved)+".\n\nPlease resolve conflicts by openning the conflict layer atribute table and deleting either 'mine' or 'theirs' before continuing.\n\nPlease note that the attribute table is not refreshed on save (known bug), once you have deleted the unwanted change in the conflict layer, close and reopen the attribute table to check it's empty.")
@@ -352,8 +374,12 @@ class Versioning:
         layer = QgsMapLayerRegistry.instance().mapLayer( self.currentLayers[0] )
         uri = QgsDataSourceURI(layer.source())
 
-        versioning_base.update( uri.database() )
-        rev = versioning_base.revision( uri.database() )
+        if layer.providerType() == "spatialite":
+            versioning_base.update( uri.database() )
+            rev = versioning_base.revision( uri.database() )
+        else: # postgres
+            versioning_base.pg_update( uri.connectionInfo(), uri.schema() )
+            rev = versioning_base.pg_revision( uri.connectionInfo(), uri.schema() )
 
         if not self.unresolvedConflicts(): QMessageBox.information( self.iface.mainWindow(), "Notice", "Your are up to date with revision "+str(rev-1)+".")
 
@@ -457,10 +483,15 @@ class Versioning:
 
         layer = QgsMapLayerRegistry.instance().mapLayer( self.currentLayers[0] )
         uri = QgsDataSourceURI(layer.source())
-        f = uri.database()
-        lateBy = versioning_base.late( f )
+
+        lateBy = 0
+        if layer.providerType() == "spatialite":
+            lateBy = versioning_base.late( uri.database() )
+        else:#postgres
+            lateBy = versioning_base.pg_late( uri.connectionInfo(), uri.schema() )
+
         if lateBy: 
-            QMessageBox.warning(self.iface.mainWindow(), "Warning", "The working copy in "+f+" is not up to date (late by "+str(lateBy)+" commit(s)).\n\nPlease update before commiting your modifications")
+            QMessageBox.warning(self.iface.mainWindow(), "Warning", "This working copy is not up to date (late by "+str(lateBy)+" commit(s)).\n\nPlease update before commiting your modifications")
             print "aborted"
             return
 
@@ -472,10 +503,17 @@ class Versioning:
             print "aborted"
             return
 
-        nb_of_updated_layer = versioning_base.commit( f, commit_msg )
-        if nb_of_updated_layer:
+        nb_of_updated_layer = 0
+        rev = 0
+        if layer.providerType() == "spatialite":
+            nb_of_updated_layer = versioning_base.commit( uri.database(), commit_msg )
+            rev = versioning_base.revision(uri.database())
+        else: # postgres
+            nb_of_updated_layer = versioning_base.pg_commit(uri.connectionInfo(), uri.schema(), commit_msg )
+            rev = versioning_base.pg_revision(uri.connectionInfo(), uri.schema())
 
-            QMessageBox.information(self.iface.mainWindow(), "Info", "You have successfully commited revision "+str( versioning_base.revision(f) ) )
+        if nb_of_updated_layer:
+            QMessageBox.information(self.iface.mainWindow(), "Info", "You have successfully commited revision "+str( rev ) )
         else:
             QMessageBox.information(self.iface.mainWindow(), "Info", "There was no modification to commit")
 

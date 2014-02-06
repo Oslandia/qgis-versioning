@@ -1019,28 +1019,34 @@ def pg_update(pg_conn_info, working_copy_schema):
 
             pcur.execute("CREATE OR REPLACE VIEW "+wcs+"."+table+"_conflicts AS SELECT * FROM  "+wcs+"."+table+"_cflt" )
 
-            pcur.execute("CREATE OR REPLACE RULE delete_"+table+"_conflicts AS ON DELETE TO "+wcs+"."+table+"_conflicts\n"+
-                "DO INSTEAD ("+
-                    "DELETE FROM "+wcs+"."+table+"_diff "+
-                    "WHERE hid = OLD.hid AND OLD.origin = 'mine';\n"+
+            pcur.execute("CREATE OR REPLACE FUNCTION "+wcs+".delete_"+table+"_conflicts() RETURNS trigger AS $$\n"
+                "BEGIN\n"
+                    "DELETE FROM "+wcs+"."+table+"_diff "
+                    "WHERE hid = OLD.hid AND OLD.origin = 'mine';\n"
 
-                    # we need to insert their parent to update it
-                    "INSERT INTO "+wcs+"."+table+"_diff("+cols+") "+
-                    "SELECT "+cols+" FROM "+table_schema+"."+table+" "+
-                    "WHERE hid = OLD."+branch+"_parent AND OLD.origin = 'theirs';\n"+
+                    # we need to insert their parent to update it if it's not already there
+                    "INSERT INTO "+wcs+"."+table+"_diff("+cols+") "
+                    "SELECT "+cols+" FROM "+table_schema+"."+table+" "
+                    "WHERE hid = OLD."+branch+"_parent AND OLD.origin = 'theirs' "
+                    "AND (SELECT COUNT(*) FROM "+wcs+"."+table+"_diff WHERE hid =  OLD."+branch+"_parent ) = 0;\n"
 
-                    "UPDATE "+wcs+"."+table+"_diff "+
+                    "UPDATE "+wcs+"."+table+"_diff "
                     "SET "+branch+"_child = (SELECT hid FROM "+wcs+"."+table+"_cflt WHERE origin = 'mine' AND conflict_id = OLD.conflict_id), "+branch+"_rev_end = "+str(max_rev)+" "
-                    "WHERE hid = OLD.hid AND OLD.origin = 'theirs';\n"+
+                    "WHERE hid = OLD.hid AND OLD.origin = 'theirs';\n"
 
-                    "UPDATE "+wcs+"."+table+"_diff "+
-                    "SET "+branch+"_parent = OLD.hid "+
-                    "WHERE hid = (SELECT hid FROM "+wcs+"."+table+"_cflt WHERE origin = 'mine' AND conflict_id = OLD.conflict_id) AND OLD.origin = 'theirs';\n"+
+                    "UPDATE "+wcs+"."+table+"_diff "
+                    "SET "+branch+"_parent = OLD.hid "
+                    "WHERE hid = (SELECT hid FROM "+wcs+"."+table+"_cflt WHERE origin = 'mine' AND conflict_id = OLD.conflict_id) AND OLD.origin = 'theirs';\n"
 
-                    "DELETE FROM "+wcs+"."+table+"_cflt "+
-                    "WHERE conflict_id = OLD.conflict_id;\n"+
-                ")")
+                    "DELETE FROM "+wcs+"."+table+"_cflt "
+                    "WHERE conflict_id = OLD.conflict_id;\n"
+                    "RETURN NULL;\n"
+                "END;\n"
+            "$$ LANGUAGE plpgsql;")
 
+            pcur.execute("DROP TRIGGER IF EXISTS  delete_"+table+"_conflicts ON "+wcs+"."+table+"_conflicts ")
+            pcur.execute("CREATE TRIGGER delete_"+table+"_conflicts INSTEAD OF DELETE ON "+wcs+"."+table+"_conflicts "
+                "FOR EACH ROW EXECUTE PROCEDURE "+wcs+".delete_"+table+"_conflicts();")
             pcur.commit()
 
             pcur.execute("ALTER TABLE "+wcs+"."+table+"_cflt "+

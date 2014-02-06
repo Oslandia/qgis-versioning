@@ -28,7 +28,7 @@ os.system("psql epanet_test_db -f "+test_data_dir+"/../html/epanet_test_db.sql")
 
 # chechout
 #tables = ['epanet_trunk_rev_head.junctions','epanet_trunk_rev_head.pipes']
-tables = ['epanet_trunk_rev_head.pipes']
+tables = ['epanet_trunk_rev_head.junctions', 'epanet_trunk_rev_head.pipes']
 versioning_base.pg_checkout("dbname=epanet_test_db",tables, "epanet_working_copy")
 
 versioning_base.pg_checkout("dbname=epanet_test_db",tables, "epanet_working_copy_cflt")

@@ -781,7 +781,7 @@ def pg_checkout(pg_conn_info, pg_table_names, working_copy_schema):
             "ADD COLUMN "+branch+"_rev_begin integer, "+
             "ADD COLUMN "+branch+"_rev_end   integer, "+
             "ADD COLUMN "+branch+"_parent    integer,"+
-            "ADD COLUMN "+branch+"_child     integer REFERENCES "+wcs+"."+table+"_diff(hid) ON UPDATE CASCADE")
+            "ADD COLUMN "+branch+"_child     integer REFERENCES "+wcs+"."+table+"_diff(hid) ON UPDATE CASCADE ON DELETE CASCADE")
 
 
         current_rev_sub = "(SELECT MAX(rev) FROM "+wcs+".initial_revision)"

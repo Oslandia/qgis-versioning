@@ -352,12 +352,13 @@ class Versioning:
             for c in unresolved:
                 table = c+"_conflicts"
                 if not QgsMapLayerRegistry.instance().mapLayersByName(table):
-                    newUri = QgsDataSourceURI(layer.source())
+                    newUri = QgsDataSourceURI( uri.connectionInfo() )
+                    print newUri.uri()
                     newUri.setDataSource(uri.schema(), 
                             table, 
-                            newUri.geometryColumn(),
-                            newUri.sql(),
-                            newUri.keyColumn())
+                            uri.geometryColumn(),
+                            uri.sql(),
+                            uri.keyColumn())
                     self.iface.addVectorLayer(newUri.uri(),table,'postgres')
 
         if unresolved: 

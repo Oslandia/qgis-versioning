@@ -4,6 +4,10 @@ import pwd
 from pyspatialite import dbapi2
 import psycopg2
 
+def quote_ident(ident):
+    if ident.find(' '): return '"'+ident+'"'
+    else: return ident
+
 class Db:
    def __init__(self, con, filename = ''):
        self.con = con
@@ -137,8 +141,8 @@ def checkout(pg_conn_info, pg_table_names, sqlite_filename):
         hcols = ['OGC_FID', branch+'_rev_begin', branch+'_rev_end', branch+'_parent', branch+'_child']
         for r in scur.fetchall():
             if r[1] not in hcols : 
-                cols += r[1] + ", "
-                newcols += "new."+r[1]+", "
+                cols += quote_ident(r[1]) + ", "
+                newcols += "new."+quote_ident(r[1])+", "
         cols = cols[:-2]
         newcols = newcols[:-2] # remove last coma
 
@@ -239,7 +243,7 @@ def update(sqlite_filename):
                 "WHERE table_schema = '"+table_schema+"' AND table_name = '"+table+"'")
         cols = ""
         for c in pcur.fetchall(): 
-            if c[0] != "geom": cols += c[0]+", "
+            if c[0] != "geom": cols += quote_ident(c[0])+", "
         cols = cols[:-2] # remove last coma and space
 
         pcur.execute("SELECT srid, type "+
@@ -272,7 +276,7 @@ def update(sqlite_filename):
 
         scur.execute("PRAGMA table_info("+table+")")
         cols = ""
-        for c in scur.fetchall(): cols += c[1]+", "
+        for c in scur.fetchall(): cols += quote_ident(c[1])+", "
         cols = cols[:-2] # remove last coma and space
 
         # update the initial revision 
@@ -516,7 +520,7 @@ def commit(sqlite_filename, commit_msg):
                 "FROM information_schema.columns "+
                 "WHERE table_schema = '"+table_schema+"' AND table_name = '"+table+"'")
         cols = ""
-        for c in pcur.fetchall(): cols += c[0]+", "
+        for c in pcur.fetchall(): cols += quote_ident(c[0])+", "
         cols = cols[:-2] # remove last coma and space
         # insert inserted and modified
         pcur.execute("INSERT INTO "+table_schema+"."+table+" ("+cols+") "+
@@ -629,7 +633,7 @@ def add_branch( pg_conn_info, schema, branch, commit_msg, base_branch='trunk', b
                 "WHERE table_schema = '"+schema+"' AND table_name = '"+table+"'")
         cols = ""
         for [c] in pcur.fetchall(): 
-            if c not in history_columns: cols = c+", "+cols
+            if c not in history_columns: cols = quote_ident(c)+", "+cols
         cols = cols[:-2] # remove last coma and space
         pcur.execute("CREATE VIEW "+schema+"_"+branch+"_rev_head."+table+" "+security+" AS "+
             "SELECT "+cols+" FROM "+schema+"."+table+" "+
@@ -679,7 +683,7 @@ def add_revision_view(pg_conn_info, schema, branch, rev):
                 "WHERE table_schema = '"+schema+"' AND table_name = '"+table+"'")
         cols = ""
         for [c] in pcur.fetchall(): 
-            if c not in history_columns: cols = c+", "+cols
+            if c not in history_columns: cols = quote_ident(c)+", "+cols
         cols = cols[:-2] # remove last coma and space
         pcur.execute("CREATE VIEW "+rev_schema+"."+table+" "+security+" AS "+
            "SELECT "+cols+" FROM "+schema+"."+table+" "+
@@ -767,8 +771,8 @@ def pg_checkout(pg_conn_info, pg_table_names, working_copy_schema):
         newcols = ""
         for [c] in pcur.fetchall(): 
             if c not in history_columns:
-                cols = c+", "+cols
-                newcols = "new."+c+", "+newcols
+                cols = quote_ident(c)+", "+cols
+                newcols = "new."+quote_ident(c)+", "+newcols
         cols = cols[:-2] 
         newcols = newcols[:-2] # remove last coma and space
         hcols = "hid, "+branch+"_rev_begin, "+branch+"_rev_end, "+branch+"_parent, "+branch+"_child"
@@ -914,7 +918,7 @@ def pg_update(pg_conn_info, working_copy_schema):
                 "WHERE table_schema = '"+table_schema+"' AND table_name = '"+table+"'")
         cols = ""
         for c in pcur.fetchall(): 
-            if c[0] != "geom": cols += c[0]+", "
+            if c[0] != "geom": cols += quote_ident(c[0])+", "
         cols = cols[:-2] # remove last coma and space
 
         pcur.execute("SELECT srid, type "+
@@ -1014,7 +1018,7 @@ def pg_update(pg_conn_info, working_copy_schema):
                     "WHERE table_schema = '"+wcs+"' AND table_name = '"+table+"_diff'")
             cols = ""
             for c in pcur.fetchall(): 
-                cols += c[0]+", "
+                cols += quote_ident(c[0])+", "
             cols = cols[:-2] # remove last coma and space
 
             pcur.execute("CREATE OR REPLACE VIEW "+wcs+"."+table+"_conflicts AS SELECT * FROM  "+wcs+"."+table+"_cflt" )
@@ -1090,7 +1094,7 @@ def pg_commit(pg_conn_info, working_copy_schema, commit_msg):
         cols = ""
         for [c] in pcur.fetchall(): 
             if c not in history_columns:
-                cols = c+", "+cols
+                cols = quote_ident(c)+", "+cols
         cols = cols[:-2] # remove last coma and space
         hcols = "hid, "+branch+"_rev_begin, "+branch+"_rev_end, "+branch+"_parent, "+branch+"_child"
 

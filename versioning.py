@@ -85,7 +85,7 @@ class Versioning:
         relMap = {}
         for g,l in rel: relMap[g] = l
 
-        if name not in relMap: # not a group
+        if not name or name not in relMap: # not a group
             return
         
         replaced = True
@@ -282,7 +282,8 @@ class Versioning:
                     newUri.sql(),
                     newUri.keyColumn())
             display_name =  QgsMapLayerRegistry.instance().mapLayer(layerId).name()
-            newLayer = self.iface.addVectorLayer(newUri.uri(), display_name, 'postgres')
+            
+            newLayer = self.iface.addVectorLayer(newUri.uri().replace('()',''), display_name, 'postgres')
             self.iface.legendInterface().moveLayer( newLayer, groupIdx)
         pass
 
@@ -334,7 +335,7 @@ class Versioning:
                         newUri.sql(),
                         newUri.keyColumn())
                 display_name =  QgsMapLayerRegistry.instance().mapLayer(layerId).name()
-                newLayer = self.iface.addVectorLayer(newUri.uri(), display_name, 'postgres')
+                newLayer = self.iface.addVectorLayer(newUri.uri().replace('()',''), display_name, 'postgres')
                 self.iface.legendInterface().moveLayer( newLayer, groupIdx)
 
     def unresolvedConflicts(self):
@@ -360,7 +361,7 @@ class Versioning:
                             uri.geometryColumn(),
                             uri.sql(),
                             uri.keyColumn())
-                    self.iface.addVectorLayer(newUri.uri(),table,'postgres')
+                    self.iface.addVectorLayer(newUri.uri().replace('()',''),table,'postgres')
 
         if unresolved: 
             QMessageBox.warning( self.iface.mainWindow(), "Warning", "Unresolved conflics for layer(s) "+', '.join(unresolved)+".\n\nPlease resolve conflicts by openning the conflict layer atribute table and deleting either 'mine' or 'theirs' before continuing.\n\nPlease note that the attribute table is not refreshed on save (known bug), once you have deleted the unwanted change in the conflict layer, close and reopen the attribute table to check it's empty.")
@@ -475,7 +476,7 @@ class Versioning:
                     newUri.keyColumn())
             display_name =  QgsMapLayerRegistry.instance().mapLayer(layerId).name()
             print "replacing ", display_name
-            newLayer = self.iface.addVectorLayer(newUri.uri(),display_name,'postgres')
+            newLayer = self.iface.addVectorLayer(newUri.uri().replace('()',''),display_name,'postgres')
             self.iface.legendInterface().moveLayer( newLayer, groupIdx)
 
 

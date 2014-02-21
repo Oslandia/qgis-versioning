@@ -3,6 +3,7 @@ import os
 import pwd
 from pyspatialite import dbapi2
 import psycopg2
+import codecs
 
 def quote_ident(ident):
     if ident.find(' '): return '"'+ident+'"'
@@ -15,7 +16,7 @@ class Db:
        else : self.db_type = 'pg : '
        self.cur = self.con.cursor()
        if filename : 
-           self.log = open( filename, 'w' )
+           self.log = codecs.open( filename, 'w', 'utf-8' )
            self.log.write('-- openning connection\n')
        else :
            self.log = None
@@ -158,8 +159,9 @@ def checkout(pg_conn_info, pg_table_names, sqlite_filename):
         max_fid_sub = "( SELECT MAX(max_fid) FROM ( SELECT MAX(OGC_FID) AS max_fid FROM "+table+" UNION SELECT max_hid AS max_fid FROM initial_revision WHERE table_name = '"+table+"') )"
         current_rev_sub = "(SELECT rev FROM initial_revision WHERE table_name = '"+table+"')"
 
-        scur.execute("DELETE FROM views_geometry_columns WHERE f_table_name = '"+table+"_conflicts'")
-        scur.execute("INSERT INTO views_geometry_columns "+"(view_name, view_geometry, view_rowid, f_table_name, f_geometry_column) "+"VALUES"+"('"+table+"_view', 'GEOMETRY', 'ROWID', '"+table+"', 'GEOMETRY')")
+        if 'GEOMETRY' in cols:
+            scur.execute("DELETE FROM views_geometry_columns WHERE f_table_name = '"+table+"_conflicts'")
+            scur.execute("INSERT INTO views_geometry_columns "+"(view_name, view_geometry, view_rowid, f_table_name, f_geometry_column) "+"VALUES"+"('"+table+"_view', 'GEOMETRY', 'ROWID', '"+table+"', 'GEOMETRY')")
          
         # when we edit something old, we insert and update parent
         scur.execute("CREATE TRIGGER update_old_"+table+" INSTEAD OF UPDATE ON "+table+"_view "+
@@ -257,10 +259,12 @@ def update(sqlite_filename):
         pcur.execute("SELECT srid, type "+
             "FROM geometry_columns "+
             "WHERE f_table_schema = '"+table_schema+"' AND f_table_name ='"+table+"' AND f_geometry_column = 'geom'")
-        [srid, geom_type] = pcur.fetchone()
+        srid_type = pcur.fetchone()
+        [srid, geom_type] = srid_type if srid_type else [None,None]
         pcur.execute( "DROP TABLE IF EXISTS "+diff_schema+"."+table+"_diff")
+        geom = ", geom::geometry('"+geom_type+"', "+str(srid)+") AS geom" if srid else '' 
         pcur.execute( "CREATE TABLE "+diff_schema+"."+table+"_diff AS "+
-                "SELECT "+cols+", geom::geometry('"+geom_type+"', "+str(srid)+") AS geom "+
+                "SELECT "+cols+geom+" "
                 "FROM "+table_schema+"."+table+" "+
                 "WHERE "+branch+"_rev_end = "+str(rev)+" OR "+branch+"_rev_begin > "+str(rev))
         pcur.execute( "ALTER TABLE "+diff_schema+"."+table+"_diff "+
@@ -373,7 +377,7 @@ def update(sqlite_filename):
                         "WHERE OGC_FID = "+str(child)+" AND "+branch+"_rev_end IS NOT NULL" );
 
             scur.execute("DELETE FROM geometry_columns WHERE f_table_name = '"+table+"_conflicts'")
-            scur.execute("SELECT RecoverGeometryColumn('"+table+"_conflicts', 'GEOMETRY', (SELECT srid FROM geometry_columns WHERE f_table_name='"+table+"'), (SELECT type FROM geometry_columns WHERE f_table_name='"+table+"'), 'XY')")
+            if geom: scur.execute("SELECT RecoverGeometryColumn('"+table+"_conflicts', 'GEOMETRY', (SELECT srid FROM geometry_columns WHERE f_table_name='"+table+"'), (SELECT type FROM geometry_columns WHERE f_table_name='"+table+"'), 'XY')")
             
             scur.execute("CREATE UNIQUE INDEX IF NOT EXISTS "+table+"_conflicts_idx ON "+table+"_conflicts(OGC_FID)")
 
@@ -482,8 +486,10 @@ def commit(sqlite_filename, commit_msg):
         [sql] = scur.fetchone()
         sql = unicode.replace(sql,table,table+"_diff",1)
         scur.execute(sql)
+        geom = sql.find('GEOMETRY') != -1
         scur.execute("DELETE FROM geometry_columns WHERE f_table_name = '"+table+"_diff'")
-        scur.execute("INSERT INTO geometry_columns SELECT '"+table+"_diff', 'GEOMETRY', type, coord_dimension, srid, spatial_index_enabled FROM geometry_columns WHERE f_table_name = '"+table+"'")
+        if geom:
+            scur.execute("INSERT INTO geometry_columns SELECT '"+table+"_diff', 'GEOMETRY', type, coord_dimension, srid, spatial_index_enabled FROM geometry_columns WHERE f_table_name = '"+table+"'")
         scur.execute( "INSERT INTO "+table+"_diff "+
                 "SELECT * "+
                 "FROM "+table+" "+
@@ -502,7 +508,19 @@ def commit(sqlite_filename, commit_msg):
             pcur.execute("CREATE SCHEMA "+diff_schema)
         pcur.execute( "DROP TABLE IF EXISTS "+diff_schema+"."+table+"_diff")
         pcur.commit()
-        cmd = ['ogr2ogr', '-preserve_fid', '-f', 'PostgreSQL', 'PG:"'+conn_info+' active_schema='+diff_schema+'"', '-lco', 'GEOMETRY_NAME=geom', '-lco', 'FID=hid', sqlite_filename, table+"_diff"]
+        cmd = ['ogr2ogr', 
+                '-preserve_fid', 
+                '-f', 'PostgreSQL', 
+                'PG:"'+conn_info+' active_schema='+diff_schema+'"', 
+                '-lco', 'GEOMETRY_NAME=geom', 
+                '-lco', 'FID=hid', 
+                sqlite_filename, table+"_diff"] if geom else ['ogr2ogr', 
+                '-preserve_fid', 
+                '-f', 'PostgreSQL', 
+                'PG:"'+conn_info+' active_schema='+diff_schema+'"', 
+                '-lco', 'FID=hid', 
+                sqlite_filename, table+"_diff"]
+         
         print ' '.join(cmd)
         os.system(' '.join(cmd))
 
@@ -935,10 +953,12 @@ def pg_update(pg_conn_info, working_copy_schema):
         pcur.execute("SELECT srid, type "+
             "FROM geometry_columns "+
             "WHERE f_table_schema = '"+table_schema+"' AND f_table_name ='"+table+"' AND f_geometry_column = 'geom'")
-        [srid, geom_type] = pcur.fetchone()
+        srid_type = pcur.fetchone()
+        [srid, geom_type] = srid_type if srid_type else [None,None]
         pcur.execute( "DROP TABLE IF EXISTS "+wcs+"."+table+"_update_diff CASCADE")
+        geom = ", geom::geometry('"+geom_type+"', "+str(srid)+") AS geom" if srid else '' 
         pcur.execute( "CREATE TABLE "+wcs+"."+table+"_update_diff AS "+
-                "SELECT "+cols+", geom::geometry('"+geom_type+"', "+str(srid)+") AS geom "+
+                "SELECT "+cols+geom+" "+
                 "FROM "+table_schema+"."+table+" "+
                 "WHERE "+branch+"_rev_end = "+str(rev)+" OR "+branch+"_rev_begin > "+str(rev))
         pcur.execute( "ALTER TABLE "+wcs+"."+table+"_update_diff "+
@@ -974,30 +994,31 @@ def pg_update(pg_conn_info, working_copy_schema):
                 "OR (d."+branch+"_child IS NULL AND ud."+branch+"_child IS NOT NULL) "
                 "OR (d."+branch+"_child IS NOT NULL AND ud."+branch+"_child IS NULL)) ")
         pcur.execute("SELECT conflict_deleted_hid FROM  "+wcs+"."+table+"_conflicts_hid" )
+        geom = ', geom' if geom else ''
         if pcur.fetchone():
             print "there are conflicts"
             # add layer for conflicts
             pcur.execute("DROP TABLE IF EXISTS "+wcs+"."+table+"_cflt ")
             pcur.execute("CREATE TABLE "+wcs+"."+table+"_cflt AS "+
                 # insert new features from mine
-                "SELECT "+branch+"_parent AS conflict_id, 'mine' AS origin, 'modified' AS action, "+cols+", geom "+
+                "SELECT "+branch+"_parent AS conflict_id, 'mine' AS origin, 'modified' AS action, "+cols+geom+" "+
                 "FROM "+wcs+"."+table+"_diff, "+wcs+"."+table+"_conflicts_hid AS cflt "+
                 "WHERE hid = (SELECT "+branch+"_child FROM "+wcs+"."+table+"_diff "+
                                      "WHERE hid = conflict_deleted_hid) "+
                 "UNION ALL "
                 # insert new features from theirs
-                "SELECT "+branch+"_parent AS conflict_id, 'theirs' AS origin, 'modified' AS action, "+cols+", geom "+
+                "SELECT "+branch+"_parent AS conflict_id, 'theirs' AS origin, 'modified' AS action, "+cols+geom+" "+
                 "FROM "+wcs+"."+table+"_update_diff "+", "+wcs+"."+table+"_conflicts_hid AS cflt "+
                 "WHERE hid = (SELECT "+branch+"_child FROM "+wcs+"."+table+"_update_diff "+
                                      "WHERE hid = conflict_deleted_hid) "+
                  # insert deleted features from mine
                 "UNION ALL "+
-                "SELECT "+branch+"_parent AS conflict_id, 'mine' AS origin, 'deleted' AS action, "+cols+", geom "+
+                "SELECT "+branch+"_parent AS conflict_id, 'mine' AS origin, 'deleted' AS action, "+cols++geom+" "+
                 "FROM "+wcs+"."+table+"_diff, "+wcs+"."+table+"_conflicts_hid AS cflt "+
                 "WHERE hid = conflict_deleted_hid AND "+branch+"_child IS NULL "+
                  # insert deleted features from theirs
                 "UNION ALL "+
-                "SELECT "+branch+"_parent AS conflict_id, 'theirs' AS origin, 'deleted' AS action, "+cols+", geom "+
+                "SELECT "+branch+"_parent AS conflict_id, 'theirs' AS origin, 'deleted' AS action, "+cols+geom+" "+
                 "FROM "+wcs+"."+table+"_update_diff, "+wcs+"."+table+"_conflicts_hid AS cflt "+
                 "WHERE hid = conflict_deleted_hid AND "+branch+"_child IS NULL" )
 

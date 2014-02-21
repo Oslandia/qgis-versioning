@@ -347,7 +347,8 @@ class Versioning:
             for c in unresolved:
                 table = c+"_conflicts"
                 if not QgsMapLayerRegistry.instance().mapLayersByName(table):
-                    geom = '(GEOMETRY)' if uri.geometryColumn() else ''
+                    #TODO detect if there is a geometry column
+                    geom = '(GEOMETRY)' #if uri.geometryColumn() else ''
                     self.iface.addVectorLayer("dbname="+uri.database()+" key=\"OGC_FID\" table=\""+table+"\" "+geom,table,'spatialite')
         else: #postgres
             unresolved = versioning_base.pg_unresolvedConflicts( uri.connectionInfo(), uri.schema() )

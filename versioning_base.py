@@ -159,9 +159,11 @@ def checkout(pg_conn_info, pg_table_names, sqlite_filename):
         max_fid_sub = "( SELECT MAX(max_fid) FROM ( SELECT MAX(OGC_FID) AS max_fid FROM "+table+" UNION SELECT max_hid AS max_fid FROM initial_revision WHERE table_name = '"+table+"') )"
         current_rev_sub = "(SELECT rev FROM initial_revision WHERE table_name = '"+table+"')"
 
+        scur.execute("DELETE FROM views_geometry_columns WHERE view_name = '"+table+"_view'")
         if 'GEOMETRY' in cols:
-            scur.execute("DELETE FROM views_geometry_columns WHERE f_table_name = '"+table+"_conflicts'")
-            scur.execute("INSERT INTO views_geometry_columns "+"(view_name, view_geometry, view_rowid, f_table_name, f_geometry_column) "+"VALUES"+"('"+table+"_view', 'GEOMETRY', 'ROWID', '"+table+"', 'GEOMETRY')")
+            scur.execute("INSERT INTO views_geometry_columns "
+                    "(view_name, view_geometry, view_rowid, f_table_name, f_geometry_column) "
+                    "VALUES"+"('"+table+"_view', 'GEOMETRY', 'ROWID', '"+table+"', 'GEOMETRY')")
          
         # when we edit something old, we insert and update parent
         scur.execute("CREATE TRIGGER update_old_"+table+" INSTEAD OF UPDATE ON "+table+"_view "+

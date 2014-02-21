@@ -346,7 +346,8 @@ class Versioning:
             for c in unresolved:
                 table = c+"_conflicts"
                 if not QgsMapLayerRegistry.instance().mapLayersByName(table):
-                    self.iface.addVectorLayer("dbname="+uri.database()+" key=\"OGC_FID\" table=\""+table+"\"(GEOMETRY)",table,'spatialite')
+                    geom = '(GEOMETRY)' if uri.geometryColumn() else ''
+                    self.iface.addVectorLayer("dbname="+uri.database()+" key=\"OGC_FID\" table=\""+table+"\" "+geom,table,'spatialite')
         else: #postgres
             unresolved = versioning_base.pg_unresolvedConflicts( uri.connectionInfo(), uri.schema() )
             for c in unresolved:
@@ -422,7 +423,8 @@ class Versioning:
             table = uri.table()
             display_name = layer.name()
             print "replacing ", display_name
-            newLayer = self.iface.addVectorLayer("dbname="+filename+" key=\"OGC_FID\" table=\""+table+"_view\" (GEOMETRY)",display_name,'spatialite')
+            geom = '(GEOMETRY)' if uri.geometryColumn() else ''
+            newLayer = self.iface.addVectorLayer("dbname="+filename+" key=\"OGC_FID\" table=\""+table+"_view\" "+geom,display_name,'spatialite')
             self.iface.legendInterface().moveLayer( newLayer, groupIdx)
 
 

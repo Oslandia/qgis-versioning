@@ -49,5 +49,32 @@ assert( len(pcur.fetchall()) == 370 )
 
 pcur.close()
 
+tables = [
+    'epanet_trunk_rev_head.curves',
+    'epanet_trunk_rev_head.demands',
+    'epanet_trunk_rev_head.junctions',
+    'epanet_trunk_rev_head.energy',
+    'epanet_trunk_rev_head.options',
+    'epanet_trunk_rev_head.patterns',
+    'epanet_trunk_rev_head.pipes',
+    'epanet_trunk_rev_head.pumps',
+    'epanet_trunk_rev_head.quality',
+    'epanet_trunk_rev_head.report',
+    'epanet_trunk_rev_head.reservoirs',
+    'epanet_trunk_rev_head.rules',
+    'epanet_trunk_rev_head.tanks',
+    'epanet_trunk_rev_head.times',
+    'epanet_trunk_rev_head.valves']
+
+f = tmp_dir+'/big_epanet_test_db.sqlite'
+if os.path.isfile(f): os.remove(f) 
+versioning_base.checkout(pg_conn_info, tables, f)
+
+scur = versioning_base.Db( dbapi2.connect( f ) )
+
+scur.execute("UPDATE junctions_view SET GEOMETRY = ShiftCoords(GEOMETRY,1000,1000) WHERE OGC_FID = 1")
+scur.commit()
+
+versioning_base.commit( f, "commit 1" )
 
 

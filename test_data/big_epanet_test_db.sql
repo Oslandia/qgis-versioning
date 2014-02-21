@@ -1,6 +1,6 @@
 CREATE EXTENSION IF NOT EXISTS postgis;
 CREATE SCHEMA epanet;
-CREATE TABLE epanet.junctions ("ID Noeud" varchar, "Altitude" float, "Demande Base" float, "Courbe Modulation" varchar);
+CREATE TABLE epanet.junctions ("id noeud" varchar, "altitude" float, "demande base" float, "courbe modulation" varchar);
 INSERT INTO epanet.junctions VALUES ('N18b2', 315.67      , 0.0813466016266977, 'DOM_AUDUN');
 INSERT INTO epanet.junctions VALUES ('N18b1', 351.92      , 0.079274869621886, 'DOM_AUDUN');
 INSERT INTO epanet.junctions VALUES ('N18b0', 351.64      , 0.0790759211085484, 'DOM_AUDUN');
@@ -324,17 +324,17 @@ INSERT INTO epanet.junctions VALUES ('5', 309         , 0           , '');
 INSERT INTO epanet.junctions VALUES ('6', 313.33      , 0           , '');
 --ALTER TABLE epanet.junctions ADD COLUMN fid serial PRIMARY KEY;
 ALTER TABLE epanet.junctions ADD COLUMN geom geometry(POINT,27582);
-CREATE TABLE epanet.reservoirs ("ID Noeud" varchar, "Charge Tot" float, "Courbe Modulation" varchar);
+CREATE TABLE epanet.reservoirs ("id noeud" varchar, "charge tot" float, "courbe modulation" varchar);
 INSERT INTO epanet.reservoirs VALUES ('FORAGE_ST_MICHE', 317         , '');
 --ALTER TABLE epanet.reservoirs ADD COLUMN fid serial PRIMARY KEY;
 ALTER TABLE epanet.reservoirs ADD COLUMN geom geometry(POINT,27582);
-CREATE TABLE epanet.tanks ("ID Noeud" varchar, "Altitude" float, "Niv Init" float, "Niv Min" float, "Niv Max" float, "Diamètre" float, "VolMin" float, "Courbe Vol" varchar);
+CREATE TABLE epanet.tanks ("id noeud" varchar, "altitude" float, "niv init" float, "niv min" float, "niv max" float, "Diamètre" float, "volmin" float, "courbe vol" varchar);
 INSERT INTO epanet.tanks VALUES ('LA_DELL', 377.83      , 3.87        , 0           , 4           , 13.819766   , 0           , '');
 INSERT INTO epanet.tanks VALUES ('KATZENBERG', 390.25      , 3.24        , 0           , 5           , 15.958      , 0           , '');
 INSERT INTO epanet.tanks VALUES ('RUSSANGE', 351.3       , 2.84        , 0           , 3.3         , 10.92548    , 0           , '');
 --ALTER TABLE epanet.tanks ADD COLUMN fid serial PRIMARY KEY;
 ALTER TABLE epanet.tanks ADD COLUMN geom geometry(POINT,27582);
-CREATE TABLE epanet.pipes ("ID Arc" varchar, "Noeud1" varchar, "Noeud2" varchar, "Longueur" float, "Diamètre" float, "Rugosité" float, "PerSing" float, "État" varchar);
+CREATE TABLE epanet.pipes ("id arc" varchar, "noeud1" varchar, "noeud2" varchar, "longueur" float, "Diamètre" float, "Rugosité" float, "persing" float, "État" varchar);
 INSERT INTO epanet.pipes VALUES ('T1a36', 'N17ea', 'N1886', 215.21      , 150.00      , 0.1         , 0           , 'Open');
 INSERT INTO epanet.pipes VALUES ('Q_CptRussange', 'N1856', 'N1865', 114.21      , 100.00      , 0.1         , 60          , 'Open');
 INSERT INTO epanet.pipes VALUES ('T19d3', 'N1840', 'N1887', 134.70      , 150.00      , 0.1         , 0           , 'Open');
@@ -707,14 +707,14 @@ INSERT INTO epanet.pipes VALUES ('9', 'N1865', 'N1908', 5           , 6.5       
 INSERT INTO epanet.pipes VALUES ('12', 'N182e', '4', 5           , 50          , 0.1         , 0           , 'Closed');
 --ALTER TABLE epanet.pipes ADD COLUMN fid serial PRIMARY KEY;
 ALTER TABLE epanet.pipes ADD COLUMN geom geometry(LINESTRING,27582);
-CREATE TABLE epanet.pumps ("ID Arc" varchar, "NoeudAsp" varchar, "NoeudDéch" varchar, "Paramètres" varchar);
+CREATE TABLE epanet.pumps ("id arc" varchar, "noeudasp" varchar, "NoeudDéch" varchar, "Paramètres" varchar);
 INSERT INTO epanet.pumps VALUES ('PMP_DELL1', '3', 'N18a5', 'HEAD PMP_DELL1');
 INSERT INTO epanet.pumps VALUES ('PMP_ROCHER', 'N1848', 'N18a3', 'HEAD PMP_ROCHER');
 INSERT INTO epanet.pumps VALUES ('PMP_ST_MICHEL', 'N18ab', 'N18b2', 'HEAD PMP_ST_MICHEL');
 INSERT INTO epanet.pumps VALUES ('PMP_DELL_2', '3', 'N18a9', 'HEAD PMP_DELL_2');
 --ALTER TABLE epanet.pumps ADD COLUMN fid serial PRIMARY KEY;
 ALTER TABLE epanet.pumps ADD COLUMN geom geometry(POINT,27582);
-CREATE TABLE epanet.valves ("ID Arc" varchar, "NoeudAmont" varchar, "NodeAval" varchar, "Diamètre" float, "Type" varchar, "Consigne" float, "PertSing" float);
+CREATE TABLE epanet.valves ("id arc" varchar, "noeudamont" varchar, "nodeaval" varchar, "Diamètre" float, "type" varchar, "consigne" float, "pertsing" float);
 INSERT INTO epanet.valves VALUES ('Poire600', 'N1806', '1', 150         , 'TCV', 0           , 0           );
 INSERT INTO epanet.valves VALUES ('1', 'N1865', 'N1908', 200         , 'TCV', 0           , 0           );
 INSERT INTO epanet.valves VALUES ('6', 'N182e', '4', 200         , 'TCV', 5000        , 0           );
@@ -723,7 +723,7 @@ INSERT INTO epanet.valves VALUES ('8', '5', 'N183f', 200         , 'TCV', 0     
 INSERT INTO epanet.valves VALUES ('15', 'N17d4', '6', 150         , 'TCV', 1000000000  , 0           );
 --ALTER TABLE epanet.valves ADD COLUMN fid serial PRIMARY KEY;
 ALTER TABLE epanet.valves ADD COLUMN geom geometry(POINT,27582);
-CREATE TABLE epanet.demands ("ID Noeud" varchar, "Demande Base" float, "Courbe Modulation" varchar, "Catégorie" varchar);
+CREATE TABLE epanet.demands ("id noeud" varchar, "demande base" float, "courbe modulation" varchar, "Catégorie" varchar);
 INSERT INTO epanet.demands VALUES ('N18b2', 0.0813466016266977 , 'DOM_AUDUN', '');
 INSERT INTO epanet.demands VALUES ('N18b2', 0.069596    , 'PERTES_AUDUN', '');
 INSERT INTO epanet.demands VALUES ('N18b1', 0.079274869621886 , 'DOM_AUDUN', '');
@@ -1352,13 +1352,13 @@ INSERT INTO epanet.demands VALUES ('N18c0', 0.0343343103670073 , 'DOM_RUS', '');
 INSERT INTO epanet.demands VALUES ('N18c0', 0.009841    , 'PERTES_RUS', '');
 INSERT INTO epanet.demands VALUES ('N18bf', 0.0239267124972665 , 'DOM_RUS', '');
 INSERT INTO epanet.demands VALUES ('N18bf', 0.031891    , 'PERTES_RUS', '');
-CREATE TABLE epanet.status ("ID Arc" varchar, "État/Consigne" varchar);
+CREATE TABLE epanet.status ("id arc" varchar, "État/Consigne" varchar);
 INSERT INTO epanet.status VALUES ('1', 'Closed');
 INSERT INTO epanet.status VALUES ('6', 'Closed');
 INSERT INTO epanet.status VALUES ('7', 'Open');
 INSERT INTO epanet.status VALUES ('8', 'Open');
 INSERT INTO epanet.status VALUES ('15', 'Closed');
-CREATE TABLE epanet.patterns ("ID Modulation" varchar, "Multiplicateurs" float);
+CREATE TABLE epanet.patterns ("id modulation" varchar, "multiplicateurs" float);
 INSERT INTO epanet.patterns VALUES ('PERTES_AUDUN', 1           );
 INSERT INTO epanet.patterns VALUES ('PERTES_AUDUN', 1           );
 INSERT INTO epanet.patterns VALUES ('PERTES_AUDUN', 1           );
@@ -1551,22 +1551,22 @@ INSERT INTO epanet.patterns VALUES ('DOM_RUS', 1.160147245 );
 INSERT INTO epanet.patterns VALUES ('DOM_RUS', 1.623880716 );
 INSERT INTO epanet.patterns VALUES ('DOM_RUS', 1.056750213 );
 INSERT INTO epanet.patterns VALUES ('DOM_RUS', 0.77851013  );
-CREATE TABLE epanet.curves ("ID Courbe" varchar, "Valeur X" float, "Valeur Y" float);
+CREATE TABLE epanet.curves ("id courbe" varchar, "valeur x" float, "valeur y" float);
 INSERT INTO epanet.curves VALUES ('PMP_DELL1', 37.8        , 22);
 INSERT INTO epanet.curves VALUES ('PMP_ROCHER', 10          , 46);
 INSERT INTO epanet.curves VALUES ('PMP_ST_MICHEL', 92          , 91);
 INSERT INTO epanet.curves VALUES ('PMP_DELL_2', 11          , 38);
-CREATE TABLE epanet.emitters ("ID Noeud" varchar, "Coefficient" float);
+CREATE TABLE epanet.emitters ("id noeud" varchar, "coefficient" float);
 --ALTER TABLE epanet.emitters ADD COLUMN fid serial PRIMARY KEY;
 ALTER TABLE epanet.emitters ADD COLUMN geom geometry(POINT,27582);
-CREATE TABLE epanet.quality ("ID Noeud" varchar, "Qualité Initiale" float);
+CREATE TABLE epanet.quality ("id noeud" varchar, "Qualité Initiale" float);
 INSERT INTO epanet.quality VALUES ('FORAGE_ST_MICHE', 0);
-CREATE TABLE epanet.sources ("ID Noeud" varchar, "Type" float, "Qualité" float, "Courbe Modul" float);
+CREATE TABLE epanet.sources ("id noeud" varchar, "type" float, "Qualité" float, "courbe modul" float);
 --ALTER TABLE epanet.sources ADD COLUMN fid serial PRIMARY KEY;
 ALTER TABLE epanet.sources ADD COLUMN geom geometry(POINT,27582);
 CREATE TABLE epanet.mixing ("ID Réservoir" varchar, "Modèle" varchar, "Fraction Mélange" varchar);
 INSERT INTO epanet.mixing VALUES ('LA_DELL', 'FIFO');
-CREATE TABLE epanet.coordinates ("ID Noeud" varchar, "Coord X" float, "Coord Y" float);
+CREATE TABLE epanet.coordinates ("id noeud" varchar, "coord x" float, "coord y" float);
 INSERT INTO epanet.coordinates VALUES ('N18b2', 862529.21       , 2502558.14);
 INSERT INTO epanet.coordinates VALUES ('N18b1', 862768.08       , 2502885.45);
 INSERT INTO epanet.coordinates VALUES ('N18b0', 862767.14       , 2502886.95);
@@ -1892,7 +1892,7 @@ INSERT INTO epanet.coordinates VALUES ('FORAGE_ST_MICHE', 862692.470906964, 2502
 INSERT INTO epanet.coordinates VALUES ('LA_DELL', 861524.205080661, 2503127.80055857);
 INSERT INTO epanet.coordinates VALUES ('KATZENBERG', 863019.971344574, 2502953.17212857);
 INSERT INTO epanet.coordinates VALUES ('RUSSANGE', 862058.111354672, 2504371.97469837);
-CREATE TABLE epanet.vertices ("ID Arc" varchar, "Coord X" float, "Coord Y" float);
+CREATE TABLE epanet.vertices ("id arc" varchar, "coord x" float, "coord y" float);
 INSERT INTO epanet.vertices VALUES ('T1a36', 862335.81       , 2503121.18);
 INSERT INTO epanet.vertices VALUES ('T1a36', 862366.58       , 2503117.15);
 INSERT INTO epanet.vertices VALUES ('T1a36', 862404.91       , 2503117.65);
@@ -3851,34 +3851,34 @@ INSERT INTO epanet.vertices VALUES ('PMP_ST_MICHEL', 862515.545566918, 2502569.6
 INSERT INTO epanet.vertices VALUES ('PMP_DELL_2', 861522.623833387, 2503126.93218191);
 INSERT INTO epanet.vertices VALUES ('1', 862434.646079314, 2503965.29126898);
 INSERT INTO epanet.vertices VALUES ('1', 862434.336715587, 2503965.88619922);
-CREATE TABLE epanet.labels ("Coord X" float, "Coord Y" float, "Texte et Noeud d´Ancrage" varchar);
+CREATE TABLE epanet.labels ("coord x" float, "coord y" float, "Texte et Noeud d´Ancrage" varchar);
 INSERT INTO epanet.labels VALUES ( 862844.014555556, 2502897.79222222, 'katzenberg');
-INSERT INTO epanet.labels VALUES ( 861411.950555556, 2503061.88288889, '"LA_DELL"');
+INSERT INTO epanet.labels VALUES ( 861411.950555556, 2503061.88288889, '"la_dell"');
 INSERT INTO epanet.labels VALUES ( 861680.462555556, 2504324.88377778, 'russange');
-INSERT INTO epanet.labels VALUES ( 862839.042111111, 2502589.50066667, '"LE_ROCHER"');
+INSERT INTO epanet.labels VALUES ( 862839.042111111, 2502589.50066667, '"le_rocher"');
 INSERT INTO epanet.labels VALUES ( 862212.514111111, 2502405.52022222, 'production');
-INSERT INTO epanet.labels VALUES ( 862237.376333333, 2502340.87844444, '"ST_MICHEL"');
+INSERT INTO epanet.labels VALUES ( 862237.376333333, 2502340.87844444, '"st_michel"');
 
-UPDATE epanet.junctions AS d SET geom = ('SRID=27582;POINT('||c."Coord X"||' '||c."Coord Y"||')')::geometry FROM epanet.coordinates AS c WHERE d."ID Noeud" = c."ID Noeud";
-UPDATE epanet.reservoirs AS d SET geom = ('SRID=27582;POINT('||c."Coord X"||' '||c."Coord Y"||')')::geometry FROM epanet.coordinates AS c WHERE d."ID Noeud" = c."ID Noeud";
-UPDATE epanet.tanks AS d SET geom = ('SRID=27582;POINT('||c."Coord X"||' '||c."Coord Y"||')')::geometry FROM epanet.coordinates AS c WHERE d."ID Noeud" = c."ID Noeud";
-UPDATE epanet.pumps AS d SET geom = ('SRID=27582;POINT('||c."Coord X"||' '||c."Coord Y"||')')::geometry FROM epanet.coordinates AS c WHERE d."NoeudAsp" = c."ID Noeud";
-UPDATE epanet.valves AS d SET geom = ('SRID=27582;POINT('||c."Coord X"||' '||c."Coord Y"||')')::geometry FROM epanet.coordinates AS c WHERE d."NoeudAmont" = c."ID Noeud";
-UPDATE epanet.emitters AS d SET geom = ('SRID=27582;POINT('||c."Coord X"||' '||c."Coord Y"||')')::geometry FROM epanet.coordinates AS c WHERE d."ID Noeud" = c."ID Noeud";
-UPDATE epanet.sources AS d SET geom = ('SRID=27582;POINT('||c."Coord X"||' '||c."Coord Y"||')')::geometry FROM epanet.coordinates AS c WHERE d."ID Noeud" = c."ID Noeud";
-UPDATE epanet.pipes AS d SET geom=(SELECT ('SRID=27582;LINESTRING('||array_to_string(array_agg("Coord X"||' '||"Coord Y"),',')||')')::geometry FROM epanet.vertices AS s WHERE d."ID Arc" = s."ID Arc" AND (SELECT COUNT(*) FROM epanet.vertices AS v WHERE d."ID Arc" = v."ID Arc") > 3);
+UPDATE epanet.junctions AS d SET geom = ('SRID=27582;POINT('||c."coord x"||' '||c."coord y"||')')::geometry FROM epanet.coordinates AS c WHERE d."id noeud" = c."id noeud";
+UPDATE epanet.reservoirs AS d SET geom = ('SRID=27582;POINT('||c."coord x"||' '||c."coord y"||')')::geometry FROM epanet.coordinates AS c WHERE d."id noeud" = c."id noeud";
+UPDATE epanet.tanks AS d SET geom = ('SRID=27582;POINT('||c."coord x"||' '||c."coord y"||')')::geometry FROM epanet.coordinates AS c WHERE d."id noeud" = c."id noeud";
+UPDATE epanet.pumps AS d SET geom = ('SRID=27582;POINT('||c."coord x"||' '||c."coord y"||')')::geometry FROM epanet.coordinates AS c WHERE d."noeudasp" = c."id noeud";
+UPDATE epanet.valves AS d SET geom = ('SRID=27582;POINT('||c."coord x"||' '||c."coord y"||')')::geometry FROM epanet.coordinates AS c WHERE d."noeudamont" = c."id noeud";
+UPDATE epanet.emitters AS d SET geom = ('SRID=27582;POINT('||c."coord x"||' '||c."coord y"||')')::geometry FROM epanet.coordinates AS c WHERE d."id noeud" = c."id noeud";
+UPDATE epanet.sources AS d SET geom = ('SRID=27582;POINT('||c."coord x"||' '||c."coord y"||')')::geometry FROM epanet.coordinates AS c WHERE d."id noeud" = c."id noeud";
+UPDATE epanet.pipes AS d SET geom=(SELECT ('SRID=27582;LINESTRING('||array_to_string(array_agg("coord x"||' '||"coord y"),',')||')')::geometry FROM epanet.vertices AS s WHERE d."id arc" = s."id arc" AND (SELECT COUNT(*) FROM epanet.vertices AS v WHERE d."id arc" = v."id arc") > 3);
 
 CREATE TABLE epanet.times(
- "Simulation Title"     varchar,
- "Duration"           	varchar,
- "Hydraulic Timestep" 	time,
- "Quality Timestep"   	time,
- "Pattern Timestep"   	time,
- "Pattern Start"      	time, 
- "Report Timestep"    	time,
- "Report Start"       	time,
- "Start ClockTime"    	time,
- "Statistic"          	varchar
+ "simulation title"     varchar,
+ "duration"           	varchar,
+ "hydraulic timestep" 	time,
+ "quality timestep"   	time,
+ "pattern timestep"   	time,
+ "pattern start"      	time, 
+ "report timestep"    	time,
+ "report start"       	time,
+ "start clocktime"    	time,
+ "statistic"          	varchar
 );
 INSERT INTO epanet.times VALUES(
 'Epanet Simulation',
@@ -3979,10 +3979,10 @@ then valve 1 setting is open
 ');
 
 CREATE TABLE epanet.energy(
-    "Simulation Title"     varchar,
-    "Global Efficiency" float,
-    "Global Price"     float,
-    "Demand Charge"    float
+    "simulation title"     varchar,
+    "global efficiency" float,
+    "global price"     float,
+    "demand charge"    float
 );
 INSERT INTO epanet.energy VALUES (
     'Epanet Simulation',
@@ -3992,20 +3992,20 @@ INSERT INTO epanet.energy VALUES (
 );
 
 CREATE TABLE epanet.options(
-    "Simulation Title"   varchar,
-    "Units"              varchar,
-    "Headloss"           varchar,
-    "Specific Gravity"   float,
-    "Viscosity"          float,
-    "Trials"             integer,
-    "Accuracy"           float,
-    "Unbalanced"         varchar,
-    "Pattern"            varchar,
-    "Demand Multiplier"  float,
-    "Emitter Exponent"   float,
-    "Quality"            varchar,
-    "Diffusivity"        float,
-    "Tolerance"          float
+    "simulation title"   varchar,
+    "units"              varchar,
+    "headloss"           varchar,
+    "specific gravity"   float,
+    "viscosity"          float,
+    "trials"             integer,
+    "accuracy"           float,
+    "unbalanced"         varchar,
+    "pattern"            varchar,
+    "demand multiplier"  float,
+    "emitter exponent"   float,
+    "quality"            varchar,
+    "diffusivity"        float,
+    "tolerance"          float
 );
 INSERT INTO epanet.options VALUES (
     'Epanet Simulation',
@@ -4025,23 +4025,23 @@ INSERT INTO epanet.options VALUES (
 );
 
 CREATE TABLE epanet.report(
-    "Simulation Title"   varchar,
-    "Status" varchar,
-    "Summary" varchar,   	
+    "simulation title"   varchar,
+    "status" varchar,
+    "summary" varchar,   	
     nodes varchar,      
     links varchar,        
-    "Demand" varchar,
-    "Head" varchar,
-    "Pressure" varchar,
+    "demand" varchar,
+    "head" varchar,
+    "pressure" varchar,
     "Quality." varchar,
-    "Length" varchar,
-    "Diameter" varchar,
-    "Flow" varchar,
-    "Velocity" varchar,
-    "Headloss" varchar,
-    "Position" varchar,
-    "Setting" varchar,
-    "Reaction" varchar,
+    "length" varchar,
+    "diameter" varchar,
+    "flow" varchar,
+    "velocity" varchar,
+    "headloss" varchar,
+    "position" varchar,
+    "setting" varchar,
+    "reaction" varchar,
     "F-Factor" varchar,
     "Demand	BELOW" float,
     "Head	BELOW" float,
@@ -4084,18 +4084,18 @@ CREATE TABLE epanet.report(
     "F-Factor	PRECISION" integer
 );
 
-INSERT INTO epanet.report("Simulation Title",  "Status", "Summary", nodes, links) 
+INSERT INTO epanet.report("simulation title",  "status", "summary", nodes, links) 
              VALUES ('Epanet Simulation', 'Full',   'No',      'ALL',   'ALL'); 
 
 CREATE TABLE epanet.reactions (
-    "Simulation Title"   varchar,
-    "Order Bulk" float,
-    "Order Tank" float,
-    "Order Wall" float,
-    "Global Bulk" float,
-    "Global Wall" float,
-    "Limiting Potential" float,
-    "Roughness Correlation" float
+    "simulation title"   varchar,
+    "order bulk" float,
+    "order tank" float,
+    "order wall" float,
+    "global bulk" float,
+    "global wall" float,
+    "limiting potential" float,
+    "roughness correlation" float
 );
 INSERT INTO epanet.reactions VALUES (
     'Epanet Simulation',

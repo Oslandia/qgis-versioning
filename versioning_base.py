@@ -22,6 +22,10 @@ class Db:
        self.begun = False
        self._verbose = False
 
+   def hasrow(self):
+       if self._verbose: print self.db_type, self.cur.rowcount, ' rows returned'
+       return self.cur.rowcount > 0
+
    def verbose(self, v):
        self._verbose = v
 
@@ -99,8 +103,10 @@ def checkout(pg_conn_info, pg_table_names, sqlite_filename):
         current_rev = int(pcur.fetchone()[0])
 
         # max hid for this table
+        pcur.verbose(True)
         pcur.execute("SELECT MAX(hid) FROM "+schema+"."+table)
-        max_pg_hid = int(pcur.fetchone()[0])
+        [max_pg_hid] = pcur.fetchone()
+        if not max_pg_hid : max_pg_hid = 0
 
         # use ogr2ogr to create spatialite db
         if first_table:
@@ -128,6 +134,7 @@ def checkout(pg_conn_info, pg_table_names, sqlite_filename):
 
             # save target revision in a table if not in there
             scur = Db(dbapi2.connect(sqlite_filename))
+            scur.verbose(True)
             scur.execute("INSERT INTO initial_revision(rev, branch, table_schema, table_name, conn_info, max_hid) VALUES ("+str(current_rev)+", '"+branch+"', '"+schema+"', '"+table+"', '"+escapeQuotes(pg_conn_info)+"', "+str(max_pg_hid)+")" )
             scur.commit()
             scur.close()
@@ -231,6 +238,7 @@ def update(sqlite_filename):
         # get the max hid 
         pcur.execute("SELECT MAX(hid) FROM "+table_schema+"."+table)
         [max_pg_hid] = pcur.fetchone()
+        if not max_pg_hid : max_pg_hid = 0
 
         # create the diff
         diff_schema = table_schema+"_"+branch+"_"+str(rev)+"_to_"+str(max_rev)+"_diff"
@@ -544,6 +552,7 @@ def commit(sqlite_filename, commit_msg):
             [rev] = pcur.fetchone()
             pcur.execute("SELECT MAX(hid) FROM "+table_schema+"."+table)
             [max_hid] = pcur.fetchone()
+            if not max_hid : max_hid = 0
             pcur.close()
             scur.execute("UPDATE initial_revision SET rev = "+str(rev)+", max_hid = "+str(max_hid)+"  WHERE table_schema = '"+table_schema+"' AND table_name = '"+table+"' AND branch = '"+branch+"'")
 
@@ -751,7 +760,8 @@ def pg_checkout(pg_conn_info, pg_table_names, working_copy_schema):
 
         # max hid for this table
         pcur.execute("SELECT MAX(hid) FROM "+schema+"."+table)
-        max_pg_hid = int(pcur.fetchone()[0])
+        [max_pg_hid] = pcur.fetchone()
+        if not max_pg_hid : max_pg_hid = 0
         if first_table:
             first_table = False
             pcur.execute("CREATE TABLE "+wcs+".initial_revision AS SELECT "+
@@ -911,6 +921,7 @@ def pg_update(pg_conn_info, working_copy_schema):
         # get the max hid 
         pcur.execute("SELECT MAX(hid) FROM "+table_schema+"."+table)
         [max_pg_hid] = pcur.fetchone()
+        if not max_pg_hid : max_pg_hid = 0
         
         # create the diff
         pcur.execute("SELECT column_name "+

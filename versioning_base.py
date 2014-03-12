@@ -1,6 +1,6 @@
 import re
 import os
-import pwd
+import getpass
 from pyspatialite import dbapi2
 import psycopg2
 import codecs
@@ -63,7 +63,7 @@ def escapeQuotes(s):
     return str.replace(str(s),"'","''");
 
 def get_username():
-    return pwd.getpwuid( os.getuid() )[ 0 ]
+    return getpass.getuser()
 
 def unresolvedConflicts(sqlite_filename):
     """return a list of tables with unresolved conflicts"""

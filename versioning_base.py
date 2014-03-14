@@ -1001,27 +1001,27 @@ def pg_update(pg_conn_info, working_copy_schema):
             print "there are conflicts"
             # add layer for conflicts
             pcur.execute("DROP TABLE IF EXISTS "+wcs+"."+table+"_cflt ")
-            pcur.execute("CREATE TABLE "+wcs+"."+table+"_cflt AS "+
+            pcur.execute("CREATE TABLE "+wcs+"."+table+"_cflt AS "
                 # insert new features from mine
-                "SELECT "+branch+"_parent AS conflict_id, 'mine' AS origin, 'modified' AS action, "+cols+geom+" "+
-                "FROM "+wcs+"."+table+"_diff, "+wcs+"."+table+"_conflicts_hid AS cflt "+
-                "WHERE hid = (SELECT "+branch+"_child FROM "+wcs+"."+table+"_diff "+
-                                     "WHERE hid = conflict_deleted_hid) "+
+                "SELECT "+branch+"_parent AS conflict_id, 'mine' AS origin, 'modified' AS action, "+cols+geom+" "
+                "FROM "+wcs+"."+table+"_diff, "+wcs+"."+table+"_conflicts_hid AS cflt "
+                "WHERE hid = (SELECT "+branch+"_child FROM "+wcs+"."+table+"_diff "
+                                     "WHERE hid = conflict_deleted_hid) "
                 "UNION ALL "
                 # insert new features from theirs
-                "SELECT "+branch+"_parent AS conflict_id, 'theirs' AS origin, 'modified' AS action, "+cols+geom+" "+
-                "FROM "+wcs+"."+table+"_update_diff "+", "+wcs+"."+table+"_conflicts_hid AS cflt "+
-                "WHERE hid = (SELECT "+branch+"_child FROM "+wcs+"."+table+"_update_diff "+
-                                     "WHERE hid = conflict_deleted_hid) "+
+                "SELECT "+branch+"_parent AS conflict_id, 'theirs' AS origin, 'modified' AS action, "+cols+geom+" "
+                "FROM "+wcs+"."+table+"_update_diff "+", "+wcs+"."+table+"_conflicts_hid AS cflt "
+                "WHERE hid = (SELECT "+branch+"_child FROM "+wcs+"."+table+"_update_diff "
+                                     "WHERE hid = conflict_deleted_hid) "
                  # insert deleted features from mine
                 "UNION ALL "+
-                "SELECT "+branch+"_parent AS conflict_id, 'mine' AS origin, 'deleted' AS action, "+cols++geom+" "+
-                "FROM "+wcs+"."+table+"_diff, "+wcs+"."+table+"_conflicts_hid AS cflt "+
-                "WHERE hid = conflict_deleted_hid AND "+branch+"_child IS NULL "+
+                "SELECT "+branch+"_parent AS conflict_id, 'mine' AS origin, 'deleted' AS action, "+cols++geom+" "
+                "FROM "+wcs+"."+table+"_diff, "+wcs+"."+table+"_conflicts_hid AS cflt "
+                "WHERE hid = conflict_deleted_hid AND "+branch+"_child IS NULL "
                  # insert deleted features from theirs
-                "UNION ALL "+
-                "SELECT "+branch+"_parent AS conflict_id, 'theirs' AS origin, 'deleted' AS action, "+cols+geom+" "+
-                "FROM "+wcs+"."+table+"_update_diff, "+wcs+"."+table+"_conflicts_hid AS cflt "+
+                "UNION ALL "
+                "SELECT "+branch+"_parent AS conflict_id, 'theirs' AS origin, 'deleted' AS action, "+cols+geom+" "
+                "FROM "+wcs+"."+table+"_update_diff, "+wcs+"."+table+"_conflicts_hid AS cflt "
                 "WHERE hid = conflict_deleted_hid AND "+branch+"_child IS NULL" )
 
             # identify conflicts for deleted 

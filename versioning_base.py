@@ -544,15 +544,20 @@ def commit(sqlite_filename, commit_msg):
             pcur.execute("INSERT INTO "+table_schema+".revisions (rev, commit_msg, branch, author) VALUES ("+str(rev+1)+", '"+commit_msg+"', '"+branch+"', '"+get_username()+"')")
 
         # TODO fix this to avoid hcols from other branches
-        pcur.execute("SELECT column_name "+
+        pcur.execute("SELECT column_name, data_type "+
                 "FROM information_schema.columns "+
                 "WHERE table_schema = '"+table_schema+"' AND table_name = '"+table+"'")
         cols = ""
-        for c in pcur.fetchall(): cols += quote_ident(c[0])+", "
+        cols_cast = ""
+        for c in pcur.fetchall(): 
+            cols += quote_ident(c[0])+", "
+            cast = "::"+c[1] if c[1] != 'USER-DEFINED' else ""
+            cols_cast += quote_ident(c[0])+cast+", "
         cols = cols[:-2] # remove last coma and space
+        cols_cast = cols_cast[:-2] # remove last coma and space
         # insert inserted and modified
         pcur.execute("INSERT INTO "+table_schema+"."+table+" ("+cols+") "+
-            "SELECT "+cols+" FROM "+diff_schema+"."+table+"_diff "+
+            "SELECT "+cols_cast+" FROM "+diff_schema+"."+table+"_diff "+
             "WHERE "+branch+"_rev_begin = "+str(rev+1))
 
         # update deleted and modified 
@@ -1015,7 +1020,7 @@ def pg_update(pg_conn_info, working_copy_schema):
                                      "WHERE hid = conflict_deleted_hid) "
                  # insert deleted features from mine
                 "UNION ALL "+
-                "SELECT "+branch+"_parent AS conflict_id, 'mine' AS origin, 'deleted' AS action, "+cols++geom+" "
+                "SELECT "+branch+"_parent AS conflict_id, 'mine' AS origin, 'deleted' AS action, "+cols+geom+" "
                 "FROM "+wcs+"."+table+"_diff, "+wcs+"."+table+"_conflicts_hid AS cflt "
                 "WHERE hid = conflict_deleted_hid AND "+branch+"_child IS NULL "
                  # insert deleted features from theirs

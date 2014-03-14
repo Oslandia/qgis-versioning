@@ -38,6 +38,22 @@ WIN_TITLE = "versioning"
 def escapeQuotes(s):
     return str.replace(str(s),"'","''");
 
+def getPgConnectionInfo( uri ):
+    connInfo = uri.connectionInfo()
+    conn = None
+    try:
+        conn = psycopg2.connect(uri.connectionInfo())
+    except:
+        conn = None
+    if not conn:
+        #print "Case when the pass/user are not saved in the project"
+        (success, user, passwd ) = QgsCredentials.instance().get( connInfo, None, None )
+        if success:
+            QgsCredentials.instance().put( connInfo, user, passwd )
+        uri.setPassword(passwd)
+        uri.setUsername(user)
+    return uri
+
 # We start from layers comming from one or more postgis non-versionned schemata
 # A widget group is displayed for each distinct schema (identified with 'dbname schema')
 # The widget goup contains a branch and version combobox extracted from layers
@@ -135,6 +151,7 @@ class Versioning:
                 # check if it's a working copy
                 rev = 0
                 try: 
+                    uri = getPgConnectionInfo( uri )
                     rev = versioning_base.pg_revision( uri.connectionInfo(), uri.schema() )
                     selectionType = 'working copy'
                     self.info.setText( uri.database()+' '+uri.schema() +' rev='+str(rev))
@@ -255,6 +272,7 @@ class Versioning:
             print 'aborted'
             return
 
+        uri = getPgConnectionInfo( uri )
         pcur = versioning_base.Db( psycopg2.connect(uri.connectionInfo()) ) 
         pcur.execute("SELECT * FROM "+schema+".revisions WHERE branch = '"+branch+"'") 
         if pcur.fetchone():
@@ -300,6 +318,7 @@ class Versioning:
         buttonBox.accepted.connect(d.accept)
         buttonBox.rejected.connect(d.reject)
 
+        uri = getPgConnectionInfo( uri )
         pcur = versioning_base.Db( psycopg2.connect(uri.connectionInfo()) ) 
         pcur.execute("SELECT rev, commit_msg, branch, date, author FROM "+schema+".revisions") 
         revs = pcur.fetchall()
@@ -436,7 +455,7 @@ class Versioning:
         tables_for_conninfo = {}
         for layerId in self.currentLayers:
             layer = QgsMapLayerRegistry.instance().mapLayer( layerId )
-            uri = QgsDataSourceURI(layer.source())
+            uri = getPgConnectionInfo(QgsDataSourceURI(layer.source()))
             conn_info = uri.connectionInfo()
             table =  uri.schema()+"."+uri.table()
             if conn_info in tables_for_conninfo: 
@@ -493,6 +512,7 @@ class Versioning:
         if layer.providerType() == "spatialite":
             lateBy = versioning_base.late( uri.database() )
         else:#postgres
+            uri = getPgConnectionInfo( uri )
             lateBy = versioning_base.pg_late( uri.connectionInfo(), uri.schema() )
 
         if lateBy: 

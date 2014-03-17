@@ -430,8 +430,9 @@ class Versioning:
         if os.path.isfile(filename): os.remove(filename)
 
         for conn_info, tables in tables_for_conninfo.iteritems():
-            print "checkin out ", tables, " from ", conn_info
-            versioning_base.checkout( conn_info, list(tables), filename )
+            uri = getPgConnectionInfo( QgsDataSourceURI(conn_info) )
+            print "checkin out ", tables, " from ", uri.connectionInfo()
+            versioning_base.checkout( uri.connectionInfo(), list(tables), filename )
         
         # add layers from offline version
         groupName = 'working copy'
@@ -481,8 +482,9 @@ class Versioning:
             return
 
         for conn_info, tables in tables_for_conninfo.iteritems():
-            print "checkin out ", tables, " from ", conn_info
-            versioning_base.pg_checkout( conn_info, list(tables), working_copy_schema )
+            uri = getPgConnectionInfo( QgsDataSourceURI(conn_info) )
+            print "checkin out ", tables, " from ", uri.connectionInfo()
+            versioning_base.pg_checkout( uri.connectionInfo(), list(tables), working_copy_schema )
         
         # add layers from offline version
         groupIdx = self.iface.legendInterface().addGroup( working_copy_schema )

@@ -66,6 +66,7 @@ class Versioning:
         self.currentLayers = []
         self.actions = []
         self.pg_conn_info = ''
+        self.current_group_idx = -1
 
     def pgConnInfo(self):
         if not self.pg_conn_info:
@@ -102,6 +103,7 @@ class Versioning:
         return self.pg_conn_info
 
     def onLegendClick(self, current, column=0):
+        self.current_group_idx = -1
         name = ''
         self.currentLayers = []
         self.info.setText('No group selected')
@@ -111,6 +113,7 @@ class Versioning:
             elif a.text() == 'commit'   : a.setVisible(False)
             elif a.text() == 'view'     : a.setVisible(False)
             elif a.text() == 'branch'   : a.setVisible(False)
+            elif a.text() == 'historize': a.setVisible(False)
         if current: 
             name = current.text(0)
         # we could look if we have something in selected layers
@@ -123,7 +126,14 @@ class Versioning:
 
         if not name or name not in relMap: # not a group
             return
-        
+
+        group_idx = [i for i,x in enumerate(self.iface.legendInterface().groups()) if x == name]
+        if len(group_idx) != 1:
+            self.info.setText("More than one group with this name")
+            self.currentLayers = []
+            return
+        [self.current_group_idx] = group_idx
+
         replaced = True
         while replaced:
             replaced = False
@@ -141,12 +151,13 @@ class Versioning:
             if previous_conn:
                 if (uri.database(), uri.schema()) != previous_conn:
                     currentLayers = []
-                    self.info.setText("Selected group doesn't share the same database and/or schema")
+                    self.info.setText("Layers don't share db and schema")
                     return
             else:
                 previous_conn = (uri.database(), uri.schema())
 
         if not self.currentLayers: return
+
 
         layer = QgsMapLayerRegistry.instance().mapLayer( self.currentLayers[0] )
         uri = QgsDataSourceURI( layer.source() )
@@ -176,14 +187,15 @@ class Versioning:
                     self.info.setText( uri.database()+' '+uri.schema() +' rev='+str(rev))
                 except:
                     currentLayers = []
-                    self.info.setText("The selected group is neither a versionned databse nor a working copy")
+                    self.info.setText('Unversioned schema')
                     selectionType = 'unversioned'
         
+
         # refresh the available commands
         assert( selectionType )
         if selectionType == 'unversioned':
             for a in self.actions:
-                pass
+                if   a.text() == 'historize': a.setVisible(True)
         elif selectionType == 'versioned':
             for a in self.actions:
                 if   a.text() == 'view'     : a.setVisible(True)
@@ -198,6 +210,7 @@ class Versioning:
                 if   a.text() == 'update'   : a.setVisible(True)
                 elif a.text() == 'commit'   : a.setVisible(True)
 
+
     def initGui(self):
 
         self.info = QLabel()
@@ -211,6 +224,13 @@ class Versioning:
         self.legend = self.iface.mainWindow().findChild(QTreeWidget,'theMapLegend')
         self.legend.itemClicked.connect(self.onLegendClick)
         self.legend.itemChanged.connect(self.onLegendClick)
+
+        self.actions.append( QAction(
+            QIcon(os.path.dirname(__file__) + "/historize.svg"),
+            u"historize", self.iface.mainWindow()) )
+        self.actions[-1].setWhatsThis("historize")
+        self.actions[-1].triggered.connect(self.historize)
+        self.actions[-1].setVisible(False)
 
         self.actions.append( QAction(
             QIcon(os.path.dirname(__file__) + "/checkout.svg"),
@@ -424,6 +444,47 @@ class Versioning:
         if not self.unresolvedConflicts(): QMessageBox.information( self.iface.mainWindow(), "Notice", "Your are up to date with revision "+str(rev-1)+".")
 
 
+
+    def historize(self):
+        """version database"""
+        uri = None
+        conn_info = ''
+        schema = ''
+        for layerId in self.currentLayers:
+            layer = QgsMapLayerRegistry.instance().mapLayer( layerId )
+            uri = QgsDataSourceURI(layer.source())
+            if not conn_info:
+                conn_info = uri.connectionInfo()
+            else:
+                assert(conn_info == uri.connectionInfo())
+            if not schema:
+                schema =  uri.schema()
+            else:
+                assert( schema == uri.schema() )
+
+        if QMessageBox.Ok != QMessageBox.warning(self.iface.mainWindow(), 
+                "Warning", "This will add 4 columns to all tables in schema "+schema+" (i.e. even to tables not in this project)", QMessageBox.Ok, QMessageBox.Cancel): 
+            print "aborted"
+            return
+
+        versioning_base.historize( self.pgConnInfo(), schema )
+
+        groupName = 'trunk revision head'
+        groupIdx = self.iface.legendInterface().addGroup( groupName )
+        for layerId in reversed(self.currentLayers):
+            layer = QgsMapLayerRegistry.instance().mapLayer(layerId)
+            newUri = QgsDataSourceURI(layer.source())
+            newUri.setDataSource(schema+'_trunk_rev_head', 
+                    newUri.table(), 
+                    newUri.geometryColumn(),
+                    newUri.sql(),
+                    newUri.keyColumn())
+            display_name =  QgsMapLayerRegistry.instance().mapLayer(layerId).name()
+            
+            newLayer = self.iface.addVectorLayer(newUri.uri().replace('()',''), display_name, 'postgres')
+            self.iface.legendInterface().moveLayer( newLayer, groupIdx)
+        self.iface.legendInterface().removeGroup( self.current_group_idx )
+        self.currentLayers = []
 
     def checkout(self):
         """create working copy from versionned database layers"""

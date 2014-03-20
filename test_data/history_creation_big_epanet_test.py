@@ -75,6 +75,6 @@ scur = versioning_base.Db( dbapi2.connect( f ) )
 scur.execute("UPDATE junctions_view SET GEOMETRY = ShiftCoords(GEOMETRY,1000,1000) WHERE OGC_FID = 1")
 scur.commit()
 
-versioning_base.commit( f, "commit 1" )
+versioning_base.commit( f, "commit 1", pg_conn_info )
 
 

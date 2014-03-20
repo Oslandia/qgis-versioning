@@ -38,21 +38,6 @@ WIN_TITLE = "versioning"
 def escapeQuotes(s):
     return str.replace(str(s),"'","''");
 
-def getPgConnectionInfo( uri ):
-    connInfo = uri.connectionInfo()
-    conn = None
-    try:
-        conn = psycopg2.connect(uri.connectionInfo())
-    except:
-        conn = None
-    if not conn:
-        #print "Case when the pass/user are not saved in the project"
-        (success, user, passwd ) = QgsCredentials.instance().get( connInfo, None, None )
-        if success:
-            QgsCredentials.instance().put( connInfo, user, passwd )
-        uri.setPassword(passwd)
-        uri.setUsername(user)
-    return uri
 
 # We start from layers comming from one or more postgis non-versionned schemata
 # A widget group is displayed for each distinct schema (identified with 'dbname schema')
@@ -80,6 +65,41 @@ class Versioning:
 
         self.currentLayers = []
         self.actions = []
+        self.pg_conn_info = ''
+
+    def pgConnInfo(self):
+        if not self.pg_conn_info:
+            # In the simple case: all pg layers share the same conn info
+            # we set the conn info, if not, we ask for a connection
+            # We then request credentials if necessary
+
+            conn_info = ''
+            for layer in self.iface.legendInterface().layers():
+               if layer.providerType() == "postgres":
+                   ci = QgsDataSourceURI(layer.source()).connectionInfo()
+                   if not conn_info:
+                       conn_info = ci
+                   elif conn_info != ci:
+                       conn_info = 'heterogeneous'
+            if conn_info == 'heterogeneous':
+                assert(False) # TODO request connection
+
+            uri = QgsDataSourceURI( conn_info )
+            conn = None
+            try:
+                conn = psycopg2.connect(conn_info)
+            except:
+                conn = None
+            if not conn:
+                #print "Case when the pass/user are not saved in the project"
+                (success, user, passwd ) = QgsCredentials.instance().get( connInfo, None, None )
+                if success:
+                    QgsCredentials.instance().put( connInfo, user, passwd )
+                uri.setPassword(passwd)
+                uri.setUsername(user)
+            self.pg_conn_info = uri.connectionInfo()
+
+        return self.pg_conn_info
 
     def onLegendClick(self, current, column=0):
         name = ''
@@ -151,8 +171,7 @@ class Versioning:
                 # check if it's a working copy
                 rev = 0
                 try: 
-                    uri = getPgConnectionInfo( uri )
-                    rev = versioning_base.pg_revision( uri.connectionInfo(), uri.schema() )
+                    rev = versioning_base.pg_revision( self.pgConnInfo(), uri.schema() )
                     selectionType = 'working copy'
                     self.info.setText( uri.database()+' '+uri.schema() +' rev='+str(rev))
                 except:
@@ -272,8 +291,7 @@ class Versioning:
             print 'aborted'
             return
 
-        uri = getPgConnectionInfo( uri )
-        pcur = versioning_base.Db( psycopg2.connect(uri.connectionInfo()) ) 
+        pcur = versioning_base.Db( psycopg2.connect(self.pgConnInfo()) ) 
         pcur.execute("SELECT * FROM "+schema+".revisions WHERE branch = '"+branch+"'") 
         if pcur.fetchone():
             pcur.close()
@@ -318,8 +336,7 @@ class Versioning:
         buttonBox.accepted.connect(d.accept)
         buttonBox.rejected.connect(d.reject)
 
-        uri = getPgConnectionInfo( uri )
-        pcur = versioning_base.Db( psycopg2.connect(uri.connectionInfo()) ) 
+        pcur = versioning_base.Db( psycopg2.connect(self.pgConnInfo()) ) 
         pcur.execute("SELECT rev, commit_msg, branch, date, author FROM "+schema+".revisions") 
         revs = pcur.fetchall()
         pcur.close()
@@ -398,7 +415,7 @@ class Versioning:
         uri = QgsDataSourceURI(layer.source())
 
         if layer.providerType() == "spatialite":
-            versioning_base.update( uri.database() )
+            versioning_base.update( uri.database(), self.pgConnInfo() )
             rev = versioning_base.revision( uri.database() )
         else: # postgres
             versioning_base.pg_update( uri.connectionInfo(), uri.schema() )
@@ -411,16 +428,18 @@ class Versioning:
     def checkout(self):
         """create working copy from versionned database layers"""
         # for each connection, we need the list of tables
-        tables_for_conninfo = {}
+        tables_for_conninfo = []
+        uri = None
+        conn_info = ''
         for layerId in self.currentLayers:
             layer = QgsMapLayerRegistry.instance().mapLayer( layerId )
             uri = QgsDataSourceURI(layer.source())
-            conn_info = uri.connectionInfo()
+            if not conn_info:
+                conn_info = uri.connectionInfo()
+            else:
+                assert(conn_info == uri.connectionInfo())
             table =  uri.schema()+"."+uri.table()
-            if conn_info in tables_for_conninfo: 
-                tables_for_conninfo[conn_info].add(table)
-            else: 
-                tables_for_conninfo[conn_info] = set([table])
+            tables_for_conninfo.append(table)
 
         filename = QFileDialog.getSaveFileName(self.iface.mainWindow(), 'Save Versionned Layers As', '.', '*.sqlite')
         if not filename:
@@ -429,10 +448,8 @@ class Versioning:
 
         if os.path.isfile(filename): os.remove(filename)
 
-        for conn_info, tables in tables_for_conninfo.iteritems():
-            uri = getPgConnectionInfo( QgsDataSourceURI(conn_info) )
-            print "checkin out ", tables, " from ", uri.connectionInfo()
-            versioning_base.checkout( uri.connectionInfo(), list(tables), filename )
+        print "checkin out ", tables_for_conninfo, " from ", uri.connectionInfo()
+        versioning_base.checkout( self.pgConnInfo(), tables_for_conninfo, filename )
         
         # add layers from offline version
         groupName = 'working copy'
@@ -453,16 +470,19 @@ class Versioning:
     def checkout_pg(self):
         """create postgres working copy (schema) from versionned database layers"""
         # for each connection, we need the list of tables
-        tables_for_conninfo = {}
+        tables_for_conninfo = []
+        uri = None
+        conn_info = ''
         for layerId in self.currentLayers:
             layer = QgsMapLayerRegistry.instance().mapLayer( layerId )
-            uri = getPgConnectionInfo(QgsDataSourceURI(layer.source()))
-            conn_info = uri.connectionInfo()
+            uri = QgsDataSourceURI(layer.source())
+            if not conn_info:
+                conn_info = uri.connectionInfo()
+            else:
+                assert(conn_info == uri.connectionInfo())
             table =  uri.schema()+"."+uri.table()
-            if conn_info in tables_for_conninfo: 
-                tables_for_conninfo[conn_info].add(table)
-            else: 
-                tables_for_conninfo[conn_info] = set([table])
+            tables_for_conninfo.append(table)
+
 
         d = QDialog()
         d.setWindowTitle('Enter working copy schema name')
@@ -481,10 +501,8 @@ class Versioning:
             print "aborted"
             return
 
-        for conn_info, tables in tables_for_conninfo.iteritems():
-            uri = getPgConnectionInfo( QgsDataSourceURI(conn_info) )
-            print "checkin out ", tables, " from ", uri.connectionInfo()
-            versioning_base.pg_checkout( uri.connectionInfo(), list(tables), working_copy_schema )
+        print "checkin out ", tables, " from ", uri.connectionInfo()
+        versioning_base.pg_checkout( self.pgConnInfo(), tables_for_conninfo, working_copy_schema )
         
         # add layers from offline version
         groupIdx = self.iface.legendInterface().addGroup( working_copy_schema )
@@ -512,10 +530,9 @@ class Versioning:
 
         lateBy = 0
         if layer.providerType() == "spatialite":
-            lateBy = versioning_base.late( uri.database() )
+            lateBy = versioning_base.late( uri.database(), self.pgConnInfo() )
         else:#postgres
-            uri = getPgConnectionInfo( uri )
-            lateBy = versioning_base.pg_late( uri.connectionInfo(), uri.schema() )
+            lateBy = versioning_base.pg_late( self.pgConnInfo(), uri.schema() )
 
         if lateBy: 
             QMessageBox.warning(self.iface.mainWindow(), "Warning", "This working copy is not up to date (late by "+str(lateBy)+" commit(s)).\n\nPlease update before commiting your modifications")
@@ -533,7 +550,7 @@ class Versioning:
         nb_of_updated_layer = 0
         rev = 0
         if layer.providerType() == "spatialite":
-            nb_of_updated_layer = versioning_base.commit( uri.database(), commit_msg )
+            nb_of_updated_layer = versioning_base.commit( uri.database(), commit_msg, self.pgConnInfo() )
             rev = versioning_base.revision(uri.database())
         else: # postgres
             nb_of_updated_layer = versioning_base.pg_commit(uri.connectionInfo(), uri.schema(), commit_msg )

@@ -29,8 +29,8 @@ scur[0].execute("INSERT INTO pipes_view(id, start_node, end_node, GEOMETRY) VALU
 scur[0].commit()
 
 
-versioning_base.commit( wc[0], 'commit 1 wc0')
-versioning_base.update( wc[1] )
+versioning_base.commit( wc[0], 'commit 1 wc0', "dbname=epanet_test_db")
+versioning_base.update( wc[1], "dbname=epanet_test_db" )
 
 scur[0].execute("UPDATE pipes_view SET length = 1")
 scur[0].commit()
@@ -38,7 +38,7 @@ scur[1].execute("UPDATE pipes_view SET length = 2")
 scur[1].execute("UPDATE pipes_view SET length = 3")
 scur[1].commit()
 
-versioning_base.commit( wc[0], "commit 2 wc0" )
+versioning_base.commit( wc[0], "commit 2 wc0", "dbname=epanet_test_db" )
 scur[0].execute("SELECT OGC_FID,length,trunk_rev_begin,trunk_rev_end,trunk_parent,trunk_child FROM pipes")
 print '################'
 for r in scur[0].fetchall():
@@ -47,14 +47,14 @@ for r in scur[0].fetchall():
 scur[0].execute("UPDATE pipes_view SET length = 2")
 scur[0].execute("DELETE FROM pipes_view WHERE OGC_FID = 6")
 scur[0].commit()
-versioning_base.commit( wc[0], "commit 3 wc0" )
+versioning_base.commit( wc[0], "commit 3 wc0", "dbname=epanet_test_db" )
 
 scur[0].execute("SELECT OGC_FID,length,trunk_rev_begin,trunk_rev_end,trunk_parent,trunk_child FROM pipes")
 print '################'
 for r in scur[0].fetchall():
     print r
 
-versioning_base.update( wc[1] )
+versioning_base.update( wc[1], "dbname=epanet_test_db" )
 
 scur[1].execute("SELECT OGC_FID,length,trunk_rev_begin,trunk_rev_end,trunk_parent,trunk_child FROM pipes_diff")
 print '################ diff'

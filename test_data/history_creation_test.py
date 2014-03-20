@@ -19,6 +19,7 @@ pcur = versioning_base.Db(psycopg2.connect(pg_conn_info))
 pcur.execute("CREATE SCHEMA epanet")
 pcur.execute("""
     CREATE TABLE epanet.junctions (
+        hid serial PRIMARY KEY,
         id varchar,
         elevation float, 
         base_demand_flow float, 
@@ -40,6 +41,7 @@ pcur.execute("""
 
 pcur.execute("""
     CREATE TABLE epanet.pipes (
+        hid serial PRIMARY KEY,
         id varchar,
         start_node varchar,
         end_node varchar,

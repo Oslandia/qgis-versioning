@@ -1,4 +1,5 @@
 CREATE EXTENSION IF NOT EXISTS postgis;
+BEGIN;
 CREATE SCHEMA epanet;
 CREATE TABLE epanet.junctions ("id noeud" varchar, "altitude" float, "demande base" float, "courbe modulation" varchar);
 INSERT INTO epanet.junctions VALUES ('N18b2', 315.67      , 0.0813466016266977, 'DOM_AUDUN');
@@ -4107,3 +4108,29 @@ INSERT INTO epanet.reactions VALUES (
     0,
     0
 );
+
+ALTER TABLE epanet.junctions ADD COLUMN hid serial PRIMARY KEY;
+ALTER TABLE epanet.reservoirs ADD COLUMN hid serial PRIMARY KEY;
+ALTER TABLE epanet.tanks ADD COLUMN hid serial PRIMARY KEY;
+ALTER TABLE epanet.pipes ADD COLUMN hid serial PRIMARY KEY;
+ALTER TABLE epanet.pumps ADD COLUMN hid serial PRIMARY KEY;
+ALTER TABLE epanet.valves ADD COLUMN hid serial PRIMARY KEY;
+ALTER TABLE epanet.demands ADD COLUMN hid serial PRIMARY KEY;
+ALTER TABLE epanet.status ADD COLUMN hid serial PRIMARY KEY;
+ALTER TABLE epanet.patterns ADD COLUMN hid serial PRIMARY KEY;
+ALTER TABLE epanet.curves ADD COLUMN hid serial PRIMARY KEY;
+ALTER TABLE epanet.emitters ADD COLUMN hid serial PRIMARY KEY;
+ALTER TABLE epanet.quality ADD COLUMN hid serial PRIMARY KEY;
+ALTER TABLE epanet.sources ADD COLUMN hid serial PRIMARY KEY;
+ALTER TABLE epanet.mixing ADD COLUMN hid serial PRIMARY KEY;
+ALTER TABLE epanet.coordinates ADD COLUMN hid serial PRIMARY KEY;
+ALTER TABLE epanet.vertices ADD COLUMN hid serial PRIMARY KEY;
+ALTER TABLE epanet.labels ADD COLUMN hid serial PRIMARY KEY;
+ALTER TABLE epanet.times ADD COLUMN hid serial PRIMARY KEY;
+ALTER TABLE epanet.rules ADD COLUMN hid serial PRIMARY KEY;
+ALTER TABLE epanet.energy ADD COLUMN hid serial PRIMARY KEY;
+ALTER TABLE epanet.options ADD COLUMN hid serial PRIMARY KEY;
+ALTER TABLE epanet.report ADD COLUMN hid serial PRIMARY KEY;
+ALTER TABLE epanet.reactions ADD COLUMN hid serial PRIMARY KEY;
+COMMIT;
+

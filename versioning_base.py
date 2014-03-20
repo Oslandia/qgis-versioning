@@ -77,7 +77,9 @@ def pg_pk( db, schema_name, table_name ):
         "WHERE constraint_type = 'PRIMARY KEY' "
         "AND tc.table_schema = '"+schema_name+"' "
         "AND tc.table_name = '"+table_name+"'")
-    [pk] = db.fetchone() if db.hasrow() else ''
+    if not db.hasrow(): 
+        raise RuntimeError("table "+schema_name+"."+table_name+" does not have a primary key")
+    [pk] = db.fetchone()
     return pk;
 
 def unresolvedConflicts(sqlite_filename):

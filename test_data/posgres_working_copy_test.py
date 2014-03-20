@@ -6,7 +6,7 @@ import shutil
 
 def prtTab( cur, tab ):
     print "--- ",tab," ---"
-    pcur.execute("SELECT hid, trunk_rev_begin, trunk_rev_end, trunk_parent, trunk_child, length FROM "+tab)
+    pcur.execute("SELECT pid, trunk_rev_begin, trunk_rev_end, trunk_parent, trunk_child, length FROM "+tab)
     for r in pcur.fetchall():
         t = []
         for i in r: t.append(str(i))
@@ -14,7 +14,7 @@ def prtTab( cur, tab ):
 
 def prtHid( cur, tab ):
     print "--- ",tab," ---"
-    pcur.execute("SELECT hid FROM "+tab)
+    pcur.execute("SELECT pid FROM "+tab)
     for [r] in pcur.fetchall(): print r
 
 test_data_dir = os.path.dirname(os.path.realpath(__file__))
@@ -43,29 +43,29 @@ pcur.commit()
 
 prtHid(pcur, 'epanet_working_copy.pipes_view')
 
-pcur.execute("SELECT hid FROM epanet_working_copy.pipes_view")
+pcur.execute("SELECT pid FROM epanet_working_copy.pipes_view")
 assert( len(pcur.fetchall()) == 3 )
-pcur.execute("SELECT hid FROM epanet_working_copy.pipes_diff")
+pcur.execute("SELECT pid FROM epanet_working_copy.pipes_diff")
 assert( len(pcur.fetchall()) == 2 )
-pcur.execute("SELECT hid FROM epanet.pipes")
+pcur.execute("SELECT pid FROM epanet.pipes")
 assert( len(pcur.fetchall()) == 1 )
 
 
 prtTab(pcur, 'epanet.pipes')
 prtTab(pcur, 'epanet_working_copy.pipes_diff')
-pcur.execute("UPDATE epanet_working_copy.pipes_view SET length = 4 WHERE hid = 1")
+pcur.execute("UPDATE epanet_working_copy.pipes_view SET length = 4 WHERE pid = 1")
 prtTab(pcur, 'epanet_working_copy.pipes_diff')
-pcur.execute("UPDATE epanet_working_copy.pipes_view SET length = 5 WHERE hid = 4")
+pcur.execute("UPDATE epanet_working_copy.pipes_view SET length = 5 WHERE pid = 4")
 prtTab(pcur, 'epanet_working_copy.pipes_diff')
 
-pcur.execute("DELETE FROM epanet_working_copy.pipes_view WHERE hid = 4")
+pcur.execute("DELETE FROM epanet_working_copy.pipes_view WHERE pid = 4")
 pcur.commit()
 prtTab(pcur, 'epanet_working_copy.pipes_diff')
 
 versioning_base.pg_commit("dbname=epanet_test_db", "epanet_working_copy","test commit msg")
 prtTab(pcur, 'epanet.pipes')
 
-pcur.execute("SELECT trunk_rev_end FROM epanet.pipes WHERE hid = 1")
+pcur.execute("SELECT trunk_rev_end FROM epanet.pipes WHERE pid = 1")
 assert( 1 == pcur.fetchone()[0] )
 pcur.execute("SELECT COUNT(*) FROM epanet.pipes WHERE trunk_rev_begin = 2")
 assert( 2 == pcur.fetchone()[0] )
@@ -79,7 +79,7 @@ for r in pcur.fetchall(): print r
 
 prtHid(pcur, 'epanet_working_copy_cflt.pipes_view')
 prtTab(pcur, 'epanet_working_copy_cflt.pipes_diff')
-pcur.execute("UPDATE epanet_working_copy_cflt.pipes_view SET length = 8 WHERE hid = 1")
+pcur.execute("UPDATE epanet_working_copy_cflt.pipes_view SET length = 8 WHERE pid = 1")
 pcur.commit()
 prtTab(pcur, 'epanet.pipes')
 prtTab(pcur, 'epanet_working_copy_cflt.pipes_diff')

@@ -394,12 +394,12 @@ class Versioning:
                 newLayer = self.iface.addVectorLayer(newUri.uri().replace('()',''), display_name, 'postgres')
                 self.iface.legendInterface().moveLayer( newLayer, groupIdx)
 
-    def unresolvedConflicts(self):
+    def unresolved_conflicts(self):
         layer = QgsMapLayerRegistry.instance().mapLayer( self.currentLayers[0] )
         uri = QgsDataSourceURI(layer.source())
 
         if layer.providerType() == "spatialite":
-            unresolved = versioning_base.unresolvedConflicts( uri.database() )
+            unresolved = versioning_base.unresolved_conflicts( uri.database() )
             for c in unresolved:
                 table = c+"_conflicts"
                 if not QgsMapLayerRegistry.instance().mapLayersByName(table):
@@ -407,7 +407,7 @@ class Versioning:
                     geom = '(GEOMETRY)' #if uri.geometryColumn() else ''
                     self.iface.addVectorLayer("dbname="+uri.database()+" key=\"OGC_FID\" table=\""+table+"\" "+geom,table,'spatialite')
         else: #postgres
-            unresolved = versioning_base.pg_unresolvedConflicts( uri.connectionInfo(), uri.schema() )
+            unresolved = versioning_base.pg_unresolved_conflicts( uri.connectionInfo(), uri.schema() )
             for c in unresolved:
                 table = c+"_conflicts"
                 if not QgsMapLayerRegistry.instance().mapLayersByName(table):
@@ -429,7 +429,7 @@ class Versioning:
     def update(self):
         """merge modifiactions since last update into working copy"""
         print "update"
-        if self.unresolvedConflicts(): return
+        if self.unresolved_conflicts(): return
         up_to_date = ""
         layer = QgsMapLayerRegistry.instance().mapLayer( self.currentLayers[0] )
         uri = QgsDataSourceURI(layer.source())
@@ -441,7 +441,7 @@ class Versioning:
             versioning_base.pg_update( uri.connectionInfo(), uri.schema() )
             rev = versioning_base.pg_revision( uri.connectionInfo(), uri.schema() )
 
-        if not self.unresolvedConflicts(): QMessageBox.information( self.iface.mainWindow(), "Notice", "Your are up to date with revision "+str(rev-1)+".")
+        if not self.unresolved_conflicts(): QMessageBox.information( self.iface.mainWindow(), "Notice", "Your are up to date with revision "+str(rev-1)+".")
 
 
 
@@ -584,19 +584,19 @@ class Versioning:
     def commit(self):
         """merge modifiactions into database"""
         print "commit"
-        if self.unresolvedConflicts(): return
+        if self.unresolved_conflicts(): return
 
         layer = QgsMapLayerRegistry.instance().mapLayer( self.currentLayers[0] )
         uri = QgsDataSourceURI(layer.source())
 
-        lateBy = 0
+        late_by = 0
         if layer.providerType() == "spatialite":
-            lateBy = versioning_base.late( uri.database(), self.pgConnInfo() )
+            late_by = versioning_base.late( uri.database(), self.pgConnInfo() )
         else:#postgres
-            lateBy = versioning_base.pg_late( self.pgConnInfo(), uri.schema() )
+            late_by = versioning_base.pg_late( self.pgConnInfo(), uri.schema() )
 
-        if lateBy: 
-            QMessageBox.warning(self.iface.mainWindow(), "Warning", "This working copy is not up to date (late by "+str(lateBy)+" commit(s)).\n\nPlease update before commiting your modifications")
+        if late_by: 
+            QMessageBox.warning(self.iface.mainWindow(), "Warning", "This working copy is not up to date (late by "+str(late_by)+" commit(s)).\n\nPlease update before commiting your modifications")
             print "aborted"
             return
 

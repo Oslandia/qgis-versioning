@@ -1,3 +1,7 @@
+# -*- coding: utf-8 -*-
+""" This module provides functions to version a prostgis DB and interact 
+with this DB. User can checkout a working copy, update and commit.
+"""
 import re
 import os
 import getpass
@@ -6,14 +10,21 @@ import psycopg2
 import codecs
 
 def quote_ident(ident):
-    if ident.find(' '): return '"'+ident+'"'
-    else: return ident
+    """Add quotes around identifier if it contains spaces"""
+    if ident.find(' '):
+        return '"'+ident+'"'
+    else: 
+        return ident
 
 class Db:
+    """Basic wrapper arround DB cursor that allows for logging SQL commands"""
     def __init__(self, con, filename = ''):
+        """The passed connection must be closed with close()"""
         self.con = con
-        if isinstance(con, dbapi2.Connection): self.db_type = 'sp : '
-        else : self.db_type = 'pg : '
+        if isinstance(con, dbapi2.Connection):
+            self.db_type = 'sp : '
+        else : 
+            self.db_type = 'pg : '
         self.cur = self.con.cursor()
         if filename : 
             self.log = codecs.open( filename, 'w', 'utf-8' )
@@ -24,50 +35,64 @@ class Db:
         self._verbose = False
  
     def hasrow(self):
+        """Test if previous execute returned rows"""
         if self._verbose:
             print self.db_type, self.cur.rowcount, ' rows returned'
         return self.cur.rowcount > 0
  
-    def verbose(self, v):
-        self._verbose = v
+    def verbose(self, verbose):
+        """Set verbose level"""
+        self._verbose = verbose
  
     def execute(self, sql):
+        """Execute SQL command"""
         if not self.begun:
             self.begun = True
-            if self._verbose: print self.db_type, 'BEGIN;'
-            if self.log : self.log.write( 'BEGIN;\n')
-        if self._verbose: print self.db_type, sql, ';'
-        if self.log : self.log.write(sql+';\n')
+            if self._verbose:
+                print self.db_type, 'BEGIN;'
+            if self.log :
+                self.log.write( 'BEGIN;\n')
+        if self._verbose:
+            print self.db_type, sql, ';'
+        if self.log :
+            self.log.write(sql+';\n')
         self.cur.execute( sql )
  
     def fetchall(self):
+        """Returns the result of the previous execute as a list of tuples"""
         return self.cur.fetchall()
  
     def fetchone(self):
+        """Returns on row of result of the previous execute as a tuple"""
         return self.cur.fetchone()
  
     def commit(self):
-        if self._verbose: print self.db_type, 'END;'
-        if self.log : self.log.write('END;\n')
+        """Commit previous SQL command to DB, not necessary for SELECT"""
+        if self._verbose:
+            print self.db_type, 'END;'
+        if self.log :
+            self.log.write('END;\n')
         self.begun = False
         self.con.commit()
  
     def close(self):
+        """Close DB connection"""
         if self.begun : 
-            if self._verbose: print self.db_type, 'END;'
-            if self.log : self.log.write('END;\n')
-        if self.log : self.log.write('-- closing connection\n')
+            if self._verbose: 
+                print self.db_type, 'END;'
+            if self.log :
+                self.log.write('END;\n')
+        if self.log : 
+            self.log.write('-- closing connection\n')
         self.con.close()
  
-
-def escapeQuotes(s):
-    return str.replace(str(s),"'","''")
-
 def get_username():
+    """Returns user name"""
     return getpass.getuser()
 
-def pg_pk( db, schema_name, table_name ):
-    db.execute("SELECT c.column_name "
+def pg_pk( cur, schema_name, table_name ):
+    """Fetch the primary key of the specified postgis table"""
+    cur.execute("SELECT c.column_name "
         "FROM information_schema.table_constraints tc "
         "JOIN information_schema.constraint_column_usage AS ccu "
         "USING (constraint_schema, constraint_name) "
@@ -78,20 +103,20 @@ def pg_pk( db, schema_name, table_name ):
         "WHERE constraint_type = 'PRIMARY KEY' "
         "AND tc.table_schema = '"+schema_name+"' "
         "AND tc.table_name = '"+table_name+"'")
-    if not db.hasrow(): 
+    if not cur.hasrow(): 
         raise RuntimeError("table "+schema_name+"."+table_name+
                 " does not have a primary key")
-    [pk] = db.fetchone()
-    return pk
+    [pkey] = cur.fetchone()
+    return pkey
 
-def unresolvedConflicts(sqlite_filename):
+def unresolved_conflicts(sqlite_filename):
     """return a list of tables with unresolved conflicts"""
     found = []
     scur = Db(dbapi2.connect(sqlite_filename))
     scur.execute("SELECT tbl_name FROM sqlite_master "
         "WHERE type='table' AND tbl_name LIKE '%_conflicts'")
     for table_conflicts in scur.fetchall():
-        print 'table_conflicts:',table_conflicts[0]
+        print 'table_conflicts:', table_conflicts[0]
         scur.execute("SELECT * FROM "+table_conflicts[0])
         if scur.fetchone():
             found.append( table_conflicts[0][:-10] )
@@ -121,15 +146,16 @@ def checkout(pg_conn_info, pg_table_names, sqlite_filename):
     for pg_table_name in pg_table_names:
         [schema, table] = pg_table_name.split('.')
         [schema, sep, branch] = schema[:-9].rpartition('_')
+        del sep
 
         # fetch the current rev
         pcur.execute("SELECT MAX(rev) FROM "+schema+".revisions")
         current_rev = int(pcur.fetchone()[0])
 
-        # max pk for this table
+        # max pkey for this table
         pcur.verbose(True)
-        pk = pg_pk( pcur, schema, table )
-        pcur.execute("SELECT MAX("+pk+") FROM "+schema+"."+table)
+        pkey = pg_pk( pcur, schema, table )
+        pcur.execute("SELECT MAX("+pkey+") FROM "+schema+"."+table)
         [max_pg_pk] = pcur.fetchone()
         if not max_pg_pk : max_pg_pk = 0
 
@@ -184,10 +210,10 @@ def checkout(pg_conn_info, pg_table_names, sqlite_filename):
         newcols = ""
         hcols = ['OGC_FID', branch+'_rev_begin', branch+'_rev_end', 
                 branch+'_parent', branch+'_child']
-        for r in scur.fetchall():
-            if r[1] not in hcols : 
-                cols += quote_ident(r[1]) + ", "
-                newcols += "new."+quote_ident(r[1])+", "
+        for res in scur.fetchall():
+            if res[1] not in hcols : 
+                cols += quote_ident(res[1]) + ", "
+                newcols += "new."+quote_ident(res[1])+", "
         cols = cols[:-2]
         newcols = newcols[:-2] # remove last coma
 
@@ -276,7 +302,7 @@ def checkout(pg_conn_info, pg_table_names, sqlite_filename):
 def update(sqlite_filename, pg_conn_info):
     """merge modifications since last update into working copy"""
     print "update"
-    if unresolvedConflicts(sqlite_filename):
+    if unresolved_conflicts(sqlite_filename):
         raise RuntimeError("There are unresolved conflicts in "
                 +sqlite_filename)
     # get the target revision from the spatialite db
@@ -302,18 +328,20 @@ def update(sqlite_filename, pg_conn_info):
             pcur.close()
             continue
 
-        # get the max pk 
-        pk = pg_pk( pcur, table_schema, table )
-        pcur.execute("SELECT MAX("+pk+") FROM "+table_schema+"."+table)
+        # get the max pkey 
+        pkey = pg_pk( pcur, table_schema, table )
+        pcur.execute("SELECT MAX("+pkey+") FROM "+table_schema+"."+table)
         [max_pg_pk] = pcur.fetchone()
-        if not max_pg_pk : max_pg_pk = 0
+        if not max_pg_pk :
+            max_pg_pk = 0
 
         # create the diff
         diff_schema = (table_schema+"_"+branch+"_"+str(rev)+
             "_to_"+str(max_rev)+"_diff")
         pcur.execute("SELECT schema_name FROM information_schema.schemata "
             "WHERE schema_name = '"+diff_schema+"'")
-        if not pcur.fetchone(): pcur.execute("CREATE SCHEMA "+diff_schema)
+        if not pcur.fetchone(): 
+            pcur.execute("CREATE SCHEMA "+diff_schema)
 
         # TODO fix this to remove others branches from cols
         pcur.execute("SELECT column_name "
@@ -341,7 +369,7 @@ def update(sqlite_filename, pg_conn_info):
                 "OR "+branch+"_rev_begin > "+str(rev))
         pcur.execute( "ALTER TABLE "+diff_schema+"."+table+"_diff "
                 "ADD CONSTRAINT "+table+"_"+branch+"_pk_pk "
-                "PRIMARY KEY ("+pk+")") 
+                "PRIMARY KEY ("+pkey+")") 
         pcur.commit()
 
         scur.execute("DROP TABLE IF EXISTS "+table+"_diff")
@@ -384,8 +412,8 @@ def update(sqlite_filename, pg_conn_info):
                 "WHERE "+branch+"_rev_begin = "+str(rev+1))
         
         # we cannot add constrain to the spatialite db in order to have 
-        # spatialite update parent and child when we bump inserted pk 
-        # above the max pk in the diff we must do this manually
+        # spatialite update parent and child when we bump inserted pkey 
+        # above the max pkey in the diff we must do this manually
         bump = max_pg_pk - current_max_pk
         assert( bump >= 0) 
         # now bump the pks of inserted rows in working copy
@@ -397,14 +425,14 @@ def update(sqlite_filename, pg_conn_info):
                 "WHERE "+branch+"_rev_begin = "+str(max_rev+1))
         scur.execute("UPDATE "+table+" "
             "SET OGC_FID = "+str(bump)+"-OGC_FID WHERE OGC_FID < 0")
-        # and bump the pk in the child field
+        # and bump the pkey in the child field
         # not that we don't care for nulls since adding something 
         # to null is null
         scur.execute("UPDATE "+table+" "
                 "SET "+branch+"_child = "+branch+"_child  + "+str(bump)+" "
                 "WHERE "+branch+"_rev_end = "+str(max_rev))
 
-        # detect conflicts: conflict occur if two lines with the same pk have
+        # detect conflicts: conflict occur if two lines with the same pkey have
         # been modified (i.e. have a non null child) or one has been removed
         # and the other modified
         scur.execute("DROP VIEW  IF EXISTS "+table+"_conflicts_ogc_fid")
@@ -540,16 +568,16 @@ def late(sqlite_filename, pg_conn_info):
     if not versioned_layers:
         raise RuntimeError("Cannot find versioned layer in "+sqlite_filename)
 
-    lateBy = 0
+    late_by = 0
 
     for [rev, branch, table_schema, table] in versioned_layers:
         pcur = Db(psycopg2.connect(pg_conn_info))
         pcur.execute("SELECT MAX(rev) FROM "+table_schema+".revisions "
             "WHERE branch = '"+branch+"'")
         [max_rev] = pcur.fetchone()
-        lateBy = max(max_rev - rev, lateBy)
+        late_by = max(max_rev - rev, late_by)
 
-    return lateBy
+    return late_by
 
 def revision( sqlite_filename ):
     """returns the revision the working copy was created from plus one"""
@@ -573,16 +601,16 @@ def commit(sqlite_filename, commit_msg, pg_conn_info):
     # merge changes and update target_revision
     # delete diff
 
-    unresolved = unresolvedConflicts(sqlite_filename)
+    unresolved = unresolved_conflicts(sqlite_filename)
     if unresolved:
         raise RuntimeError("There are unresolved conflicts in "
             +sqlite_filename+" for table(s) "+', '.join(unresolved) )
 
-    lateBy = late(sqlite_filename, pg_conn_info)
-    if lateBy:
+    late_by = late(sqlite_filename, pg_conn_info)
+    if late_by:
         raise RuntimeError("Working copy "+sqlite_filename+
                 " is not up to date. "
-                "It's late by "+str(lateBy)+" commit(s).\n\n"
+                "It's late by "+str(late_by)+" commit(s).\n\n"
                 "Please update before commiting your modifications")
 
     scur = Db(dbapi2.connect(sqlite_filename))
@@ -636,7 +664,7 @@ def commit(sqlite_filename, commit_msg, pg_conn_info):
         scur.commit()
 
         pcur = Db(psycopg2.connect(pg_conn_info))
-        pk = pg_pk( pcur, table_schema, table )
+        pkey = pg_pk( pcur, table_schema, table )
 
         # import layers in postgis schema
         pcur.execute("SELECT schema_name FROM information_schema.schemata "
@@ -651,12 +679,12 @@ def commit(sqlite_filename, commit_msg, pg_conn_info):
                 '-f', 'PostgreSQL', 
                 'PG:"'+pg_conn_info+' active_schema='+diff_schema+'"', 
                 '-lco', 'GEOMETRY_NAME=geom', 
-                '-lco', 'FID='+pk, 
+                '-lco', 'FID='+pkey, 
                 sqlite_filename, table+"_diff"] if geom else ['ogr2ogr', 
                 '-preserve_fid', 
                 '-f', 'PostgreSQL', 
                 'PG:"'+pg_conn_info+' active_schema='+diff_schema+'"', 
-                '-lco', 'FID='+pk, 
+                '-lco', 'FID='+pkey, 
                 sqlite_filename, table+"_diff"]
          
         print ' '.join(cmd)
@@ -707,7 +735,7 @@ def commit(sqlite_filename, commit_msg, pg_conn_info):
                 "SET ("+branch+"_rev_end, "+branch+"_child)"
                 "=(src."+branch+"_rev_end, src."+branch+"_child) "
                 "FROM "+diff_schema+"."+table+"_diff AS src "
-                "WHERE dest."+pk+" = src."+pk+" "
+                "WHERE dest."+pkey+" = src."+pkey+" "
                 "AND src."+branch+"_rev_end = "+str(rev))
         pcur.commit()
         pcur.close()
@@ -717,10 +745,10 @@ def commit(sqlite_filename, commit_msg, pg_conn_info):
     if nb_of_updated_layer:
         for [rev, branch, table_schema, table] in versioned_layers:
             pcur = Db(psycopg2.connect(pg_conn_info))
-            pk = pg_pk( pcur, table_schema, table )
+            pkey = pg_pk( pcur, table_schema, table )
             pcur.execute("SELECT MAX(rev) FROM "+table_schema+".revisions")
             [rev] = pcur.fetchone()
-            pcur.execute("SELECT MAX("+pk+") FROM "+table_schema+"."+table)
+            pcur.execute("SELECT MAX("+pkey+") FROM "+table_schema+"."+table)
             [max_pk] = pcur.fetchone()
             if not max_pk : max_pk = 0
             pcur.close()
@@ -791,7 +819,7 @@ def add_branch( pg_conn_info, schema, branch, commit_msg,
     security = ' WITH (security_barrier)'
     pcur.execute("SELECT version()")
     [version] = pcur.fetchone()
-    m = re.match( '^PostgreSQL (\d+)\.(\d+)\.(\d+) ', version )
+    m = re.match( r'^PostgreSQL (\d+)\.(\d+)\.(\d+) ', version )
     if m and int(m.group(1)) <= 9 and int(m.group(2)) <= 2 : security = ''
 
     pcur.execute("SELECT table_name FROM information_schema.tables "
@@ -799,7 +827,7 @@ def add_branch( pg_conn_info, schema, branch, commit_msg,
     for [table] in pcur.fetchall():
         if table == 'revisions': continue
 
-        pk = pg_pk( pcur, schema, table )
+        pkey = pg_pk( pcur, schema, table )
 
         pcur.execute("ALTER TABLE "+schema+"."+table+" "
             "ADD COLUMN "+branch+"_rev_begin integer "
@@ -807,9 +835,9 @@ def add_branch( pg_conn_info, schema, branch, commit_msg,
             "ADD COLUMN "+branch+"_rev_end   integer "
             "REFERENCES "+schema+".revisions(rev), "
             "ADD COLUMN "+branch+"_parent    integer "
-            "REFERENCES "+schema+"."+table+"("+pk+"),"
+            "REFERENCES "+schema+"."+table+"("+pkey+"),"
             "ADD COLUMN "+branch+"_child     integer "
-            "REFERENCES "+schema+"."+table+"("+pk+")")
+            "REFERENCES "+schema+"."+table+"("+pkey+")")
         if branch == 'trunk': # initial versioning
             pcur.execute("UPDATE "+schema+"."+table+" "
                 "SET "+branch+"_rev_begin = (SELECT MAX(rev) "
@@ -875,7 +903,7 @@ def add_revision_view(pg_conn_info, schema, branch, rev):
     security = ' WITH (security_barrier)'
     pcur.execute("SELECT version()")
     [version] = pcur.fetchone()
-    m = re.match( '^PostgreSQL (\d+)\.(\d+)\.(\d+) ', version )
+    m = re.match( r'^PostgreSQL (\d+)\.(\d+)\.(\d+) ', version )
     if m and int(m.group(1)) <= 9 and int(m.group(2)) <= 2 : security = ''
 
     pcur.execute("CREATE SCHEMA "+rev_schema)
@@ -952,8 +980,8 @@ def pg_checkout(pg_conn_info, pg_table_names, working_copy_schema):
         [schema, table] = pg_table_name.split('.')
         [schema, sep, branch] = schema[:-9].rpartition('_')
 
-        pk = pg_pk( pcur, schema, table )
-        history_columns = [pk] 
+        pkey = pg_pk( pcur, schema, table )
+        history_columns = [pkey] 
         pcur.execute("SELECT DISTINCT branch FROM "+schema+".revisions")
         for [b] in pcur.fetchall():
             history_columns.extend([b+'_rev_end', b+'_rev_begin', 
@@ -963,8 +991,8 @@ def pg_checkout(pg_conn_info, pg_table_names, working_copy_schema):
         pcur.execute("SELECT MAX(rev) FROM "+schema+".revisions")
         current_rev = int(pcur.fetchone()[0])
 
-        # max pk for this table
-        pcur.execute("SELECT MAX("+pk+") FROM "+schema+"."+table)
+        # max pkey for this table
+        pcur.execute("SELECT MAX("+pkey+") FROM "+schema+"."+table)
         [max_pg_pk] = pcur.fetchone()
         if not max_pg_pk : max_pg_pk = 0
         if first_table:
@@ -994,41 +1022,41 @@ def pg_checkout(pg_conn_info, pg_table_names, working_copy_schema):
                 newcols = "new."+quote_ident(c)+", "+newcols
         cols = cols[:-2] 
         newcols = newcols[:-2] # remove last coma and space
-        hcols = (pk+", "+branch+"_rev_begin, "+branch+"_rev_end, "
+        hcols = (pkey+", "+branch+"_rev_begin, "+branch+"_rev_end, "
                 +branch+"_parent, "+branch+"_child")
 
         pcur.execute("CREATE TABLE "+wcs+"."+table+"_diff "
                 "AS SELECT "+cols+" FROM "+schema+"."+table+" WHERE False")
 
         pcur.execute("ALTER TABLE "+wcs+"."+table+"_diff "
-            "ADD COLUMN "+pk+" integer PRIMARY KEY, "
+            "ADD COLUMN "+pkey+" integer PRIMARY KEY, "
             "ADD COLUMN "+branch+"_rev_begin integer, "
             "ADD COLUMN "+branch+"_rev_end   integer, "
             "ADD COLUMN "+branch+"_parent    integer,"
             "ADD COLUMN "+branch+"_child     integer "
-            "REFERENCES "+wcs+"."+table+"_diff("+pk+") "
+            "REFERENCES "+wcs+"."+table+"_diff("+pkey+") "
             "ON UPDATE CASCADE ON DELETE CASCADE")
 
 
         current_rev_sub = "(SELECT MAX(rev) FROM "+wcs+".initial_revision)"
         pcur.execute("CREATE VIEW "+wcs+"."+table+"_view AS "
-                "SELECT "+pk+", "+cols+" "
+                "SELECT "+pkey+", "+cols+" "
                 "FROM (SELECT "+cols+", "+hcols+" FROM "+wcs+"."+table+"_diff "
                         "WHERE "+branch+"_rev_end IS NULL "
                         "OR "+branch+"_rev_end >= "+current_rev_sub+"+1 "
                         "UNION "
-                        "(SELECT DISTINCT ON ("+pk+") "+cols+", t."+hcols+" "
+                        "(SELECT DISTINCT ON ("+pkey+") "+cols+", t."+hcols+" "
                         "FROM "+schema+"."+table+" AS t "
-                        "LEFT JOIN (SELECT "+pk+" FROM "+wcs+"."+table+"_diff) "
+                        "LEFT JOIN (SELECT "+pkey+" FROM "+wcs+"."+table+"_diff) "
                         "AS d "
-                        "ON t."+pk+" = d."+pk+" "
-                        "WHERE d."+pk+" IS NULL "
+                        "ON t."+pkey+" = d."+pkey+" "
+                        "WHERE d."+pkey+" IS NULL "
                         "AND t."+branch+"_rev_begin <= "+current_rev_sub+" "
                         "AND (t."+branch+"_rev_end IS NULL "
                             "OR t."+branch+"_rev_end >= "+current_rev_sub+"))"
                         ") AS src ")
 
-        max_fid_sub = ("( SELECT MAX(max_fid) FROM ( SELECT MAX("+pk+") "
+        max_fid_sub = ("( SELECT MAX(max_fid) FROM ( SELECT MAX("+pkey+") "
             "AS max_fid FROM "+wcs+"."+table+"_diff "
             "UNION SELECT max_pk AS max_fid "
             "FROM "+wcs+".initial_revision "
@@ -1047,11 +1075,11 @@ def pg_checkout(pg_conn_info, pg_table_names, working_copy_schema):
                 # when we edit something we already added , we just update
                 "UPDATE "+wcs+"."+table+"_diff "
                 "SET ("+cols+") = ("+newcols+") "
-                "WHERE "+pk+" = OLD."+pk+" "
+                "WHERE "+pkey+" = OLD."+pkey+" "
                 "AND "+branch+"_rev_begin = "+current_rev_sub+"+1 "
                 "AND "
                 "(SELECT COUNT(*) FROM "+schema+"."+table+" "
-                    "WHERE "+pk+" = OLD."+pk+" "
+                    "WHERE "+pkey+" = OLD."+pkey+" "
                     "AND "+branch+"_rev_begin <= "+current_rev_sub+" "
                     "AND ("+branch+"_rev_end IS NULL "
                         "OR "+branch+"_rev_end >= "+current_rev_sub+" ) "
@@ -1059,24 +1087,24 @@ def pg_checkout(pg_conn_info, pg_table_names, working_copy_schema):
 
                 # insert the parent in diff if not already there
                 "INSERT INTO "+wcs+"."+table+"_diff "
-                "("+cols+", "+pk+", "+branch+"_rev_begin, "
+                "("+cols+", "+pkey+", "+branch+"_rev_begin, "
                     +branch+"_rev_end, "+branch+"_parent ) "
-                "SELECT "+cols+", "+pk+", "+branch+"_rev_begin, "
+                "SELECT "+cols+", "+pkey+", "+branch+"_rev_begin, "
                     +branch+"_rev_end, "+branch+"_parent "
                 "FROM "+schema+"."+table+" "
-                "WHERE "+pk+" = OLD."+pk+" "
+                "WHERE "+pkey+" = OLD."+pkey+" "
                 "AND "+branch+"_rev_begin <= "+current_rev_sub+" "
                 "AND (SELECT COUNT(*) FROM "+wcs+"."+table+"_diff "
-                    "WHERE "+pk+" = OLD."+pk+" "
+                    "WHERE "+pkey+" = OLD."+pkey+" "
                     "AND "+branch+"_rev_end = "+current_rev_sub+" ) = 0 ;"
 
                 # when we edit something old, we insert new
                 "INSERT INTO "+wcs+"."+table+"_diff "
-                "("+pk+", "+cols+", "+branch+"_rev_begin, "+branch+"_parent) "
+                "("+pkey+", "+cols+", "+branch+"_rev_begin, "+branch+"_parent) "
                 "SELECT "+max_fid_sub+"+1, "+newcols+", "
-                    +current_rev_sub+"+1, OLD."+pk+" "
+                    +current_rev_sub+"+1, OLD."+pkey+" "
                 "WHERE (SELECT COUNT(*) FROM "+schema+"."+table+" "
-                    "WHERE "+pk+" = OLD."+pk+" "
+                    "WHERE "+pkey+" = OLD."+pkey+" "
                     "AND "+branch+"_rev_begin <= "+current_rev_sub+" "
                     "AND ("+branch+"_rev_end IS NULL "
                         "OR "+branch+"_rev_end >= "+current_rev_sub+" ) "
@@ -1087,9 +1115,9 @@ def pg_checkout(pg_conn_info, pg_table_names, working_copy_schema):
                 "UPDATE "+wcs+"."+table+"_diff "
                     "SET ("+branch+"_rev_end, "+branch+"_child) "
                     "= ("+current_rev_sub+", "+max_fid_sub+") "
-                    "WHERE "+pk+" = OLD."+pk+" "
+                    "WHERE "+pkey+" = OLD."+pkey+" "
                     "AND (SELECT COUNT(*) FROM "+schema+"."+table+" "
-                    "WHERE "+pk+" = OLD."+pk+" "
+                    "WHERE "+pkey+" = OLD."+pkey+" "
                     "AND "+branch+"_rev_begin <= "+current_rev_sub+" "
                     "AND ("+branch+"_rev_end IS NULL "
                         "OR "+branch+"_rev_end >= "+current_rev_sub+")) = 1;\n"
@@ -1105,7 +1133,7 @@ def pg_checkout(pg_conn_info, pg_table_names, working_copy_schema):
         "RETURNS trigger AS $$\n"
             "BEGIN\n"
                 "INSERT INTO "+wcs+"."+table+"_diff "+ 
-                    "("+pk+", "+cols+", "+branch+"_rev_begin) "
+                    "("+pkey+", "+cols+", "+branch+"_rev_begin) "
                     "VALUES "
                     "("+max_fid_sub+"+1, "+newcols+", "+current_rev_sub+"+1);\n"
                 "RETURN NULL;\n"
@@ -1122,28 +1150,28 @@ def pg_checkout(pg_conn_info, pg_table_names, working_copy_schema):
                 # insert if not already in diff
                 "INSERT INTO "+wcs+"."+table+"_diff "
                     "SELECT "+cols+", "+hcols+" FROM epanet."+table+" "
-                    "WHERE "+pk+" = OLD."+pk+" "
+                    "WHERE "+pkey+" = OLD."+pkey+" "
                     "AND (SELECT COUNT(*) FROM "+wcs+"."+table+"_diff "
-                    "WHERE "+pk+" = OLD."+pk+") = 0;\n"
+                    "WHERE "+pkey+" = OLD."+pkey+") = 0;\n"
                 # update if it comes from table (not diff)
                 "UPDATE "+wcs+"."+table+"_diff "
                     "SET "+branch+"_rev_end = "+current_rev_sub+" "
-                    "WHERE "+pk+" = OLD."+pk+" "
+                    "WHERE "+pkey+" = OLD."+pkey+" "
                     "AND (SELECT COUNT(*) FROM  "+schema+"."+table+" "
-                    "WHERE "+pk+" = OLD."+pk+") = 1; "
+                    "WHERE "+pkey+" = OLD."+pkey+") = 1; "
 
                 # if its just in diff, remove it from child
                 "UPDATE "+wcs+"."+table+"_diff "
                     "SET "+branch+"_child = NULL "
-                    "WHERE "+branch+"_child = OLD."+pk+" "
+                    "WHERE "+branch+"_child = OLD."+pkey+" "
                     "AND (SELECT COUNT(*) FROM  "+schema+"."+table+" "
-                    "WHERE "+pk+" = OLD."+pk+") = 0;\n"
+                    "WHERE "+pkey+" = OLD."+pkey+") = 0;\n"
 
                 # if it's just in diff, delete it
                 "DELETE FROM  "+wcs+"."+table+"_diff "
-                    "WHERE "+pk+" = OLD."+pk+" "
+                    "WHERE "+pkey+" = OLD."+pkey+" "
                     "AND (SELECT COUNT(*) FROM  "+schema+"."+table+" "
-                    "WHERE "+pk+" = OLD."+pk+") = 0;\n"
+                    "WHERE "+pkey+" = OLD."+pkey+") = 0;\n"
                 "RETURN NULL;\n"
             "END;\n"
         "$$ LANGUAGE plpgsql;")
@@ -1159,7 +1187,7 @@ def pg_update(pg_conn_info, working_copy_schema):
     """merge modifiactions since last update into working copy"""
     print "update"
     wcs = working_copy_schema
-    if pg_unresolvedConflicts(pg_conn_info, wcs):
+    if pg_unresolved_conflicts(pg_conn_info, wcs):
         raise RuntimeError("There are unresolved conflicts in "+wcs)
 
     # create the diff from previous
@@ -1182,9 +1210,9 @@ def pg_update(pg_conn_info, working_copy_schema):
                 "in "+table_schema+"."+table+" since last update")
             continue
 
-        # get the max pk 
-        pk = pg_pk( pcur, table_schema, table )
-        pcur.execute("SELECT MAX("+pk+") FROM "+table_schema+"."+table)
+        # get the max pkey 
+        pkey = pg_pk( pcur, table_schema, table )
+        pcur.execute("SELECT MAX("+pkey+") FROM "+table_schema+"."+table)
         [max_pg_pk] = pcur.fetchone()
         if not max_pg_pk : max_pg_pk = 0
         
@@ -1215,7 +1243,7 @@ def pg_update(pg_conn_info, working_copy_schema):
                 "OR "+branch+"_rev_begin > "+str(rev))
         pcur.execute( "ALTER TABLE "+wcs+"."+table+"_update_diff "
                 "ADD CONSTRAINT "+table+"_"+branch+"_pk_pk "
-                "PRIMARY KEY ("+pk+")") 
+                "PRIMARY KEY ("+pkey+")") 
 
         # update the initial revision 
         pcur.execute("UPDATE "+wcs+".initial_revision "
@@ -1234,18 +1262,18 @@ def pg_update(pg_conn_info, working_copy_schema):
         # now bump the pks of inserted rows in working copy
         # parents will be updated thanks to the ON UPDATE CASCADE
         pcur.execute("UPDATE "+wcs+"."+table+"_diff "
-                "SET "+pk+" = "+pk+" + "+str(bump)+" "
+                "SET "+pkey+" = "+pkey+" + "+str(bump)+" "
                 "WHERE "+branch+"_rev_begin = "+str(max_rev+1))
 
-        # detect conflicts: conflict occur if two lines with the same pk have
+        # detect conflicts: conflict occur if two lines with the same pkey have
         # been modified (i.e. have a non null child) or one has been removed
         # and the other modified
         pcur.execute("DROP VIEW IF EXISTS "+wcs+"."+table+"_conflicts_pk")
         pcur.execute("CREATE VIEW "+wcs+"."+table+"_conflicts_pk AS "
-            "SELECT DISTINCT d."+pk+" as conflict_deleted_pk "
+            "SELECT DISTINCT d."+pkey+" as conflict_deleted_pk "
             "FROM "+wcs+"."+table+"_diff AS d, "
                 +wcs+"."+table+"_update_diff AS ud "
-            "WHERE d."+pk+" = ud."+pk+" "
+            "WHERE d."+pkey+" = ud."+pkey+" "
                 "AND (d."+branch+"_child != ud."+branch+"_child "
                 "OR (d."+branch+"_child IS NULL "
                     "AND ud."+branch+"_child IS NOT NULL) "
@@ -1264,25 +1292,25 @@ def pg_update(pg_conn_info, working_copy_schema):
                     "'modified' AS action, "+cols+geom+" "
                 "FROM "+wcs+"."+table+"_diff, "
                     +wcs+"."+table+"_conflicts_pk AS cflt "
-                "WHERE "+pk+" = (SELECT "+branch+"_child "
+                "WHERE "+pkey+" = (SELECT "+branch+"_child "
                                 "FROM "+wcs+"."+table+"_diff "
-                                "WHERE "+pk+" = conflict_deleted_pk) "
+                                "WHERE "+pkey+" = conflict_deleted_pk) "
                 "UNION ALL "
                 # insert new features from theirs
                 "SELECT "+branch+"_parent AS conflict_id, 'theirs' AS origin, "
                     "'modified' AS action, "+cols+geom+" "
                 "FROM "+wcs+"."+table+"_update_diff "+", "
                     +wcs+"."+table+"_conflicts_pk AS cflt "
-                "WHERE "+pk+" = (SELECT "+branch+"_child "
+                "WHERE "+pkey+" = (SELECT "+branch+"_child "
                                 "FROM "+wcs+"."+table+"_update_diff "
-                                "WHERE "+pk+" = conflict_deleted_pk) "
+                                "WHERE "+pkey+" = conflict_deleted_pk) "
                  # insert deleted features from mine
                 "UNION ALL "
                 "SELECT "+branch+"_parent AS conflict_id, 'mine' AS origin, "
                     "'deleted' AS action, "+cols+geom+" "
                 "FROM "+wcs+"."+table+"_diff, "
                     +wcs+"."+table+"_conflicts_pk AS cflt "
-                "WHERE "+pk+" = conflict_deleted_pk "
+                "WHERE "+pkey+" = conflict_deleted_pk "
                 "AND "+branch+"_child IS NULL "
                  # insert deleted features from theirs
                 "UNION ALL "
@@ -1290,18 +1318,18 @@ def pg_update(pg_conn_info, working_copy_schema):
                     "'deleted' AS action, "+cols+geom+" "
                 "FROM "+wcs+"."+table+"_update_diff, "
                     +wcs+"."+table+"_conflicts_pk AS cflt "
-                "WHERE "+pk+" = conflict_deleted_pk "
+                "WHERE "+pkey+" = conflict_deleted_pk "
                 "AND "+branch+"_child IS NULL" )
 
             # identify conflicts for deleted 
             pcur.execute("UPDATE "+wcs+"."+table+"_cflt "
-                "SET conflict_id = "+pk+" "+ "WHERE action = 'deleted'")
+                "SET conflict_id = "+pkey+" "+ "WHERE action = 'deleted'")
 
             # now follow child if any for 'theirs' 'modified' 
             # since several edition could be made
             # we want the very last child
             while True:
-                pcur.execute("SELECT conflict_id, "+pk+", "+branch+"_child "
+                pcur.execute("SELECT conflict_id, "+pkey+", "+branch+"_child "
                     "FROM "+wcs+"."+table+"_cflt "
                     "WHERE origin='theirs' "
                     "AND action='modified' "
@@ -1311,18 +1339,18 @@ def pg_update(pg_conn_info, working_copy_schema):
                 # replaces each entries by it's child
                 for [cflt_id, fid, child] in r:
                     pcur.execute("DELETE FROM "+wcs+"."+table+"_cflt "
-                        "WHERE "+pk+" = "+str(fid))
+                        "WHERE "+pkey+" = "+str(fid))
                     pcur.execute("INSERT INTO "+wcs+"."+table+"_cflt "
                         "SELECT "+str(cflt_id)+" AS conflict_id, "
                             "'theirs' AS origin, 'modified' AS action, "
                             +cols+" FROM "+wcs+"."+table+"_update_diff "
-                        "WHERE "+pk+" = "+str(child)+" "
+                        "WHERE "+pkey+" = "+str(child)+" "
                         "AND "+branch+"_rev_end IS NULL" )
                     pcur.execute("INSERT INTO "+wcs+"."+table+"_cflt "
                         "SELECT "+str(cflt_id)+" AS conflict_id, "
                             "'theirs' AS origin, 'deleted' AS action, "
                             +cols+" FROM "+wcs+"."+table+"_update_diff "
-                        "WHERE "+pk+" = "+str(child)+" "
+                        "WHERE "+pkey+" = "+str(child)+" "
                         "AND "+branch+"_rev_end IS NOT NULL" )
 
             # create trigers such that on delete the conflict is resolved
@@ -1347,28 +1375,28 @@ def pg_update(pg_conn_info, working_copy_schema):
                 +wcs+".delete_"+table+"_conflicts() RETURNS trigger AS $$\n"
                 "BEGIN\n"
                     "DELETE FROM "+wcs+"."+table+"_diff "
-                    "WHERE "+pk+" = OLD."+pk+" AND OLD.origin = 'mine';\n"
+                    "WHERE "+pkey+" = OLD."+pkey+" AND OLD.origin = 'mine';\n"
 
                     # we need to insert their parent to update it 
                     # if it's not already there
                     "INSERT INTO "+wcs+"."+table+"_diff("+cols+") "
                     "SELECT "+cols+" FROM "+table_schema+"."+table+" "
-                    "WHERE "+pk+" = OLD."+branch+"_parent "
+                    "WHERE "+pkey+" = OLD."+branch+"_parent "
                     "AND OLD.origin = 'theirs' "
                     "AND (SELECT COUNT(*) FROM "+wcs+"."+table+"_diff "
-                        "WHERE "+pk+" =  OLD."+branch+"_parent ) = 0;\n"
+                        "WHERE "+pkey+" =  OLD."+branch+"_parent ) = 0;\n"
 
                     "UPDATE "+wcs+"."+table+"_diff "
-                    "SET "+branch+"_child = (SELECT "+pk+" "
+                    "SET "+branch+"_child = (SELECT "+pkey+" "
                                           "FROM "+wcs+"."+table+"_cflt "
                                           "WHERE origin = 'mine' "
                                           "AND conflict_id = OLD.conflict_id), "
                           +branch+"_rev_end = "+str(max_rev)+" "
-                    "WHERE "+pk+" = OLD."+pk+" AND OLD.origin = 'theirs';\n"
+                    "WHERE "+pkey+" = OLD."+pkey+" AND OLD.origin = 'theirs';\n"
 
                     "UPDATE "+wcs+"."+table+"_diff "
-                    "SET "+branch+"_parent = OLD."+pk+" "
-                    "WHERE "+pk+" = (SELECT "+pk+" FROM "+wcs+"."+table+"_cflt "
+                    "SET "+branch+"_parent = OLD."+pkey+" "
+                    "WHERE "+pkey+" = (SELECT "+pkey+" FROM "+wcs+"."+table+"_cflt "
                                     "WHERE origin = 'mine' "
                                     "AND conflict_id = OLD.conflict_id) "
                     "AND OLD.origin = 'theirs';\n"
@@ -1390,7 +1418,7 @@ def pg_update(pg_conn_info, working_copy_schema):
 
             pcur.execute("ALTER TABLE "+wcs+"."+table+"_cflt "
                 "ADD CONSTRAINT "+table+"_"+branch+"conflicts_pk_pk "
-                "PRIMARY KEY ("+pk+")")
+                "PRIMARY KEY ("+pkey+")")
 
     pcur.commit()
     pcur.close()
@@ -1400,15 +1428,15 @@ def pg_commit(pg_conn_info, working_copy_schema, commit_msg):
     returns the number of updated layers"""
     wcs = working_copy_schema
 
-    unresolved = pg_unresolvedConflicts(pg_conn_info, wcs)
+    unresolved = pg_unresolved_conflicts(pg_conn_info, wcs)
     if unresolved: 
         raise RuntimeError("There are unresolved conflicts in "+wcs+" "
             "for table(s) "+', '.join(unresolved) )
 
-    lateBy = pg_late(pg_conn_info, wcs)
-    if lateBy:
+    late_by = pg_late(pg_conn_info, wcs)
+    if late_by:
         raise RuntimeError("Working copy "+working_copy_schema+" "
-            "is not up to date. It's late by "+str(lateBy)+" commit(s).\n\n"
+            "is not up to date. It's late by "+str(late_by)+" commit(s).\n\n"
             "Please update before commiting your modifications")
 
     pcur = Db(psycopg2.connect(pg_conn_info))
@@ -1426,8 +1454,8 @@ def pg_commit(pg_conn_info, working_copy_schema, commit_msg):
         if next_rev: assert( next_rev == rev + 1 )
         else: next_rev = rev + 1
 
-        pk = pg_pk( pcur, table_schema, table )
-        history_columns = [pk] 
+        pkey = pg_pk( pcur, table_schema, table )
+        history_columns = [pkey] 
         pcur.execute("SELECT DISTINCT branch FROM "+table_schema+".revisions")
         for [b] in pcur.fetchall():
             history_columns.extend([b+'_rev_end', b+'_rev_begin', 
@@ -1441,10 +1469,10 @@ def pg_commit(pg_conn_info, working_copy_schema, commit_msg):
             if c not in history_columns:
                 cols = quote_ident(c)+", "+cols
         cols = cols[:-2] # remove last coma and space
-        hcols = (pk+", "+branch+"_rev_begin, "+branch+"_rev_end, "
+        hcols = (pkey+", "+branch+"_rev_begin, "+branch+"_rev_end, "
                 +branch+"_parent, "+branch+"_child")
 
-        pcur.execute( "SELECT "+pk+" FROM "+wcs+"."+table+"_diff")
+        pcur.execute( "SELECT "+pkey+" FROM "+wcs+"."+table+"_diff")
         there_is_something_to_commit = pcur.fetchone()
 
         if not there_is_something_to_commit: 
@@ -1472,7 +1500,7 @@ def pg_commit(pg_conn_info, working_copy_schema, commit_msg):
                 "SET ("+branch+"_rev_end, "+branch+"_child)"
                     "=(src."+branch+"_rev_end, src."+branch+"_child) "
                 "FROM "+wcs+"."+table+"_diff AS src "
-                "WHERE dest."+pk+" = src."+pk+" "
+                "WHERE dest."+pkey+" = src."+pkey+" "
                 "AND src."+branch+"_rev_end = "+str(rev))
 
         # clears the diff
@@ -1481,11 +1509,11 @@ def pg_commit(pg_conn_info, working_copy_schema, commit_msg):
 
     if nb_of_updated_layer:
         for [rev, branch, table_schema, table] in versioned_layers:
-            pk = pg_pk( pcur, table_schema, table )
+            pkey = pg_pk( pcur, table_schema, table )
             pcur.execute("UPDATE "+wcs+".initial_revision "
                 "SET (rev, max_pk) "
                 "= ((SELECT MAX(rev) FROM "+table_schema+".revisions), "
-                    "(SELECT MAX("+pk+") FROM "+table_schema+"."+table+")) "
+                    "(SELECT MAX("+pkey+") FROM "+table_schema+"."+table+")) "
                 "WHERE table_schema = '"+table_schema+"' "
                 "AND table_name = '"+table+"' "
                 "AND branch = '"+branch+"'")
@@ -1494,7 +1522,7 @@ def pg_commit(pg_conn_info, working_copy_schema, commit_msg):
     pcur.close()
     return nb_of_updated_layer
 
-def pg_unresolvedConflicts(pg_conn_info, working_copy_schema):
+def pg_unresolved_conflicts(pg_conn_info, working_copy_schema):
     """return a list of tables with unresolved conflicts"""
     found = []
     pcur = Db(psycopg2.connect(pg_conn_info))
@@ -1521,15 +1549,15 @@ def pg_late(pg_conn_info, working_copy_schema):
         raise RuntimeError("Cannot find versioned layer in "
                 +working_copy_schema)
 
-    lateBy = 0
+    late_by = 0
 
     for [rev, branch, table_schema, table] in versioned_layers:
         pcur.execute("SELECT MAX(rev) FROM "+table_schema+".revisions "
             "WHERE branch = '"+branch+"'")
         [max_rev] = pcur.fetchone()
-        lateBy = max(max_rev - rev, lateBy)
+        late_by = max(max_rev - rev, late_by)
 
-    return lateBy
+    return late_by
 
 def pg_revision( pg_conn_info, working_copy_schema ):
     """returns the revision the working copy was created from plus one"""

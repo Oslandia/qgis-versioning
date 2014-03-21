@@ -9,6 +9,10 @@ from pyspatialite import dbapi2
 import psycopg2
 import codecs
 
+def escape_quote(msg):
+    """quote single quotes"""
+    return str.replace(str(msg),"'","''");
+
 def quote_ident(ident):
     """Add quotes around identifier if it contains spaces"""
     if ident.find(' '):
@@ -153,7 +157,6 @@ def checkout(pg_conn_info, pg_table_names, sqlite_filename):
         current_rev = int(pcur.fetchone()[0])
 
         # max pkey for this table
-        pcur.verbose(True)
         pkey = pg_pk( pcur, schema, table )
         pcur.execute("SELECT MAX("+pkey+") FROM "+schema+"."+table)
         [max_pg_pk] = pcur.fetchone()
@@ -169,7 +172,7 @@ def checkout(pg_conn_info, pg_table_names, sqlite_filename):
                 '-dsco', 'SPATIALITE=yes',
                 sqlite_filename,
                 'PG:"'+pg_conn_info+' active_schema='+schema+'"', table]
-            print ' '.join(cmd)
+            #print ' '.join(cmd)
             os.system(' '.join(cmd))
 
             # save target revision in a table
@@ -190,12 +193,11 @@ def checkout(pg_conn_info, pg_table_names, sqlite_filename):
                     '-update',
                     sqlite_filename,
                     'PG:"'+pg_conn_info+' active_schema='+schema+'"', table]
-            print ' '.join(cmd)
+            #print ' '.join(cmd)
             os.system(' '.join(cmd))
 
             # save target revision in a table if not in there
             scur = Db(dbapi2.connect(sqlite_filename))
-            scur.verbose(True)
             scur.execute("INSERT INTO initial_revision"
                     "(rev, branch, table_schema, table_name, max_pk) "
                     "VALUES ("+str(current_rev)+", '"+branch+"', '"+
@@ -716,7 +718,7 @@ def commit(sqlite_filename, commit_msg, pg_conn_info):
             print "inserting rev ", str(rev+1)
             pcur.execute("INSERT INTO "+table_schema+".revisions "
                 "(rev, commit_msg, branch, author) "
-                "VALUES ("+str(rev+1)+", '"+commit_msg+"', '"+branch+"',"
+                "VALUES ("+str(rev+1)+", '"+escape_quote(commit_msg)+"', '"+branch+"',"
                 "'"+get_username()+"')")
 
         # TODO fix this to avoid hcols from other branches
@@ -780,6 +782,8 @@ def commit(sqlite_filename, commit_msg, pg_conn_info):
 
 def historize( pg_conn_info, schema ):
     """Create historisation for the given schema"""
+    if not schema:
+        raise RuntimeError("no schema specified")
     pcur = Db(psycopg2.connect(pg_conn_info))
 
     pcur.execute("CREATE TABLE "+schema+".revisions ("
@@ -811,12 +815,15 @@ def add_branch( pg_conn_info, schema, branch, commit_msg,
         raise RuntimeError("Base branch "+base_branch+" doesn't exist")
     pcur.execute("SELECT MAX(rev) FROM "+schema+".revisions")
     [max_rev] = pcur.fetchone()
+    if not max_rev: 
+        max_rev = 0
     if base_rev != 'head' and (int(base_rev) > max_rev or int(base_rev) <= 0):
         pcur.close()
         raise RuntimeError("Revision "+str(base_rev)+" doesn't exist")
+    print 'max rev = ', max_rev
 
-    pcur.execute("INSERT INTO "+schema+".revisions(branch, commit_msg ) "
-        "VALUES ('"+branch+"', '"+commit_msg+"')")
+    pcur.execute("INSERT INTO "+schema+".revisions(rev, branch, commit_msg ) "
+        "VALUES ("+str(max_rev+1)+", '"+branch+"', '"+escape_quote(commit_msg)+"')")
     pcur.execute("CREATE SCHEMA "+schema+"_"+branch+"_rev_head")
 
     history_columns = []
@@ -1511,8 +1518,8 @@ def pg_commit(pg_conn_info, working_copy_schema, commit_msg):
             print "inserting rev ", str(rev+1)
             pcur.execute("INSERT INTO "+table_schema+".revisions "
                 "(rev, commit_msg, branch, author) "
-                "VALUES ("+str(rev+1)+", '"+commit_msg+"', "
-                    "'"+branch+"', '"+get_username()+"')")
+                "VALUES ("+str(rev+1)+", '"+escape_quote(commit_msg)+
+                "', '"+branch+"', '"+get_username()+"')")
 
         # insert inserted and modified
         pcur.execute("INSERT INTO "+table_schema+"."+table+" "

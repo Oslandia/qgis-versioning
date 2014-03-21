@@ -13,7 +13,7 @@ tmp_dir = "/tmp"
 os.system("dropdb epanet_test_db")
 os.system("createdb epanet_test_db")
 os.system("psql epanet_test_db -c 'CREATE EXTENSION postgis'")
-os.system("psql epanet_test_db -f "+test_data_dir+"/../html/epanet_test_db.sql")
+os.system("psql epanet_test_db -f "+test_data_dir+"/epanet_test_db.sql")
 
 # try the update
 wc = [tmp_dir+"/issue357_wc0.sqlite", tmp_dir+"/issue357_wc1.sqlite"]

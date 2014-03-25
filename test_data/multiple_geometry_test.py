@@ -105,7 +105,19 @@ assert( res[1][1] == 'POLYGON((0 0,2 0,2 2,0 2,0 0))' )
 wc = tmp_dir+'/wc_multiple_geometry_test.sqlite'
 if os.path.isfile(wc): os.remove(wc) 
 versioning_base.checkout( pg_conn_info, ['epanet_trunk_rev_head.pipes','epanet_trunk_rev_head.junctions'], wc )
-pcur.close()
 
+
+scur = versioning_base.Db( dbapi2.connect(wc) )
+scur.execute("UPDATE junctions_view SET GEOMETRY = GeometryFromText('POINT(3 3)',2154)")
+scur.commit()
+scur.close()
+versioning_base.commit( wc, 'a commit msg', 'dbname=epanet_test_db' )
+
+pcur.execute("SELECT ST_AsText(geometry), ST_AsText(geometry_schematic) FROM epanet_trunk_rev_head.junctions")
+res = pcur.fetchall()
+for r in res: print r
+assert( res[0][0] == 'POINT(3 3)' )
+assert( res[1][1] == 'POLYGON((0 0,2 0,2 2,0 2,0 0))' )
+pcur.close()
 
 

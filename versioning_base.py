@@ -113,15 +113,35 @@ def pg_pk( cur, schema_name, table_name ):
     [pkey] = cur.fetchone()
     return pkey
 
-def pg_geom( cur, schema_name, table_name ):
-    """Fetch the first geometry column of the specified postgis table, empty string if none"""
+def pg_geoms( cur, schema_name, table_name ):
+    """Fetch the list of geometry column of the specified postgis table, empty if none"""
     cur.execute("SELECT f_geometry_column FROM geometry_columns "
         "WHERE f_table_schema = '"+schema_name+"' "
-        "AND f_table_name = '"+table_name+"' LIMIT 1")
-    if not cur.hasrow():
+        "AND f_table_name = '"+table_name+"'")
+    return [ geo[0] for geo in cur.fetchall() ]
+
+def pg_geom( cur, schema_name, table_name ):
+    """Fetch the first geometry column of the specified postgis table, empty string if none"""
+    geoms = pg_geoms( cur, schema_name, table_name )
+    if not geoms:
         return ''
-    [geom] = cur.fetchone()
-    return geom
+    elif len(geoms) == 1:
+        return geoms[0]
+    elif 'VERSIONING_GEOMETRY_COLUMN' in os.environ:
+        if os.environ['VERSIONING_GEOMETRY_COLUMN'] in geoms:
+            return os.environ['VERSIONING_GEOMETRY_COLUMN']
+        else:
+            raise RuntimeError('more than one geometry column in '
+                +schema_name+'.'+table_name+' but none is '
+                +os.environ['VERSIONING_GEOMETRY_COLUMN']+
+                ' (i.e. the value of VERSIONING_GEOMETRY_COLUMN) ')
+    elif 'geometry' in geoms:
+        return 'geometry'
+    else:
+        raise RuntimeError('more than one geometry column in '
+            +schema_name+'.'+table_name+
+            ' but the environment variable VERSIONING_GEOMETRY_COLUMN '
+            'is not defined and the geometry column name is not geometry')
 
 def unresolved_conflicts(sqlite_filename):
     """return a list of tables with unresolved conflicts"""
@@ -739,6 +759,30 @@ def commit(sqlite_filename, commit_msg, pg_conn_info):
                 "VALUES ("+str(rev+1)+", '"+escape_quote(commit_msg)+"', '"+branch+"',"
                 "'"+get_username()+"')")
 
+        # TODO remove when ogr2ogr will be able to convert multiple geom column
+        # from postgis to spatialite
+        geoms = pg_geoms( pcur, table_schema, table )
+        if len(geoms) > 1:
+            dest_geom = ''
+            src_geom = ''
+            for geo in geoms:
+                if geo != pgeom:
+                    dest_geom += geo+', '
+                    src_geom += 'src.'+geo+', '
+            dest_geom = dest_geom[:-2]
+            src_geom = src_geom[:-2]
+            pgeom = pg_geom( pcur, table_schema, table )
+            pcur.execute("SELECT AddGeometryColumn('"+diff_schema+"', '"+table+"_diff', "
+                "'"+geo+"', srid, type, coord_dimension) FROM geometry_columns "
+                "WHERE f_table_name = '"+table+"' "
+                "AND f_table_schema = '"+table_schema+"' "
+                "AND f_geometry_column != '"+pgeom+"'")  
+            pcur.execute("UPDATE "+diff_schema+"."+table+"_diff AS dest "
+                "SET ("+dest_geom+") =  ("+src_geom+") " 
+                "FROM "+table_schema+"."+table+" AS src "
+                "WHERE dest."+branch+"_rev_begin = "+str(rev+1)+" "
+                "AND src."+pkey+" = dest."+branch+"_parent")
+
         # TODO fix this to avoid hcols from other branches
         pcur.execute("SELECT column_name, data_type "
                 "FROM information_schema.columns "
@@ -756,7 +800,7 @@ def commit(sqlite_filename, commit_msg, pg_conn_info):
         pcur.execute("INSERT INTO "+table_schema+"."+table+" ("+cols+") "
             "SELECT "+cols_cast+" FROM "+diff_schema+"."+table+"_diff "
             "WHERE "+branch+"_rev_begin = "+str(rev+1))
-
+        
         # update deleted and modified
         pcur.execute("UPDATE "+table_schema+"."+table+" AS dest "
                 "SET ("+branch+"_rev_end, "+branch+"_child)"
@@ -764,6 +808,7 @@ def commit(sqlite_filename, commit_msg, pg_conn_info):
                 "FROM "+diff_schema+"."+table+"_diff AS src "
                 "WHERE dest."+pkey+" = src."+pkey+" "
                 "AND src."+branch+"_rev_end = "+str(rev))
+
         pcur.commit()
         pcur.close()
 

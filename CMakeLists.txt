@@ -22,6 +22,7 @@ add_custom_command( OUTPUT commit_msg_ui.py
 
 add_custom_target(qgis_plugin ALL DEPENDS commit_msg_ui.py ${Files})
 
+add_test(versioning_base_test ../test_data/versioning_base_test.py)
 add_test(issue287_test ../test_data/issue287_test.py)
 add_test(issue358_test ../test_data/issue358_test.py)
 add_test(issue357_test ../test_data/issue357_test.py)

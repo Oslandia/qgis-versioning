@@ -4,8 +4,11 @@ from pyspatialite import dbapi2
 import psycopg2
 import os
 
-sqlite_test_filename1 = "versioning_base_test1.sqlite"
-sqlite_test_filename2 = "versioning_base_test2.sqlite"
+tmp_dir = "/tmp"
+test_data_dir = os.path.dirname(os.path.realpath(__file__))
+
+sqlite_test_filename1 = tmp_dir+"/versioning_base_test1.sqlite"
+sqlite_test_filename2 = tmp_dir+"/versioning_base_test2.sqlite"
 if os.path.isfile(sqlite_test_filename1): os.remove(sqlite_test_filename1)
 if os.path.isfile(sqlite_test_filename2): os.remove(sqlite_test_filename2)
 
@@ -14,7 +17,7 @@ if os.path.isfile(sqlite_test_filename2): os.remove(sqlite_test_filename2)
 os.system("dropdb epanet_test_db")
 os.system("createdb epanet_test_db")
 os.system("psql epanet_test_db -c 'CREATE EXTENSION postgis'")
-os.system("psql epanet_test_db -f html/epanet_test_db.sql")
+os.system("psql epanet_test_db -f "+test_data_dir+"/epanet_test_db.sql")
 
 # chechout two tables
 
@@ -43,7 +46,7 @@ scon.commit()
 scur.execute("SELECT COUNT(*) FROM junctions")
 assert( scur.fetchone()[0] == 3 )
 scon.close()
-versioning_base.commit(sqlite_test_filename1, 'first test commit')
+versioning_base.commit(sqlite_test_filename1, 'first test commit', "dbname=epanet_test_db")
 pcon = psycopg2.connect("dbname=epanet_test_db")
 pcur = pcon.cursor()
 pcur.execute("SELECT COUNT(*) FROM epanet.junctions")

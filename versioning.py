@@ -71,6 +71,9 @@ class Versioning:
         # but nothing else is available to get a selected group in the legend
         self.legend = self.iface.mainWindow().findChild( QTreeWidget,
                                                          'theMapLegend' )
+        self.legend.itemClicked.connect(self.on_legend_click)
+        self.legend.itemChanged.connect(self.on_legend_click)
+
 
     def pg_conn_info(self):
         """returns current postgis versionned DB connection info
@@ -233,9 +236,6 @@ class Versioning:
         self.actions.append( self.iface.addToolBarWidget( self.info ) )
 
         # we could have a checkbox to either replace/add layers
-
-        self.legend.itemClicked.connect(self.on_legend_click)
-        self.legend.itemChanged.connect(self.on_legend_click)
 
         self.actions.append( QAction(
             QIcon(os.path.dirname(__file__) + "/historize.svg"),
@@ -584,6 +584,7 @@ class Versioning:
                     " key=\"OGC_FID\" table=\""+table+"_view\" "
                     +geom,display_name, 'spatialite')
             self.iface.legendInterface().moveLayer( new_layer, grp_idx)
+        self.iface.legendInterface().setGroupExpanded( grp_idx, True )
 
 
     def checkout_pg(self):

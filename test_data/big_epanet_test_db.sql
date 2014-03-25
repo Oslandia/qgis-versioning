@@ -335,7 +335,7 @@ INSERT INTO epanet.tanks VALUES ('KATZENBERG', 390.25      , 3.24        , 0    
 INSERT INTO epanet.tanks VALUES ('RUSSANGE', 351.3       , 2.84        , 0           , 3.3         , 10.92548    , 0           , '');
 --ALTER TABLE epanet.tanks ADD COLUMN fid serial PRIMARY KEY;
 ALTER TABLE epanet.tanks ADD COLUMN geom geometry(POINT,27582);
-CREATE TABLE epanet.pipes ("id arc" varchar, "noeud1" varchar, "noeud2" varchar, "longueur" float, "Diamètre" float, "Rugosité" float, "persing" float, "État" varchar);
+CREATE TABLE epanet.pipes ("id arc" varchar, "noeud1" varchar, "noeud2" varchar, "longueur" float, "diamètre" float, "rugosité" float, "persing" float, "état" varchar);
 INSERT INTO epanet.pipes VALUES ('T1a36', 'N17ea', 'N1886', 215.21      , 150.00      , 0.1         , 0           , 'Open');
 INSERT INTO epanet.pipes VALUES ('Q_CptRussange', 'N1856', 'N1865', 114.21      , 100.00      , 0.1         , 60          , 'Open');
 INSERT INTO epanet.pipes VALUES ('T19d3', 'N1840', 'N1887', 134.70      , 150.00      , 0.1         , 0           , 'Open');

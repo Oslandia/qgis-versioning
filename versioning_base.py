@@ -113,6 +113,16 @@ def pg_pk( cur, schema_name, table_name ):
     [pkey] = cur.fetchone()
     return pkey
 
+def pg_geom( cur, schema_name, table_name ):
+    """Fetch the first geometry column of the specified postgis table, empty string if none"""
+    cur.execute("SELECT f_geometry_column FROM geometry_columns "
+        "WHERE f_table_schema = '"+schema_name+"' "
+        "AND f_table_name = '"+table_name+"' LIMIT 1")
+    if not cur.hasrow():
+        return ''
+    [geom] = cur.fetchone()
+    return geom
+
 def unresolved_conflicts(sqlite_filename):
     """return a list of tables with unresolved conflicts"""
     found = []
@@ -333,6 +343,7 @@ def update(sqlite_filename, pg_conn_info):
 
         # get the max pkey
         pkey = pg_pk( pcur, table_schema, table )
+        pgeom = pg_geom( pcur, table_schema, table )
         pcur.execute("SELECT MAX("+pkey+") FROM "+table_schema+"."+table)
         [max_pg_pk] = pcur.fetchone()
         if not max_pg_pk :
@@ -353,19 +364,19 @@ def update(sqlite_filename, pg_conn_info):
                 "AND table_name = '"+table+"'")
         cols = ""
         for col in pcur.fetchall():
-            if col[0] != "geom":
+            if col[0] != pgeom:
                 cols += quote_ident(col[0])+", "
         cols = cols[:-2] # remove last coma and space
 
         pcur.execute("SELECT srid, type "
             "FROM geometry_columns "
             "WHERE f_table_schema = '"+table_schema+
-            "' AND f_table_name ='"+table+"' AND f_geometry_column = 'geom'")
+            "' AND f_table_name ='"+table+"' AND f_geometry_column = '"+pgeom+"'")
         srid_type = pcur.fetchone()
         [srid, geom_type] = srid_type if srid_type else [None, None]
         pcur.execute( "DROP TABLE IF EXISTS "+diff_schema+"."+table+"_diff")
-        geom = (", geom::geometry('"+geom_type+"', "+str(srid)+") "
-            "AS geom") if srid else ''
+        geom = (", "+pgeom+"::geometry('"+geom_type+"', "+str(srid)+") "
+            "AS "+pgeom) if pgeom else ''
         pcur.execute( "CREATE TABLE "+diff_schema+"."+table+"_diff AS "
                 "SELECT "+cols+geom+" "
                 "FROM "+table_schema+"."+table+" "
@@ -674,6 +685,7 @@ def commit(sqlite_filename, commit_msg, pg_conn_info):
 
         pcur = Db(psycopg2.connect(pg_conn_info))
         pkey = pg_pk( pcur, table_schema, table )
+        pgeom = pg_geom( pcur, table_schema, table )
 
         # import layers in postgis schema
         pcur.execute("SELECT schema_name FROM information_schema.schemata "
@@ -685,16 +697,22 @@ def commit(sqlite_filename, commit_msg, pg_conn_info):
         pcur.commit()
         cmd = ['ogr2ogr',
                 '-preserve_fid',
-                '-f', 'PostgreSQL',
+                '-f', 
+                'PostgreSQL',
                 'PG:"'+pg_conn_info+' active_schema='+diff_schema+'"',
-                '-lco', 'GEOMETRY_NAME=geom',
-                '-lco', 'FID='+pkey,
+                '-lco',
+                'FID='+pkey,
                 sqlite_filename, table+"_diff"] if geom else ['ogr2ogr',
                 '-preserve_fid',
-                '-f', 'PostgreSQL',
+                '-f', 
+                'PostgreSQL',
                 'PG:"'+pg_conn_info+' active_schema='+diff_schema+'"',
-                '-lco', 'FID='+pkey,
+                '-lco', 
+                'FID='+pkey,
                 sqlite_filename, table+"_diff"]
+        if pgeom:
+            cmd.insert(5, '-lco')
+            cmd.insert(6, 'GEOMETRY_NAME='+pgeom)
 
         print ' '.join(cmd)
         os.system(' '.join(cmd))
@@ -1240,6 +1258,7 @@ def pg_update(pg_conn_info, working_copy_schema):
 
         # get the max pkey
         pkey = pg_pk( pcur, table_schema, table )
+        pgeom = pg_geom( pcur, table_schema, table )
         pcur.execute("SELECT MAX("+pkey+") FROM "+table_schema+"."+table)
         [max_pg_pk] = pcur.fetchone()
         if not max_pg_pk :
@@ -1252,20 +1271,20 @@ def pg_update(pg_conn_info, working_copy_schema):
                 "AND table_name = '"+table+"'")
         cols = ""
         for col in pcur.fetchall():
-            if col[0] != "geom":
+            if col[0] != pgeom:
                 cols += quote_ident(col[0])+", "
         cols = cols[:-2] # remove last coma and space
 
         pcur.execute("SELECT srid, type "
             "FROM geometry_columns "
             "WHERE f_table_schema = '"+table_schema+"' "
-            "AND f_table_name ='"+table+"' AND f_geometry_column = 'geom'")
+            "AND f_table_name ='"+table+"' AND f_geometry_column = '"+pgeom+"'")
         srid_type = pcur.fetchone()
         [srid, geom_type] = srid_type if srid_type else [None, None]
         pcur.execute( "DROP TABLE IF EXISTS "+wcs+"."+table+"_update_diff "
             "CASCADE")
-        geom = (", geom::geometry('"+geom_type+"', "+str(srid)+") "
-            "AS geom") if srid else ''
+        geom = (", "+pgeom+"::geometry('"+geom_type+"', "+str(srid)+") "
+            "AS "+pgeom) if pgeom else ''
         pcur.execute( "CREATE TABLE "+wcs+"."+table+"_update_diff AS "
                 "SELECT "+cols+geom+" "
                 "FROM "+table_schema+"."+table+" "
@@ -1311,7 +1330,7 @@ def pg_update(pg_conn_info, working_copy_schema):
                     "AND ud."+branch+"_child IS NULL)) ")
         pcur.execute("SELECT conflict_deleted_pk "
             "FROM  "+wcs+"."+table+"_conflicts_pk" )
-        geom = ', geom' if geom else ''
+        geom = ', '+pgeom if pgeom else ''
         if pcur.fetchone():
             print "there are conflicts"
             # add layer for conflicts

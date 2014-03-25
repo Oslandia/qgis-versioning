@@ -32,3 +32,4 @@ add_test(posgres_working_copy_bug_in_view_test ../test_data/posgres_working_copy
 add_test(posgres_working_copy_bug_in_conflict_test ../test_data/posgres_working_copy_bug_in_conflict_test.py)
 add_test(history_creation_big_epanet_test ../test_data/history_creation_big_epanet_test.py)
 add_test(bug_in_branch_after_commit ../test_data/bug_in_branch_after_commit.py)
+add_test(multiple_geometry_test ../test_data/multiple_geometry_test.py)

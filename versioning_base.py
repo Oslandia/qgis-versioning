@@ -113,6 +113,23 @@ def pg_pk( cur, schema_name, table_name ):
     [pkey] = cur.fetchone()
     return pkey
 
+def pg_array_elem_type( cur, schema, table, column ):
+    """Fetch type of elements of a column of type ARRAY"""
+    cur.execute("SELECT e.data_type FROM information_schema.columns c "
+        "LEFT JOIN information_schema.element_types e "
+        "ON ((c.table_catalog, c.table_schema, c.table_name, "
+            "'TABLE', c.dtd_identifier) "
+        "= (e.object_catalog, e.object_schema, e.object_name, "
+            "e.object_type, e.collection_type_identifier)) "
+        "WHERE c.table_schema = '"+schema+"' "
+        "AND c.table_name = '"+table+"' "
+        "AND c.column_name = '"+column+"'")
+    if not cur.hasrow():
+        raise RuntimeError('column '+column+' of '
+                +schema+'.'+table+' is not an ARRAY')
+    [res] = cur.fetchone()
+    return res
+
 def pg_geoms( cur, schema_name, table_name ):
     """Fetch the list of geometry column of the specified postgis table, empty if none"""
     cur.execute("SELECT f_geometry_column FROM geometry_columns "
@@ -803,8 +820,14 @@ def commit(sqlite_filename, commit_msg, pg_conn_info):
         for col in pcur.fetchall():
             if col[0] not in other_branches_columns:
                 cols += quote_ident(col[0])+", "
-                cast = "::"+col[1] if col[1] != 'USER-DEFINED' and col[1] != 'ARRAY' else ""
-                cols_cast += quote_ident(col[0])+cast+", "
+                if col[1] != 'ARRAY':
+                    cast = "::"+col[1] if col[1] != 'USER-DEFINED' else ""
+                    cols_cast += quote_ident(col[0])+cast+", "
+                else :
+                    cols_cast += ("regexp_replace(regexp_replace("
+                            +col[0]+",'^\(.*:','{'),'\)$','}')::"
+                            +pg_array_elem_type(pcur, 
+                                table_schema, table, col[0])+"[], ")
         cols = cols[:-2] # remove last coma and space
         cols_cast = cols_cast[:-2] # remove last coma and space
         # insert inserted and modified

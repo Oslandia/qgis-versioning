@@ -241,8 +241,8 @@ def checkout(pg_conn_info, pg_table_names, sqlite_filename):
         scur.execute("PRAGMA table_info("+table+")")
         cols = ""
         newcols = ""
-        hcols = ['OGC_FID', branch+'_rev_begin', branch+'_rev_end',
-                branch+'_parent', branch+'_child']
+        hcols = ['OGC_FID'] + sum([[brch+'_rev_begin', brch+'_rev_end',
+                brch+'_parent', brch+'_child'] for brch in pg_branches( pcur, schema ) ],[])
         for res in scur.fetchall():
             if res[1] not in hcols :
                 cols += quote_ident(res[1]) + ", "
@@ -377,14 +377,19 @@ def update(sqlite_filename, pg_conn_info):
         if not pcur.fetchone():
             pcur.execute("CREATE SCHEMA "+diff_schema)
 
-        # TODO fix this to remove others branches from cols
+        other_branches = pg_branches( pcur, table_schema ).remove(branch)
+        other_branches = other_branches if other_branches else []
+        other_branches_columns = sum([ 
+            [brch+'_rev_begin', brch+'_rev_end', 
+            brch+'_parent', brch+'_child'] 
+            for brch in other_branches], [])
         pcur.execute("SELECT column_name "
                 "FROM information_schema.columns "
                 "WHERE table_schema = '"+table_schema+"' "
                 "AND table_name = '"+table+"'")
         cols = ""
         for col in pcur.fetchall():
-            if col[0] != pgeom:
+            if col[0] != pgeom and col[0] not in other_branches_columns:
                 cols += quote_ident(col[0])+", "
         cols = cols[:-2] # remove last coma and space
 
@@ -783,7 +788,12 @@ def commit(sqlite_filename, commit_msg, pg_conn_info):
                 "WHERE dest."+branch+"_rev_begin = "+str(rev+1)+" "
                 "AND src."+pkey+" = dest."+branch+"_parent")
 
-        # TODO fix this to avoid hcols from other branches
+        other_branches = pg_branches( pcur, table_schema ).remove(branch)
+        other_branches = other_branches if other_branches else []
+        other_branches_columns = sum([ 
+            [brch+'_rev_begin', brch+'_rev_end', 
+            brch+'_parent', brch+'_child'] 
+            for brch in other_branches], [])
         pcur.execute("SELECT column_name, data_type "
                 "FROM information_schema.columns "
                 "WHERE table_schema = '"+table_schema+"' "
@@ -791,9 +801,10 @@ def commit(sqlite_filename, commit_msg, pg_conn_info):
         cols = ""
         cols_cast = ""
         for col in pcur.fetchall():
-            cols += quote_ident(col[0])+", "
-            cast = "::"+col[1] if col[1] != 'USER-DEFINED' else ""
-            cols_cast += quote_ident(col[0])+cast+", "
+            if col[0] not in other_branches_columns:
+                cols += quote_ident(col[0])+", "
+                cast = "::"+col[1] if col[1] != 'USER-DEFINED' and col[1] != 'ARRAY' else ""
+                cols_cast += quote_ident(col[0])+cast+", "
         cols = cols[:-2] # remove last coma and space
         cols_cast = cols_cast[:-2] # remove last coma and space
         # insert inserted and modified
@@ -801,7 +812,7 @@ def commit(sqlite_filename, commit_msg, pg_conn_info):
             "SELECT "+cols_cast+" FROM "+diff_schema+"."+table+"_diff "
             "WHERE "+branch+"_rev_begin = "+str(rev+1))
         
-        # update deleted and modified
+        # apdate deleted and modified
         pcur.execute("UPDATE "+table_schema+"."+table+" AS dest "
                 "SET ("+branch+"_rev_end, "+branch+"_child)"
                 "=(src."+branch+"_rev_end, src."+branch+"_child) "
@@ -889,11 +900,9 @@ def add_branch( pg_conn_info, schema, branch, commit_msg,
         "VALUES ("+str(max_rev+1)+", '"+branch+"', '"+escape_quote(commit_msg)+"')")
     pcur.execute("CREATE SCHEMA "+schema+"_"+branch+"_rev_head")
 
-    history_columns = []
-    pcur.execute("SELECT DISTINCT branch FROM "+schema+".revisions")
-    for [brch] in pcur.fetchall():
-        history_columns.extend([brch+'_rev_end', brch+'_rev_begin',
-                                brch+'_child', brch+'_parent'])
+    history_columns = sum([
+        [brch+'_rev_end', brch+'_rev_begin',
+        brch+'_child', brch+'_parent' ] for brch in pg_branches( pcur, schema )],[])
 
     security = ' WITH (security_barrier)'
     pcur.execute("SELECT version()")
@@ -977,11 +986,9 @@ def add_revision_view(pg_conn_info, schema, branch, rev):
         pcur.close()
         raise RuntimeError("Revision "+str(rev)+" doesn't exist")
 
-    history_columns = []
-    pcur.execute("SELECT DISTINCT branch FROM "+schema+".revisions")
-    for [brch] in pcur.fetchall():
-        history_columns.extend([brch+'_rev_end', brch+'_rev_begin',
-                                brch+'_child', brch+'_parent'])
+    history_columns = sum([
+        [brch+'_rev_end', brch+'_rev_begin',
+        brch+'_child', brch+'_parent' ] for brch in pg_branches( pcur, schema )],[])
 
     rev_schema = schema+"_"+branch+"_rev_"+str(rev)
 
@@ -1001,7 +1008,8 @@ def add_revision_view(pg_conn_info, schema, branch, rev):
     pcur.execute("CREATE SCHEMA "+rev_schema)
 
     pcur.execute("SELECT table_name FROM information_schema.tables "
-        "WHERE table_schema = '"+schema+"'")
+        "WHERE table_schema = '"+schema+"' "
+        "AND table_type = 'BASE TABLE'")
 
     for [table] in pcur.fetchall():
         if table == 'revisions':
@@ -1024,15 +1032,10 @@ def add_revision_view(pg_conn_info, schema, branch, rev):
     pcur.commit()
     pcur.close()
 
-def branches(pg_conn_info, schema):
+def pg_branches(pcur, schema):
     """returns a list of branches for this schema"""
-    pcur = Db(psycopg2.connect(pg_conn_info))
     pcur.execute("SELECT DISTINCT branch FROM "+schema+".revisions")
-    brch = []
-    for [res] in pcur.fetchall():
-        brch.append(res)
-    pcur.close()
-    return brch
+    return [ res for [res] in pcur.fetchall() ]
 
 def revisions(pg_conn_info, schema):
     """returns a list of revisions for this schema"""
@@ -1079,11 +1082,9 @@ def pg_checkout(pg_conn_info, pg_table_names, working_copy_schema):
         del sep
 
         pkey = pg_pk( pcur, schema, table )
-        history_columns = [pkey]
-        pcur.execute("SELECT DISTINCT branch FROM "+schema+".revisions")
-        for [brch] in pcur.fetchall():
-            history_columns.extend([brch+'_rev_end', brch+'_rev_begin',
-                                    brch+'_child', brch+'_parent'])
+        history_columns = [pkey] + sum([
+            [brch+'_rev_end', brch+'_rev_begin',
+            brch+'_child', brch+'_parent' ] for brch in pg_branches( pcur, schema )],[])
 
         # fetch the current rev
         pcur.execute("SELECT MAX(rev) FROM "+schema+".revisions")
@@ -1559,11 +1560,9 @@ def pg_commit(pg_conn_info, working_copy_schema, commit_msg):
         else: next_rev = rev + 1
 
         pkey = pg_pk( pcur, table_schema, table )
-        history_columns = [pkey]
-        pcur.execute("SELECT DISTINCT branch FROM "+table_schema+".revisions")
-        for [brch] in pcur.fetchall():
-            history_columns.extend([brch+'_rev_end', brch+'_rev_begin',
-                                    brch+'_child', brch+'_parent'])
+        history_columns = [pkey] + sum([
+            [brch+'_rev_end', brch+'_rev_begin',
+            brch+'_child', brch+'_parent' ] for brch in pg_branches( pcur, table_schema )],[])
         pcur.execute("SELECT column_name "
                 "FROM information_schema.columns "
                 "WHERE table_schema = '"+table_schema+"' "

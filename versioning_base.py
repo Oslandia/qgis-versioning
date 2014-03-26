@@ -902,13 +902,21 @@ def add_branch( pg_conn_info, schema, branch, commit_msg,
     if mtch and int(mtch.group(1)) <= 9 and int(mtch.group(2)) <= 2 :
         security = ''
 
+    # note: do not version views
     pcur.execute("SELECT table_name FROM information_schema.tables "
-        "WHERE table_schema = '"+schema+"'")
+        "WHERE table_schema = '"+schema+"' "
+        "AND table_type = 'BASE TABLE'")
     for [table] in pcur.fetchall():
         if table == 'revisions':
             continue
 
-        pkey = pg_pk( pcur, schema, table )
+        try:
+            pkey = pg_pk( pcur, schema, table )
+        except:
+            if 'VERSIONING_NO_PK' in os.environ and os.environ['VERSIONING_NO_PK'] == 'skip':
+                print schema+'.'+table+' has no primary key, skipping'
+            else:
+                raise RuntimeError(schema+'.'+table+' has no primary key')
 
         pcur.execute("ALTER TABLE "+schema+"."+table+" "
             "ADD COLUMN "+branch+"_rev_begin integer "

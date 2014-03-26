@@ -269,7 +269,8 @@ def checkout(pg_conn_info, pg_table_names, sqlite_filename):
 
         scur.execute( "CREATE VIEW "+table+"_view "+"AS "
             "SELECT ROWID AS ROWID, OGC_FID, "+cols+" "
-            "FROM "+table+" WHERE "+branch+"_rev_end IS NULL")
+            "FROM "+table+" WHERE "+branch+"_rev_end IS NULL "
+            "AND "+branch+"_rev_begin IS NOT NULL")
 
         max_fid_sub = ("( SELECT MAX(max_fid) FROM ( SELECT MAX(OGC_FID) AS "
             "max_fid FROM "+table+" UNION SELECT max_pk AS max_fid "
@@ -1165,8 +1166,9 @@ def pg_checkout(pg_conn_info, pg_table_names, working_copy_schema):
         pcur.execute("CREATE VIEW "+wcs+"."+table+"_view AS "
                 "SELECT "+pkey+", "+cols+" "
                 "FROM (SELECT "+cols+", "+hcols+" FROM "+wcs+"."+table+"_diff "
-                        "WHERE "+branch+"_rev_end IS NULL "
-                        "OR "+branch+"_rev_end >= "+current_rev_sub+"+1 "
+                        "WHERE ("+branch+"_rev_end IS NULL "
+                        "OR "+branch+"_rev_end >= "+current_rev_sub+"+1 ) "
+                        "AND "+branch+"_rev_begin IS NOT NULL "
                         "UNION "
                         "(SELECT DISTINCT ON ("+pkey+") "+cols+", t."+hcols+" "
                         "FROM "+schema+"."+table+" AS t "
@@ -1175,8 +1177,9 @@ def pg_checkout(pg_conn_info, pg_table_names, working_copy_schema):
                         "ON t."+pkey+" = d."+pkey+" "
                         "WHERE d."+pkey+" IS NULL "
                         "AND t."+branch+"_rev_begin <= "+current_rev_sub+" "
-                        "AND (t."+branch+"_rev_end IS NULL "
-                            "OR t."+branch+"_rev_end >= "+current_rev_sub+"))"
+                        "AND ((t."+branch+"_rev_end IS NULL "
+                            "OR t."+branch+"_rev_end >= "+current_rev_sub+") "
+                            "AND t."+branch+"_rev_begin IS NOT NULL ))"
                         ") AS src ")
 
         max_fid_sub = ("( SELECT MAX(max_fid) FROM ( SELECT MAX("+pkey+") "

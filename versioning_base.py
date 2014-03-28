@@ -363,7 +363,7 @@ def update(sqlite_filename, pg_conn_info):
     # merge changes and update target_revision
     # delete diff
 
-    scur = Db(dbapi2.connect(sqlite_filename),'update_spatialite_log.sql')
+    scur = Db(dbapi2.connect(sqlite_filename))
     scur.execute("SELECT rev, branch, table_schema, table_name, max_pk "
         "FROM initial_revision")
     versioned_layers = scur.fetchall()

@@ -1,37 +1,33 @@
 Versioning
 ==========
 
-Create a versionned database
-----------------------------
-
-cd /appropriate/path/to/valcea/versioning
-createdb valcea
-psql valcea -c 'create extension postgis'
-psql valcea -f epanet_test_db.sql
-
 Build and install the qgis plugin
 ---------------------------------
 
-cd /appropriate/path/to/valcea/versioning
-mkdir build
-cd build
-cmake .. && make
-ln -s $PWD $HOME/.qgis2/python/plugins/versioning
+    cd
+    git clone https://github.com/Oslandia/qgis-versioning.git
+    cd .qgis2/python/plugins/ 
+    mkdir qgis-versioning
+    cd qgis-versioning
+    cmake $HOME/qgis-versioning && make
+
+If you have admin acces to a local postgres/postis server, you can run the regression tests:
+    
+    export PYTHONPATH=$PWD
+    make test
 
 Use the plugin in qgis
 ----------------------
 
-Once the test database have been created, open qgis.
+Check that the plugin 'qgis-versioning' is activated in the plugin manager.
 
-Activate the plugin 'versioning' in the plugin manager.
+Load posgis layers from a scheme you want to version.
 
-Load a posgis layer from the schema epanet_trunk_rev_head of test database.
+Group postgis layers together. Select the group and click on the historize button in the plugin toolbar (make sure the toolbar is displayed). The layers will be replaced by their view in the head revision
 
-Click on the 'checkout' icon (either in the plugin menu or in the plugin toolbar). Choose a file to save your layers locally.
+Click on the group and then on the 'checkout' button. Choose a file to save your layers locally.
 
 Modify your layers.
 
 Click on the 'commit' icon.
-
-Please note that you must be able to access the database without password for the moment.
 

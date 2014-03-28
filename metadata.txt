@@ -18,15 +18,15 @@ email=infos@oslandia.com
 # changelog=
 
 # tags are comma separated with spaces allowed
-tags=
+# tags=
 
-homepage=
-tracker=
-repository=
-icon=icon.png
+homepage=https://github.com/Oslandia/qgis-versioning
+# tracker=
+repository=https://github.com/Oslandia/qgis-versioning.git
+# icon=icon.png
 # experimental flag
-experimental=True
+# experimental=True
 
 # deprecated flag (applies to the whole plugin, not just a single version
-deprecated=False
+# deprecated=False
 

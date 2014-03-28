@@ -23,7 +23,7 @@ Check that the plugin 'qgis-versioning' is activated in the plugin manager.
 
 Load posgis layers from a scheme you want to version.
 
-Group postgis layers together. Select the group and click on the historize button in the plugin toolbar (make sure the toolbar is displayed). The layers will be replaced by their view in the head revision
+Group postgis layers together. Select the group and click on the 'historize' button in the plugin toolbar (make sure the toolbar is displayed). The layers will be replaced by their view in the head revision
 
 Click on the group and then on the 'checkout' button. Choose a file to save your layers locally.
 
@@ -31,3 +31,18 @@ Modify your layers.
 
 Click on the 'commit' icon.
 
+Credits
+=======
+
+This plugin has been developed by Oslandia ( http://www.oslandia.com ).
+
+Oslandia provides support and assistance for QGIS and associated tools, including this plugin.
+
+This work has been funded by European funds.
+Thanks to the GIS Office of Apavil, Valcea County (Romania)
+
+Licence
+=======
+
+This work is free software and licenced under the GNU GPL version 2Â or any later version.
+See LICENCE file.

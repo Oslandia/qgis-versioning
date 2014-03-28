@@ -6,7 +6,7 @@ import shutil
 
 def prtTab( cur, tab ):
     print "--- ",tab," ---"
-    pcur.execute("SELECT hid, trunk_rev_begin, trunk_rev_end, trunk_parent, trunk_child, length FROM "+tab)
+    pcur.execute("SELECT pid, trunk_rev_begin, trunk_rev_end, trunk_parent, trunk_child, length FROM "+tab)
     for r in pcur.fetchall():
         t = []
         for i in r: t.append(str(i))
@@ -14,7 +14,7 @@ def prtTab( cur, tab ):
 
 def prtHid( cur, tab ):
     print "--- ",tab," ---"
-    pcur.execute("SELECT hid FROM "+tab)
+    pcur.execute("SELECT pid FROM "+tab)
     for [r] in pcur.fetchall(): print r
 
 test_data_dir = os.path.dirname(os.path.realpath(__file__))
@@ -24,16 +24,16 @@ test_data_dir = os.path.dirname(os.path.realpath(__file__))
 os.system("dropdb epanet_test_db")
 os.system("createdb epanet_test_db")
 os.system("psql epanet_test_db -c 'CREATE EXTENSION postgis'")
-os.system("psql epanet_test_db -f "+test_data_dir+"/../html/epanet_test_db.sql")
+os.system("psql epanet_test_db -f "+test_data_dir+"/epanet_test_db.sql")
 
 # chechout
 versioning_base.pg_checkout("dbname=epanet_test_db",['epanet_trunk_rev_head.junctions','epanet_trunk_rev_head.pipes'], "epanet_working_copy")
 
 pcur = versioning_base.Db(psycopg2.connect("dbname=epanet_test_db"))
 
-pcur.execute("UPDATE epanet_working_copy.pipes_view SET length = 4 WHERE hid = 1")
+pcur.execute("UPDATE epanet_working_copy.pipes_view SET length = 4 WHERE pid = 1")
 prtTab(pcur, 'epanet_working_copy.pipes_diff')
 
 prtHid( pcur, 'epanet_working_copy.pipes_view')
-pcur.execute("SElECT COUNT(hid) FROM epanet_working_copy.pipes_view")
+pcur.execute("SElECT COUNT(pid) FROM epanet_working_copy.pipes_view")
 assert( 1 == pcur.fetchone()[0] )

@@ -6,7 +6,7 @@ import shutil
 
 def prtTab( cur, tab ):
     print "--- ",tab," ---"
-    pcur.execute("SELECT hid, trunk_rev_begin, trunk_rev_end, trunk_parent, trunk_child, length FROM "+tab)
+    pcur.execute("SELECT pid, trunk_rev_begin, trunk_rev_end, trunk_parent, trunk_child, length FROM "+tab)
     for r in pcur.fetchall():
         t = []
         for i in r: t.append(str(i))
@@ -14,7 +14,7 @@ def prtTab( cur, tab ):
 
 def prtHid( cur, tab ):
     print "--- ",tab," ---"
-    pcur.execute("SELECT hid FROM "+tab)
+    pcur.execute("SELECT pid FROM "+tab)
     for [r] in pcur.fetchall(): print r
 
 test_data_dir = os.path.dirname(os.path.realpath(__file__))
@@ -25,7 +25,7 @@ for resolution in ['theirs','mine']:
     os.system("dropdb epanet_test_db")
     os.system("createdb epanet_test_db")
     os.system("psql epanet_test_db -c 'CREATE EXTENSION postgis'")
-    os.system("psql epanet_test_db -f "+test_data_dir+"/../html/epanet_test_db.sql")
+    os.system("psql epanet_test_db -f "+test_data_dir+"/epanet_test_db.sql")
 
     pcur = versioning_base.Db(psycopg2.connect("dbname=epanet_test_db"))
 
@@ -33,12 +33,12 @@ for resolution in ['theirs','mine']:
     versioning_base.pg_checkout("dbname=epanet_test_db",tables, "wc1")
     versioning_base.pg_checkout("dbname=epanet_test_db",tables, "wc2")
 
-    pcur.execute("UPDATE wc1.pipes_view SET length = 4 WHERE hid = 1")
+    pcur.execute("UPDATE wc1.pipes_view SET length = 4 WHERE pid = 1")
     pcur.commit()
     prtTab( pcur, "wc1.pipes_diff")
     versioning_base.pg_commit("dbname=epanet_test_db","wc1","msg1")
 
-    pcur.execute("UPDATE wc2.pipes_view SET length = 5 WHERE hid = 1")
+    pcur.execute("UPDATE wc2.pipes_view SET length = 5 WHERE pid = 1")
     pcur.commit()
     prtTab( pcur, "wc2.pipes_diff")
     versioning_base.pg_update("dbname=epanet_test_db","wc2")

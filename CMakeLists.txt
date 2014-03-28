@@ -22,17 +22,4 @@ add_custom_command( OUTPUT commit_msg_ui.py
 
 add_custom_target(qgis_plugin ALL DEPENDS commit_msg_ui.py ${Files})
 
-add_test(versioning_base_test ../test_data/versioning_base_test.py)
-add_test(issue287_test ../test_data/issue287_test.py)
-add_test(issue358_test ../test_data/issue358_test.py)
-add_test(issue357_test ../test_data/issue357_test.py)
-add_test(issue437_test ../test_data/issue437_test.py)
-add_test(issue485_test ../test_data/issue485_test.py)
-add_test(issue486_test ../test_data/issue486_test.py)
-add_test(history_creation_test ../test_data/history_creation_test.py)
-add_test(postgres_working_copy_test ../test_data/posgres_working_copy_test.py)
-add_test(posgres_working_copy_bug_in_view_test ../test_data/posgres_working_copy_bug_in_view_test.py)
-add_test(posgres_working_copy_bug_in_conflict_test ../test_data/posgres_working_copy_bug_in_conflict_test.py)
-add_test(history_creation_big_epanet_test ../test_data/history_creation_big_epanet_test.py)
-add_test(bug_in_branch_after_commit ../test_data/bug_in_branch_after_commit.py)
-add_test(multiple_geometry_test ../test_data/multiple_geometry_test.py)
+add_subdirectory(test)

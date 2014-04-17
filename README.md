@@ -44,5 +44,5 @@ Thanks to the GIS Office of Apavil, Valcea County (Romania)
 License
 =======
 
-This work is free software and licenced under the GNU GPL version 2Â or any later version.
-See LICENCE file.
+This work is free software and licenced under the GNU GPL version 2 or any later version.
+See LICENSE file.

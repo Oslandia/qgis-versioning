@@ -23,7 +23,7 @@
 #from PyQt4.QtCore import QAction
 from PyQt4.QtGui import QAction, QDialog, QDialogButtonBox, \
     QFileDialog, QIcon, QLabel, QLineEdit, QMessageBox, QTableWidget, \
-    QTreeWidget, QVBoxLayout, QTableWidgetItem
+    QTreeView, QTreeWidget, QVBoxLayout, QTableWidgetItem
 from qgis.core import QgsCredentials, QgsDataSourceURI, QgsMapLayerRegistry
 import re
 import os
@@ -71,9 +71,12 @@ class Versioning:
         # but nothing else is available to get a selected group in the legend
         self.legend = self.iface.mainWindow().findChild( QTreeWidget,
                                                          'theMapLegend' )
-        self.legend.itemClicked.connect(self.on_legend_click)
-        self.legend.itemChanged.connect(self.on_legend_click)
-
+        if self.legend: # qgis 2.2
+            self.legend.itemClicked.connect(self.on_legend_click)
+            self.legend.itemChanged.connect(self.on_legend_click)
+        else: # qgis 2.4
+            self.legend = self.iface.mainWindow().findChild( QTreeView, 'theLayerTreeView')
+            self.legend.clicked.connect(self.on_legend_click)
 
     def pg_conn_info(self):
         """returns current postgis versionned DB connection info
@@ -127,7 +130,10 @@ class Versioning:
                               'historize' ]:
                 act.setVisible(False)
         if current:
-            name = current.text(0)
+            try: # qgis 2.2
+                name = current.text(0)
+            except: #qgis 2.4
+                name = current.data()
         # we could look if we have something in selected layers
         # but we prefer impose grouping, otherwize it'll be easy to make errors
 
@@ -295,8 +301,11 @@ class Versioning:
         # Remove the plugin menu item and icon
         for act in self.actions:
             self.iface.removeToolBarIcon(act)
-        self.legend.itemClicked.disconnect(self.on_legend_click)
-        self.legend.itemChanged.disconnect(self.on_legend_click)
+        try: # qgis 2.2
+            self.legend.itemClicked.disconnect(self.on_legend_click)
+            self.legend.itemChanged.disconnect(self.on_legend_click)
+        except: # qgis 2.4
+            self.legend.clicked.disconnect(self.on_legend_click)
 
     def branch(self):
         """create branch and import layers"""

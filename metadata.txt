@@ -10,23 +10,9 @@ version=0.1
 author=Oslandia
 email=infos@oslandia.com
 
-# end of mandatory metadata
-
-# Optional items:
-
-# Uncomment the following line and add your changelog entries:
-# changelog=
-
-# tags are comma separated with spaces allowed
-# tags=
 
 homepage=https://github.com/Oslandia/qgis-versioning
-# tracker=
+tracker=https://github.com/Oslandia/qgis-versioning/issues
 repository=https://github.com/Oslandia/qgis-versioning.git
-# icon=icon.png
-# experimental flag
-# experimental=True
-
-# deprecated flag (applies to the whole plugin, not just a single version
-# deprecated=False
+icon=historize.svg
 

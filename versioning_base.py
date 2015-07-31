@@ -708,7 +708,7 @@ def commit(sqlite_filename, commit_msg, pg_conn_info):
         [sql] = scur.fetchone()
         sql = unicode.replace(sql, table, table+"_diff", 1)
         scur.execute(sql)
-        geom = sql.find('GEOMETRY') != -1
+        geom = (sql.find('GEOMETRY') != -1) or (sql.find('geometry') != -1)
         scur.execute("DELETE FROM geometry_columns "
             "WHERE f_table_name = '"+table+"_diff'")
         if geom:

@@ -283,9 +283,9 @@ def checkout(pg_conn_info, pg_table_names, sqlite_filename):
         if 'GEOMETRY' in cols:
             scur.execute("INSERT INTO views_geometry_columns "
                     "(view_name, view_geometry, view_rowid, "
-                        "f_table_name, f_geometry_column) "
-                    "VALUES"+"('"+table+"_view', 'GEOMETRY', 'ROWID', '"
-                    +table+"', 'GEOMETRY')")
+                        "f_table_name, f_geometry_column, read_only) "
+                    "VALUES"+"('"+table+"_view', 'geometry', 'rowid', '"
+                    +table+"', 'geometry', 0)")
 
         # when we edit something old, we insert and update parent
         scur.execute(
@@ -572,7 +572,7 @@ def update(sqlite_filename, pg_conn_info):
                 "'"+table+"_conflicts', 'GEOMETRY', "
                 "(SELECT srid FROM geometry_columns "
                 "WHERE f_table_name='"+table+"'), "
-                "(SELECT type FROM geometry_columns "
+                "(SELECT geometry_type FROM geometry_columns "
                 "WHERE f_table_name='"+table+"'), 'XY')")
 
             scur.execute("CREATE UNIQUE INDEX IF NOT EXISTS "
@@ -708,12 +708,12 @@ def commit(sqlite_filename, commit_msg, pg_conn_info):
         [sql] = scur.fetchone()
         sql = unicode.replace(sql, table, table+"_diff", 1)
         scur.execute(sql)
-        geom = (sql.find('GEOMETRY') != -1) or (sql.find('geometry') != -1)
+        geom = (sql.find('GEOMETRY') != -1)
         scur.execute("DELETE FROM geometry_columns "
             "WHERE f_table_name = '"+table+"_diff'")
         if geom:
             scur.execute("INSERT INTO geometry_columns "
-                "SELECT '"+table+"_diff', 'GEOMETRY', type, "
+                "SELECT '"+table+"_diff', 'geometry', geometry_type, "
                 "coord_dimension, srid, spatial_index_enabled "
                 "FROM geometry_columns WHERE f_table_name = '"+table+"'")
         scur.execute( "INSERT INTO "+table+"_diff "

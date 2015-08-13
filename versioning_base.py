@@ -572,8 +572,8 @@ def update(sqlite_filename, pg_conn_info):
                 "'"+table+"_conflicts', 'GEOMETRY', "
                 "(SELECT srid FROM geometry_columns "
                 "WHERE f_table_name='"+table+"'), "
-                "(SELECT geometry_type FROM geometry_columns "
-                "WHERE f_table_name='"+table+"'), 'XY')")
+                "(SELECT GeometryType(geometry) FROM "+table+" LIMIT 1), "
+                "'XY')")
 
             scur.execute("CREATE UNIQUE INDEX IF NOT EXISTS "
                 +table+"_conflicts_idx ON "+table+"_conflicts(OGC_FID)")

@@ -12,7 +12,11 @@ addons:
       - postgis
       - python-qt4-dev
       - pyqt4-dev-tools
+      - python-pyspatialite
 
+install:
+  - pip install .
+  - pip install pyspatialite
 
 script:
   - cmake .

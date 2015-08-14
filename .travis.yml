@@ -14,4 +14,4 @@ addons:
 script:
   - cmake .
   - make
-  - make test
+  - PYTHONPATH=$PWD make test

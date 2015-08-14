@@ -13,13 +13,12 @@ addons:
       - pyqt4-dev-tools
       - libproj-dev
         #- gdal-bin
-      - apt-file
 
     #install:
     #- pip install pyspatialite
 
 script:
-  - apt-file search proj_api.h
+  - find / -name proj_api.h
   - cmake .
   - make
   - PYTHONPATH=$PWD ctest -V

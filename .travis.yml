@@ -9,7 +9,7 @@ compiler:
   - clang
 
 before_install:
-  - if [ $TRAVIS_OS_NAME == linux ]; then sudo apt-get update -qq && sudo apt-get install -qq cmake spatialite-bin gdal-bin automake postgresql postgresql-server-dev-all autoconf build-essential docbook-mathml docbook-xsl libcunit1-dev libgdal-dev libgeos++-dev libgeotiff-dev libjson0-dev libjson-c-dev liblas-dev libpq-dev libproj-dev libxml2-dev xsltproc build-essential wget; fi
+  - if [ $TRAVIS_OS_NAME == linux ]; then sudo apt-get update -qq && sudo apt-get install -qq cmake spatialite-bin gdal-bin automake postgresql postgresql-server-dev-all autoconf build-essential docbook-mathml docbook-xsl libcunit1-dev libgdal-dev libgeos++-dev libgeotiff-dev libjson0-dev liblas-dev libpq-dev libproj-dev libxml2-dev xsltproc build-essential wget; fi
   - wget http://download.osgeo.org/postgis/source/postgis-2.1.8.tar.gz
   - tar -xzf postgis-2.1.8.tar.gz
   - cd postgis-2.1.8 && ./configure 

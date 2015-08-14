@@ -745,13 +745,6 @@ def commit(sqlite_filename, commit_msg, pg_conn_info):
                 'PG:"'+pg_conn_info+' active_schema='+diff_schema+'"',
                 '-lco',
                 'FID='+pkey,
-                sqlite_filename, table+"_diff"] if geom else ['ogr2ogr',
-                '-preserve_fid',
-                '-f', 
-                'PostgreSQL',
-                'PG:"'+pg_conn_info+' active_schema='+diff_schema+'"',
-                '-lco', 
-                'FID='+pkey,
                 sqlite_filename, table+"_diff"]
         if pgeom:
             cmd.insert(5, '-lco')

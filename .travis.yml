@@ -7,13 +7,12 @@ addons:
     packages:
       - cmake
       - spatialite-bin
-      - gdal-bin
       - postgresql
       - postgis
       - python-qt4-dev
       - pyqt4-dev-tools
-      - python-pyspatialite
       - libproj-dev
+        #- gdal-bin
 
 install:
   - pip install pyspatialite

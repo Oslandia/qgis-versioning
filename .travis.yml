@@ -11,9 +11,7 @@ addons:
       - postgresql
       - postgis
 
-before_script:
-  - cmake
-
 script:
+  - cmake .
   - make
   - make test

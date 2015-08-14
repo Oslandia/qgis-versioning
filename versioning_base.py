@@ -218,7 +218,8 @@ def checkout(pg_conn_info, pg_table_names, sqlite_filename):
                 '-f', 'SQLite',
                 '-dsco', 'SPATIALITE=yes',
                 sqlite_filename,
-                'PG:"'+pg_conn_info+' active_schema='+schema+'"', table]
+                'PG:"'+pg_conn_info+'"', schema+'.'+table,
+                '-nln', table]
             #print ' '.join(cmd)
             os.system(' '.join(cmd))
 
@@ -239,7 +240,8 @@ def checkout(pg_conn_info, pg_table_names, sqlite_filename):
                     '-f', 'SQLite',
                     '-update',
                     sqlite_filename,
-                    'PG:"'+pg_conn_info+' active_schema='+schema+'"', table]
+                    'PG:"'+pg_conn_info+'"', schema+'.'+table,
+                    '-nln', table]
             #print ' '.join(cmd)
             os.system(' '.join(cmd))
 
@@ -442,8 +444,9 @@ def update(sqlite_filename, pg_conn_info):
                 '-f', 'SQLite',
                 '-update',
                 sqlite_filename,
-                'PG:"'+pg_conn_info+' active_schema='+diff_schema+'"',
-                table+"_diff"]
+                'PG:"'+pg_conn_info+'"',
+                diff_schema+'.'+table+"_diff",
+                '-nln', table+"_diff"]
         print ' '.join(cmd)
         os.system(' '.join(cmd))
 
@@ -742,17 +745,11 @@ def commit(sqlite_filename, commit_msg, pg_conn_info):
                 '-preserve_fid',
                 '-f', 
                 'PostgreSQL',
-                'PG:"'+pg_conn_info+' active_schema='+diff_schema+'"',
+                'PG:"'+pg_conn_info+'"',
                 '-lco',
                 'FID='+pkey,
-                sqlite_filename, table+"_diff"] if geom else ['ogr2ogr',
-                '-preserve_fid',
-                '-f', 
-                'PostgreSQL',
-                'PG:"'+pg_conn_info+' active_schema='+diff_schema+'"',
-                '-lco', 
-                'FID='+pkey,
-                sqlite_filename, table+"_diff"]
+                sqlite_filename, table+"_diff",
+                '-nln', diff_schema+'.'+table+"_diff"]
         if pgeom:
             cmd.insert(5, '-lco')
             cmd.insert(6, 'GEOMETRY_NAME='+pgeom)

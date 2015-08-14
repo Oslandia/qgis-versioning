@@ -13,6 +13,7 @@ addons:
       - python-qt4-dev
       - pyqt4-dev-tools
       - python-pyspatialite
+      - libproj-dev
 
 install:
   - pip install pyspatialite

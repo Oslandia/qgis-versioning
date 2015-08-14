@@ -15,7 +15,6 @@ addons:
       - python-pyspatialite
 
 install:
-  - pip install .
   - pip install pyspatialite
 
 script:

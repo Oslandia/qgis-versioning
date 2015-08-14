@@ -10,6 +10,9 @@ addons:
       - gdal-bin
       - postgresql
       - postgis
+      - python-qt4-dev
+      - pyqt4-dev-tools
+
 
 script:
   - cmake .

@@ -15,8 +15,8 @@ addons:
         #- gdal-bin
       - apt-file
 
-install:
-  - pip install pyspatialite
+    #install:
+    #- pip install pyspatialite
 
 script:
   - apt-file search proj_api.h

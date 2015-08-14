@@ -14,8 +14,8 @@ addons:
       - libproj-dev
         #- gdal-bin
 
-    #install:
-    #- pip install pyspatialite
+install:
+    - pip install pyspatialite
 
 script:
   - find / -name proj_api.h

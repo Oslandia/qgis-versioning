@@ -425,7 +425,7 @@ def update(sqlite_filename, pg_conn_info):
         pcur.execute( "CREATE TABLE "+diff_schema+"."+table+"_diff AS "
                 "SELECT "+cols+geom+" "
                 "FROM "+table_schema+"."+table+" "
-                "WHERE "+branch+"_rev_end = "+str(rev)+" "
+                "WHERE "+branch+"_rev_end >= "+str(rev)+" "
                 "OR "+branch+"_rev_begin > "+str(rev))
         pcur.execute( "ALTER TABLE "+diff_schema+"."+table+"_diff "
                 "ADD CONSTRAINT "+table+"_"+branch+"_pk_pk "

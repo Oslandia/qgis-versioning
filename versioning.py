@@ -177,7 +177,11 @@ class Versioning:
 
         if not self.current_layers:
             return
-
+        
+        if not len(previous_conn[0]):
+            self.current_layers = []
+            self.info.setText("Not versionable")
+            return
 
         layer = QgsMapLayerRegistry.instance().mapLayer(
                 self.current_layers[0] )

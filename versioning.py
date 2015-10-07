@@ -30,6 +30,7 @@ from qgis.core import QgsCredentials, QgsDataSourceURI, QgsMapLayerRegistry, \
     QgsRuleBasedRendererV2
 from PyQt4.QtCore import *
 from qgis.gui import QgsMessageBar
+from qgis.utils import showPluginHelp
 import re
 import os
 import os.path
@@ -247,6 +248,10 @@ class Versioning:
 
         if not name or name not in rel_map: # not a group
             return
+        # if group is empty
+        if not(rel_map[name]):
+            self.info.setText('Versioning : empty group')
+            return
 
         group_idx = [i for i, x in
                 enumerate(self.iface.legendInterface().groups()) if x == name]
@@ -402,6 +407,15 @@ class Versioning:
         self.actions[-1].setWhatsThis("create branch")
         self.actions[-1].triggered.connect(self.branch)
         self.actions[-1].setVisible(False)
+
+        self.actions.append( QAction(
+            QIcon(os.path.dirname(__file__) + "/help.svg"),
+            u"help", self.iface.mainWindow()) )
+        self.actions[-1].setWhatsThis("versioning-help")
+        self.actions[-1].setToolTip ("versioning help")
+        url = "http://qgis-versioning.readthedocs.org/en/latest/"
+        self.actions[-1].triggered.connect(lambda:QDesktopServices.openUrl(QUrl(url)))
+        self.actions[-1].setVisible(True)
 
         # add actions in menus
         for act in self.actions:

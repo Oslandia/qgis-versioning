@@ -1,4 +1,4 @@
-.. include globals.txt
+.. include globals.rst
 
 I really like |doctest|.
 

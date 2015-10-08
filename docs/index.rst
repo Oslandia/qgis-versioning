@@ -1,7 +1,5 @@
 .. include:: globals.rst
 
-I really like |doctest|.
-
 .. meta::
    :DC.creator: eHealth Africa
    :DC.language: en
@@ -10,23 +8,27 @@ I really like |doctest|.
 QGIS Versioning plugin
 -----------------------
 
-.. pull-quote:: 
+.. pull-quote::
+ 
+  Version a PostgreSQL/PostGIS schema
 
-  **Version a PostgreSQL/PostGIS schema**
+.. pull-quote::
+ 
+  Online or offline (spatialite local copy)
 
-.. pull-quote:: 
+----------
 
-  **Online or offline (spatialite local copy)**
-
-.. sidebar:: Licence
+This is the temporary location of the |plugin|_ documentation.  Click this link for the `original documentation`_
    
-|CC|_
+----------
 
 :Author: eHealth Africa
-.. :Contact: yves.moisan@ehealthnigeria.org
 :Date: Last generated on |date| at |time|
+|CC|_
 
 .. toctree::
-   :maxdepth: 1
+   :maxdepth: 2
 
    introduction
+
+.. _original documentation: http://www.oslandia.com/qgis-versioning-plugin-en.html

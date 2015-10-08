@@ -18,7 +18,7 @@ QGIS Versioning plugin
 
 ----------
 
-This is the temporary location of the |plugin|_ documentation.  Click this link for the `original documentation`_
+This is the temporary location of the |plugin|_ documentation.  Click this link for the `original documentation`_.
    
 ----------
 

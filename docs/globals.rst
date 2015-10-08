@@ -12,5 +12,5 @@
 
 .. |spatialite-logo| image:: images/spatialite-logo.png
 .. _spatialite-logo: https://www.gaia-gis.it/fossil/libspatialite/index
-.. |postgis-logo| image:: images/PostGIS_logo.png
+.. |postgis-logo| image:: images/PostGIS-logo.png
 .. _postgis-logo: http://postgis.net/

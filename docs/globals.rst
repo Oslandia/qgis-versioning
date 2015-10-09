@@ -12,7 +12,7 @@
 .. |CC| image:: images/CC-BY-SA-4-0.png
 .. _CC: http://creativecommons.org/licenses/by-sa/4.0/
 
-.. |eHA| image:: images/eHA.jpg
+.. |eHA| image:: images/eha.jpg
 .. _eHA: http://www.ehealthafrica.org/
 
 .. |spatialite-logo| image:: images/spatialite-logo.png

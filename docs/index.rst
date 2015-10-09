@@ -4,17 +4,19 @@
    :DC.creator: eHealth Africa
    :DC.language: en
 
+|eHA|_
+
 -----------------------
 QGIS Versioning plugin
 -----------------------
 
 .. pull-quote::
  
-  Version a PostgreSQL/PostGIS schema
+  Version a PostgreSQL/PostGIS schema |postgis-logo|_
 
 .. pull-quote::
  
-  Online or offline (spatialite local copy)
+  Online or offline (spatialite local copy) |spatialite-logo|_
 
 ----------
 
@@ -31,4 +33,3 @@ This is the temporary location of the |plugin|_ documentation.  Click this link 
 
    introduction
 
-.. _original documentation: http://www.oslandia.com/qgis-versioning-plugin-en.html

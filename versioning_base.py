@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-""" This module provides functions to version a prostgis DB and interact
+""" This module provides functions to version a postgis DB and interact
 with this DB. User can checkout a working copy, update and commit.
 """
 import re
@@ -8,6 +8,7 @@ import getpass
 from pyspatialite import dbapi2
 import psycopg2
 import codecs
+from itertools import izip_longest
 
 def escape_quote(msg):
     """quote single quotes"""
@@ -32,7 +33,7 @@ class Db:
         self.cur = self.con.cursor()
         if filename :
             self.log = codecs.open( filename, 'w', 'utf-8' )
-            self.log.write('-- openning connection\n')
+            self.log.write('-- opening connection\n')
         else :
             self.log = None
         self.begun = False
@@ -67,7 +68,7 @@ class Db:
         return self.cur.fetchall()
 
     def fetchone(self):
-        """Returns on row of result of the previous execute as a tuple"""
+        """Returns one row of result of the previous execute as a tuple"""
         return self.cur.fetchone()
 
     def commit(self):
@@ -131,7 +132,7 @@ def pg_array_elem_type( cur, schema, table, column ):
     return res
 
 def pg_geoms( cur, schema_name, table_name ):
-    """Fetch the list of geometry column of the specified postgis table, empty if none"""
+    """Fetch the list of geometry columns of the specified postgis table, empty if none"""
     cur.execute("SELECT f_geometry_column FROM geometry_columns "
         "WHERE f_table_schema = '"+schema_name+"' "
         "AND f_table_name = '"+table_name+"'")
@@ -175,7 +176,7 @@ def unresolved_conflicts(sqlite_filename):
     scur.close()
     return found
 
-def checkout(pg_conn_info, pg_table_names, sqlite_filename):
+def checkout(pg_conn_info, pg_table_names, sqlite_filename, selected_feature_lists = []):
     """create working copy from versioned database tables
     pg_table_names must be complete schema.table names
     the schema name must end with _branch_rev_head
@@ -194,7 +195,7 @@ def checkout(pg_conn_info, pg_table_names, sqlite_filename):
     pcur = Db(psycopg2.connect(pg_conn_info))
 
     first_table = True
-    for pg_table_name in pg_table_names:
+    for pg_table_name,feature_list in list(izip_longest(pg_table_names, selected_feature_lists)):
         [schema, table] = pg_table_name.split('.')
         [schema, sep, branch] = schema[:-9].rpartition('_')
         del sep
@@ -214,12 +215,15 @@ def checkout(pg_conn_info, pg_table_names, sqlite_filename):
         if first_table:
             first_table = False
             cmd = ['ogr2ogr',
-                '-preserve_fid',
-                '-f', 'SQLite',
-                '-dsco', 'SPATIALITE=yes',
-                sqlite_filename,
-                'PG:"'+pg_conn_info+'"', schema+'.'+table,
-                '-nln', table]
+                    '-preserve_fid',
+                    '-f', 'SQLite',
+                    '-dsco', 'SPATIALITE=yes',
+                    sqlite_filename,
+                    'PG:"'+pg_conn_info+'"', schema+'.'+table,
+                    '-nln', table]
+            if feature_list:
+                cmd += ['-where', '"'+pkey+' in ('+",".join([str(feature_list[i][pkey]) for i in range(0, len(feature_list))])+')"']
+
             #print ' '.join(cmd)
             os.system(' '.join(cmd))
 
@@ -236,12 +240,14 @@ def checkout(pg_conn_info, pg_table_names, sqlite_filename):
 
         else:
             cmd = ['ogr2ogr',
-                    '-preserve_fid',
-                    '-f', 'SQLite',
-                    '-update',
-                    sqlite_filename,
-                    'PG:"'+pg_conn_info+'"', schema+'.'+table,
-                    '-nln', table]
+                        '-preserve_fid',
+                        '-f', 'SQLite',
+                        '-update',
+                        sqlite_filename,
+                        'PG:"'+pg_conn_info+'"', schema+'.'+table,
+                        '-nln', table]
+            if feature_list:
+                cmd += ['-where', '"'+pkey+' in ('+",".join([str(feature_list[i][pkey]) for i in range(0, len(feature_list))])+')"']
             #print ' '.join(cmd)
             os.system(' '.join(cmd))
 
@@ -399,9 +405,9 @@ def update(sqlite_filename, pg_conn_info):
 
         other_branches = pg_branches( pcur, table_schema ).remove(branch)
         other_branches = other_branches if other_branches else []
-        other_branches_columns = sum([ 
-            [brch+'_rev_begin', brch+'_rev_end', 
-            brch+'_parent', brch+'_child'] 
+        other_branches_columns = sum([
+            [brch+'_rev_begin', brch+'_rev_end',
+            brch+'_parent', brch+'_child']
             for brch in other_branches], [])
         pcur.execute("SELECT column_name "
                 "FROM information_schema.columns "
@@ -623,7 +629,7 @@ def update(sqlite_filename, pg_conn_info):
     scur.close()
 
 def late(sqlite_filename, pg_conn_info):
-    """Return 0 if up to date, the number of commits in between otherwize"""
+    """Return 0 if up to date, the number of commits in between otherwise"""
     scur = Db(dbapi2.connect(sqlite_filename))
     scur.execute("SELECT rev, branch, table_schema "
         "FROM initial_revision")
@@ -743,7 +749,7 @@ def commit(sqlite_filename, commit_msg, pg_conn_info):
         pcur.commit()
         cmd = ['ogr2ogr',
                 '-preserve_fid',
-                '-f', 
+                '-f',
                 'PostgreSQL',
                 'PG:"'+pg_conn_info+'"',
                 '-lco',
@@ -796,18 +802,18 @@ def commit(sqlite_filename, commit_msg, pg_conn_info):
                 "'"+geo+"', srid, type, coord_dimension) FROM geometry_columns "
                 "WHERE f_table_name = '"+table+"' "
                 "AND f_table_schema = '"+table_schema+"' "
-                "AND f_geometry_column != '"+pgeom+"'")  
+                "AND f_geometry_column != '"+pgeom+"'")
             pcur.execute("UPDATE "+diff_schema+"."+table+"_diff AS dest "
-                "SET ("+dest_geom+") =  ("+src_geom+") " 
+                "SET ("+dest_geom+") =  ("+src_geom+") "
                 "FROM "+table_schema+"."+table+" AS src "
                 "WHERE dest."+branch+"_rev_begin = "+str(rev+1)+" "
                 "AND src."+pkey+" = dest."+branch+"_parent")
 
         other_branches = pg_branches( pcur, table_schema ).remove(branch)
         other_branches = other_branches if other_branches else []
-        other_branches_columns = sum([ 
-            [brch+'_rev_begin', brch+'_rev_end', 
-            brch+'_parent', brch+'_child'] 
+        other_branches_columns = sum([
+            [brch+'_rev_begin', brch+'_rev_end',
+            brch+'_parent', brch+'_child']
             for brch in other_branches], [])
         pcur.execute("SELECT column_name, data_type "
                 "FROM information_schema.columns "
@@ -824,7 +830,7 @@ def commit(sqlite_filename, commit_msg, pg_conn_info):
                 else :
                     cols_cast += ("regexp_replace(regexp_replace("
                             +col[0]+",'^\(.*:','{'),'\)$','}')::"
-                            +pg_array_elem_type(pcur, 
+                            +pg_array_elem_type(pcur,
                                 table_schema, table, col[0])+"[], ")
         cols = cols[:-2] # remove last coma and space
         cols_cast = cols_cast[:-2] # remove last coma and space
@@ -832,7 +838,7 @@ def commit(sqlite_filename, commit_msg, pg_conn_info):
         pcur.execute("INSERT INTO "+table_schema+"."+table+" ("+cols+") "
             "SELECT "+cols_cast+" FROM "+diff_schema+"."+table+"_diff "
             "WHERE "+branch+"_rev_begin = "+str(rev+1))
-        
+
         # apdate deleted and modified
         pcur.execute("UPDATE "+table_schema+"."+table+" AS dest "
                 "SET ("+branch+"_rev_end, "+branch+"_child)"
@@ -910,7 +916,7 @@ def add_branch( pg_conn_info, schema, branch, commit_msg,
         raise RuntimeError("Base branch "+base_branch+" doesn't exist")
     pcur.execute("SELECT MAX(rev) FROM "+schema+".revisions")
     [max_rev] = pcur.fetchone()
-    if not max_rev: 
+    if not max_rev:
         max_rev = 0
     if base_rev != 'head' and (int(base_rev) > max_rev or int(base_rev) <= 0):
         pcur.close()
@@ -1074,11 +1080,11 @@ def revisions(pg_conn_info, schema):
 # for each table we need a diff and a view and triggers
 
 def pg_checkout(pg_conn_info, pg_table_names, working_copy_schema):
-    """create posgress working copy from versioned database tables
+    """create postgres working copy from versioned database tables
     pg_table_names must be complete schema.table names
     the schema name must end with _branch_rev_head
-    the working_copy_schema must not exists
-    the views and trigger for local edition will be created
+    the working_copy_schema must not exist
+    the views and triggers for local edition will be created
     along with the tables and triggers for conflict resolution"""
     pcur = Db(psycopg2.connect(pg_conn_info))
     wcs = working_copy_schema
@@ -1307,7 +1313,7 @@ def pg_checkout(pg_conn_info, pg_table_names, working_copy_schema):
     pcur.close()
 
 def pg_update(pg_conn_info, working_copy_schema):
-    """merge modifiactions since last update into working copy"""
+    """merge modifications since last update into working copy"""
     print "update"
     wcs = working_copy_schema
     if pg_unresolved_conflicts(pg_conn_info, wcs):
@@ -1564,7 +1570,7 @@ def pg_commit(pg_conn_info, working_copy_schema, commit_msg):
     if late_by:
         raise RuntimeError("Working copy "+working_copy_schema+" "
             "is not up to date. It's late by "+str(late_by)+" commit(s).\n\n"
-            "Please update before commiting your modifications")
+            "Please update before committing your modifications")
 
     pcur = Db(psycopg2.connect(pg_conn_info))
     pcur.execute("SELECT rev, branch, table_schema, table_name "
@@ -1666,7 +1672,7 @@ def pg_unresolved_conflicts(pg_conn_info, working_copy_schema):
     return found
 
 def pg_late(pg_conn_info, working_copy_schema):
-    """Return 0 if up to date, the number of commits in between otherwize"""
+    """Return 0 if up to date, the number of commits in between otherwise"""
     pcur = Db(psycopg2.connect(pg_conn_info))
     pcur.execute("SELECT rev, branch, table_schema "
         "FROM "+working_copy_schema+".initial_revision")

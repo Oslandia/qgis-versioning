@@ -23,8 +23,9 @@
 #from PyQt4.QtCore import QAction
 from PyQt4.QtGui import QAction, QDialog, QDialogButtonBox, \
     QFileDialog, QIcon, QLabel, QLineEdit, QMessageBox, QTableWidget, \
-    QTreeView, QTreeWidget, QVBoxLayout, QTableWidgetItem
+    QTreeView, QTreeWidget, QVBoxLayout, QTableWidgetItem, QColor
 from qgis.core import QgsCredentials, QgsDataSourceURI, QgsMapLayerRegistry
+from qgis.gui import QgsMessageBar
 import re
 import os
 import os.path
@@ -32,11 +33,11 @@ import psycopg2
 import commit_msg_ui
 import versioning_base
 
-# We start from layers comming from one or more postgis non-versionned schemata
+# We start from layers coming from one or more postgis non-versioned schemata
 # A widget group is displayed for each distinct schema
 # (identified with 'dbname schema')
-# The widget goup contains a branch and version combobox extracted from layers
-# You can only chechout head revision
+# The widget group contains a branch and version combobox extracted from layers
+# You can only checkout head revision
 # If you select a new branch, you have to enter the name and it will be
 # created from either the current working copy or the current branch/rev
 # If you select a revision, the corresponding view in the db will be
@@ -79,7 +80,7 @@ class Versioning:
             self.legend.clicked.connect(self.on_legend_click)
 
     def pg_conn_info(self):
-        """returns current postgis versionned DB connection info
+        """returns current postgis versioned DB connection info
         request credentials if needed"""
         if not self._pg_conn_info:
             # In the simple case: all pg layers share the same conn info
@@ -116,7 +117,7 @@ class Versioning:
         return self._pg_conn_info
 
     def on_legend_click(self, current, column=0):
-        "changes menu when user click on legend"
+        "changes menu when user clicks on legend"
         self.current_group_idx = -1
         name = ''
         self.current_layers = []
@@ -135,7 +136,7 @@ class Versioning:
             except: #qgis 2.4
                 name = current.data()
         # we could look if we have something in selected layers
-        # but we prefer impose grouping, otherwize it'll be easy to make errors
+        # but we prefer impose grouping, otherwise it'll be easy to make errors
 
         # need to get all layers including subgroups
         rel_map = {}
@@ -177,7 +178,7 @@ class Versioning:
 
         if not self.current_layers:
             return
-        
+
         if not len(previous_conn[0]):
             self.current_layers = []
             self.info.setText("Not versionable")
@@ -240,7 +241,7 @@ class Versioning:
                     act.setVisible(True)
 
     def initGui(self):
-        """called once QGIS gui is loaded, befor porject s loaded"""
+        """Called once QGIS gui is loaded, before project is loaded"""
 
         self.info.setText('No group selected')
         self.actions.append( self.iface.addToolBarWidget( self.info ) )
@@ -257,6 +258,7 @@ class Versioning:
         self.actions.append( QAction(
             QIcon(os.path.dirname(__file__) + "/checkout.svg"),
             u"checkout", self.iface.mainWindow()) )
+        self.actions[-1].setToolTip ("spatialite checkout")
         self.actions[-1].setWhatsThis("checkout")
         self.actions[-1].triggered.connect(self.checkout)
         self.actions[-1].setVisible(False)
@@ -264,6 +266,7 @@ class Versioning:
         self.actions.append( QAction(
             QIcon(os.path.dirname(__file__) + "/checkout_pg.svg"),
             u"checkout", self.iface.mainWindow()) )
+        self.actions[-1].setToolTip ("postGIS checkout")
         self.actions[-1].setWhatsThis("checkout postgres")
         self.actions[-1].triggered.connect(self.checkout_pg)
         self.actions[-1].setVisible(False)
@@ -475,7 +478,7 @@ class Versioning:
         if unresolved:
             QMessageBox.warning( self.iface.mainWindow(), "Warning",
                     "Unresolved conflics for layer(s) "+', '.join(unresolved)+
-                    ".\n\nPlease resolve conflicts by openning the conflict "
+                    ".\n\nPlease resolve conflicts by opening the conflict "
                     "layer atribute table and deleting either 'mine' or "
                     "'theirs' before continuing.\n\n"
                     "Please note that the attribute table is not "
@@ -505,7 +508,7 @@ class Versioning:
 
         if not self.unresolved_conflicts():
             QMessageBox.information( self.iface.mainWindow(), "Notice",
-                    "Your are up to date with revision "+str(rev-1)+".")
+                    "You are up to date with revision "+str(rev-1)+".")
 
 
 
@@ -553,13 +556,24 @@ class Versioning:
         self.current_layers = []
 
     def checkout(self):
-        """create working copy from versionned database layers"""
+        """create working copy from versioned database layers"""
         # for each connection, we need the list of tables
         tables_for_conninfo = []
+        # for each layer, we need the list of user selected features to be checked out
+        # if a given layer has no user selected features, then all features will be checked out
+        user_selected_features = []
         uri = None
         conn_info = ''
         for layer_id in self.current_layers:
             layer = QgsMapLayerRegistry.instance().mapLayer( layer_id )
+            layer_selected_features = layer.selectedFeatures()
+            if layer_selected_features:
+                QMessageBox.warning(None,"Warning","You will be checking out the subset of \
+"+str(len(layer_selected_features))+" features you selected in layer \""+layer.name()+"\".\n\n\
+If you want the whole data set for that layer, abort checkout in the pop up window asking for a filename, unselect features and start over.")
+                user_selected_features.append(layer_selected_features)
+            else:
+                user_selected_features.append([])
             uri = QgsDataSourceURI(layer.source())
             if not conn_info:
                 conn_info = uri.connectionInfo()
@@ -569,7 +583,7 @@ class Versioning:
             tables_for_conninfo.append(table)
 
         filename = QFileDialog.getSaveFileName(self.iface.mainWindow(),
-                'Save Versionned Layers As', '.', '*.sqlite')
+                'Save Versioned Layers As', '.', '*.sqlite')
         if not filename:
             print "aborted"
             return
@@ -577,9 +591,9 @@ class Versioning:
         if os.path.isfile(filename):
             os.remove(filename)
 
-        print "checkin out ", tables_for_conninfo, " from ",uri.connectionInfo()
+        print "checking out ", tables_for_conninfo, " from ",uri.connectionInfo()
         versioning_base.checkout( self.pg_conn_info(),
-                tables_for_conninfo, filename )
+                tables_for_conninfo, filename, user_selected_features )
 
         # add layers from offline version
         grp_name = 'working copy'
@@ -601,7 +615,7 @@ class Versioning:
 
 
     def checkout_pg(self):
-        """create postgres working copy (schema) from versionned
+        """create postgres working copy (schema) from versioned
         database layers"""
         # for each connection, we need the list of tables
         tables_for_conninfo = []
@@ -637,7 +651,7 @@ class Versioning:
             print "aborted"
             return
 
-        print "checkin out ", tables_for_conninfo, " from ", uri.connectionInfo()
+        print "checking out ", tables_for_conninfo, " from ", uri.connectionInfo()
         versioning_base.pg_checkout( self.pg_conn_info(),
                 tables_for_conninfo, working_copy_schema )
 
@@ -659,7 +673,7 @@ class Versioning:
 
 
     def commit(self):
-        """merge modifiactions into database"""
+        """merge modifications into database"""
         print "commit"
         if self.unresolved_conflicts():
             return
@@ -680,7 +694,7 @@ class Versioning:
             QMessageBox.warning(self.iface.mainWindow(), "Warning",
                     "This working copy is not up to date (late by "
                     +str(late_by)+" commit(s)).\n\n"
-                    "Please update before commiting your modifications")
+                    "Please update before committing your modifications")
             print "aborted"
             return
 
@@ -707,9 +721,8 @@ class Versioning:
                     uri.connectionInfo(), uri.schema())
 
         if nb_of_updated_layer:
-            QMessageBox.information(self.iface.mainWindow(), "Info",
-                    "You have successfully commited revision "+str( rev ) )
+            #self.iface.messageBar().pushMessage("Info", "You have successfully committed revision "+str( rev ), duration=10)
+            QMessageBox.information(self.iface.mainWindow(), "Info", "You have successfully committed revision "+str( rev ) )
         else:
-            QMessageBox.information(self.iface.mainWindow(), "Info",
-                    "There was no modification to commit")
-
+            #self.iface.messageBar().pushMessage("Info", "There was no modification to commit", duration=10)
+            QMessageBox.information(self.iface.mainWindow(), "Info", "There was no modification to commit")

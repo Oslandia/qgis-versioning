@@ -11,11 +11,11 @@
 
 .. |CC| image:: images/CC-BY-SA-4-0.png
 .. _CC: http://creativecommons.org/licenses/by-sa/4.0/
-
 .. |eHA| image:: images/eha.jpg
 .. _eHA: http://www.ehealthafrica.org/
-
 .. |spatialite-logo| image:: images/spatialite-logo.png
 .. _spatialite-logo: https://www.gaia-gis.it/fossil/libspatialite/index
 .. |postgis-logo| image:: images/PostGIS-logo.png
 .. _postgis-logo: http://postgis.net/
+.. |selected_features_warning| image:: images/selected_features_warning.png
+.. |selected_features_local| image:: images/selected_features_local.png

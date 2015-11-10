@@ -41,6 +41,8 @@ Oslandia provides support and assistance for QGIS and associated tools, includin
 This work has been funded by European funds.
 Thanks to the GIS Office of Apavil, Valcea County (Romania)
 
+Support for spatialite 4.x was contributed by eHealth Africa (http://ehealthafrica.org).
+
 License
 =======
 

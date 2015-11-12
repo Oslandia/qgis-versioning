@@ -4,32 +4,27 @@
    :DC.creator: eHealth Africa
    :DC.language: en
 
-|eHA|_
-
 -----------------------
 QGIS Versioning plugin
 -----------------------
 
-.. pull-quote::
+.. |postgis-logo|_
 
-  Version a PostgreSQL/PostGIS schema |postgis-logo|_
-
-.. pull-quote::
-
-  Online or offline (spatialite local copy) |spatialite-logo|_
-
-----------
+.. |spatialite-logo|_
 
 This is the temporary location of the |plugin|_ documentation.  Click this link for the `original documentation`_.
 
 ----------
 
-:Author: eHealth Africa
 :Date: Last generated on |date| at |time|
-|CC|_
+.. |CC|_
+
+----------
 
 .. toctree::
-   :maxdepth: 2
+   :maxdepth: 1
 
    introduction
+   functionality
    spatialfiltering
+   contributors

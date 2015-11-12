@@ -23,9 +23,12 @@
 #from PyQt4.QtCore import QAction
 from PyQt4.QtGui import QAction, QDialog, QDialogButtonBox, \
     QFileDialog, QIcon, QLabel, QLineEdit, QMessageBox, QTableWidget, \
-    QTreeView, QTreeWidget, QVBoxLayout, QTableWidgetItem, QColor
+    QTreeView, QTreeWidget, QVBoxLayout, QTableWidgetItem, QColor, \
+    QDesktopServices
+from PyQt4.QtCore import QUrl
 from qgis.core import QgsCredentials, QgsDataSourceURI, QgsMapLayerRegistry
 from qgis.gui import QgsMessageBar
+from qgis.utils import showPluginHelp
 import re
 import os
 import os.path
@@ -298,6 +301,15 @@ class Versioning:
         self.actions[-1].setWhatsThis("create branch")
         self.actions[-1].triggered.connect(self.branch)
         self.actions[-1].setVisible(False)
+
+        self.actions.append( QAction(
+            QIcon(os.path.dirname(__file__) + "/help.svg"),
+            u"help", self.iface.mainWindow()) )
+        self.actions[-1].setWhatsThis("versioning-help")
+        self.actions[-1].setToolTip ("versioning help")
+        url = "http://eha-qgis-versioning.readthedocs.org/en/docs/index.html"
+        self.actions[-1].triggered.connect(lambda:QDesktopServices.openUrl(QUrl(url)))
+        self.actions[-1].setVisible(True)
 
         # add actions in menus
         for act in self.actions:

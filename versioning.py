@@ -30,7 +30,7 @@ import re
 import os
 import os.path
 import psycopg2
-import commit_msg_ui
+from PyQt4 import uic
 import versioning_base
 
 # We start from layers coming from one or more postgis non-versioned schemata
@@ -59,8 +59,8 @@ class Versioning:
         self.plugin_dir = os.path.dirname(__file__)
 
         self.q_commit_msg_dlg = QDialog(self.iface.mainWindow())
-        self.commit_msg_dlg = commit_msg_ui.Ui_CommitMsgDialog()
-        self.commit_msg_dlg.setupUi(self.q_commit_msg_dlg)
+        self.q_commit_msg_dlg = uic.loadUi(self.plugin_dir+"/commit_msg.ui")
+        self.commit_msg_dlg = ""
 
         self.current_layers = []
         self.actions = []
@@ -357,7 +357,7 @@ class Versioning:
         # get the commit message
         if not self.q_commit_msg_dlg.exec_():
             return
-        commit_msg = self.commit_msg_dlg.commitMessage.document().toPlainText()
+        commit_msg = self.q_commit_msg_dlg.commitMessage.document().toPlainText()
         if not commit_msg:
             QMessageBox.warning(self.iface.mainWindow(), "Warning",
                 "No commit message, aborting commit")
@@ -728,7 +728,7 @@ class Versioning:
         # time to get the commit message
         if not self.q_commit_msg_dlg.exec_():
             return
-        commit_msg = self.commit_msg_dlg.commitMessage.document().toPlainText()
+        commit_msg = self.q_commit_msg_dlg.commitMessage.document().toPlainText()
         if not commit_msg:
             QMessageBox.warning(self.iface.mainWindow(), "Warning",
                     "No commit message, aborting commit")

@@ -398,6 +398,12 @@ class Versioning:
         button_box.rejected.connect(dlg.reject)
 
         pcur = versioning_base.Db( psycopg2.connect(self.pg_conn_info()) )
+        user_msg1 = QgsMessageBar(dlg)
+        user_msg1.pushInfo("Click:", "one row for single revision; "
+        "control+click for multiple revisions.")
+        user_msg2 = QgsMessageBar(dlg)
+        user_msg2.pushWarning("Note:", "Upon clicking \"OK\", "
+            "fetching revisions may take some time.")
         pcur.execute("SELECT rev, commit_msg, branch, date, author "
             "FROM "+schema+".revisions")
         revs = pcur.fetchall()
@@ -412,9 +418,11 @@ class Versioning:
         for i, rev in enumerate(revs):
             for j, item in enumerate(rev):
                 tblw.setItem(i, j, QTableWidgetItem( str(item) ))
+        layout.addWidget( user_msg1 )
         layout.addWidget( tblw )
+        layout.addWidget( user_msg2 )
         layout.addWidget( button_box )
-        dlg.resize( 600, 300 )
+        dlg.resize( 650, 300 )
         if not dlg.exec_() :
             return
 

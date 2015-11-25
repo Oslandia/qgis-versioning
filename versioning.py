@@ -23,7 +23,8 @@
 #from PyQt4.QtCore import QAction
 from PyQt4.QtGui import QAction, QDialog, QDialogButtonBox, \
     QFileDialog, QIcon, QLabel, QLineEdit, QMessageBox, QTableWidget, \
-    QTreeView, QTreeWidget, QVBoxLayout, QTableWidgetItem, QColor
+    QTreeView, QTreeWidget, QVBoxLayout, QTableWidgetItem, QColor, QProgressBar
+from PyQt4.QtCore import *
 from qgis.core import QgsCredentials, QgsDataSourceURI, QgsMapLayerRegistry
 from qgis.gui import QgsMessageBar
 import re
@@ -397,39 +398,56 @@ class Versioning:
         button_box.accepted.connect(dlg.accept)
         button_box.rejected.connect(dlg.reject)
 
-        pcur = versioning_base.Db( psycopg2.connect(self.pg_conn_info()) )
         user_msg1 = QgsMessageBar(dlg)
-        user_msg1.pushInfo("Click:", "one row for single revision; "
-        "control+click for multiple revisions.")
-        user_msg2 = QgsMessageBar(dlg)
-        user_msg2.pushWarning("Note:", "Upon clicking \"OK\", "
-            "fetching revisions may take some time.")
+        user_msg1.pushInfo("Select:", "one [many] for single [multiple] "
+        "revisions.  Fetching may take time.")
+
+        pcur = versioning_base.Db( psycopg2.connect(self.pg_conn_info()) )
         pcur.execute("SELECT rev, commit_msg, branch, date, author "
             "FROM "+schema+".revisions")
         revs = pcur.fetchall()
         pcur.close()
         tblw = QTableWidget( dlg )
         tblw.setRowCount(len(revs))
-        tblw.setColumnCount(5)
+        tblw.setColumnCount(6)
         tblw.setSortingEnabled(True)
-        tblw.setHorizontalHeaderLabels(['Revision', 'Commit Message',
+        tblw.setHorizontalHeaderLabels(['Select','Revision', 'Commit Message',
                                       'Branch', 'Date', 'Author'])
         tblw.verticalHeader().setVisible(False)
         for i, rev in enumerate(revs):
             for j, item in enumerate(rev):
-                tblw.setItem(i, j, QTableWidgetItem( str(item) ))
+                chkBoxItem = QTableWidgetItem()
+                chkBoxItem.setFlags(Qt.ItemIsUserCheckable | Qt.ItemIsEnabled)
+                chkBoxItem.setCheckState(Qt.Unchecked)
+                tblw.setItem(i, 0, chkBoxItem)
+                tblw.setItem(i, j+1, QTableWidgetItem( str(item) ))
+
         layout.addWidget( user_msg1 )
         layout.addWidget( tblw )
-        layout.addWidget( user_msg2 )
         layout.addWidget( button_box )
         dlg.resize( 650, 300 )
         if not dlg.exec_() :
             return
 
         rows = set()
-        for i in tblw.selectedIndexes():
-            rows.add(i.row())
-        for row in rows:
+        revision_number_list = []
+        for i in range(len(revs)):
+            if  tblw.item(i,0).checkState():
+                print "Revision "+ str(i + 1) +" will be fetched"
+                revision_number_list.append(i + 1)
+                rows.add(tblw.item(i,0).row())
+
+        progressMessageBar = self.iface.messageBar().createMessage("Querying "
+        "the database for revision(s) "+str(revision_number_list))
+        progress = QProgressBar()
+        progress.setMaximum(len(rows))
+        progress.setAlignment(Qt.AlignLeft|Qt.AlignVCenter)
+        progressMessageBar.layout().addWidget(progress)
+        self.iface.messageBar().pushWidget(progressMessageBar, self.iface.messageBar().INFO)
+        progress.setValue(0)
+
+        for i, row in enumerate(rows):
+            progress.setValue(i+1)
             branch = revs[row][2]
             rev = revs[row][0]
             versioning_base.add_revision_view(uri.connectionInfo(),
@@ -449,6 +467,7 @@ class Versioning:
                 new_layer = self.iface.addVectorLayer( src,
                         display_name, 'postgres')
                 self.iface.legendInterface().moveLayer( new_layer, grp_idx)
+        self.iface.messageBar().clearWidgets()
 
     def unresolved_conflicts(self):
         """check for unresolved conflicts, add conflict layers if any"""

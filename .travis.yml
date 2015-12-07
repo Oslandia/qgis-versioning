@@ -1,25 +1,24 @@
-language: cpp
+language: python
 
-# os:
-#  - linux
-#  - osx
+sudo: false
 
-compiler:
-  - gcc
-  - clang
+addons:
+  apt:
+    packages:
+      - cmake
+      - spatialite-bin
+      - postgresql
+      - postgis
+      - python-qt4-dev
+      - pyqt4-dev-tools
+      - libproj-dev
+        #- gdal-bin
 
-before_install:
-  - if [ $TRAVIS_OS_NAME == linux ]; then sudo apt-get update -qq && sudo apt-get install -qq cmake spatialite-bin gdal-bin automake postgresql postgresql-server-dev-all; fi
-  - wget http://download.osgeo.org/postgis/source/postgis-2.1.8.tar.gz
-  - tar -xzf postgis-2.1.8.tar.gz
-  - cd postgis-2.1.8 && ./configure 
-  - cd postgis-2.1.8 && make -j3 && make install
-  - rm -Rf postgis-2.1.8.tar.gz postgis-2.1.8
-
-before_script:
-  - cmake
-
+install:
+    - pip install pyspatialite
 
 script:
+  - find / -name proj_api.h
+  - cmake .
   - make
-  - make test
+  - PYTHONPATH=$PWD ctest -V

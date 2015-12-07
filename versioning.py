@@ -30,7 +30,7 @@ import re
 import os
 import os.path
 import psycopg2
-import commit_msg_ui
+from PyQt4 import uic
 import versioning_base
 
 # We start from layers coming from one or more postgis non-versioned schemata
@@ -59,8 +59,8 @@ class Versioning:
         self.plugin_dir = os.path.dirname(__file__)
 
         self.q_commit_msg_dlg = QDialog(self.iface.mainWindow())
-        self.commit_msg_dlg = commit_msg_ui.Ui_CommitMsgDialog()
-        self.commit_msg_dlg.setupUi(self.q_commit_msg_dlg)
+        self.q_commit_msg_dlg = uic.loadUi(self.plugin_dir+"/commit_msg.ui")
+        self.commit_msg_dlg = ""
 
         self.current_layers = []
         self.actions = []
@@ -121,7 +121,7 @@ class Versioning:
         self.current_group_idx = -1
         name = ''
         self.current_layers = []
-        self.info.setText('No group selected')
+        self.info.setText('Versioning : no group selected')
         for act in self.actions:
             if act.text() in ['checkout',
                               'update',
@@ -149,7 +149,7 @@ class Versioning:
         group_idx = [i for i, x in
                 enumerate(self.iface.legendInterface().groups()) if x == name]
         if len(group_idx) != 1:
-            self.info.setText("More than one group with this name")
+            self.info.setText("Versioning : more than one group with this name")
             self.current_layers = []
             return
         [self.current_group_idx] = group_idx
@@ -171,7 +171,7 @@ class Versioning:
             if previous_conn:
                 if (uri.database(), uri.schema()) != previous_conn:
                     self.current_layers = []
-                    self.info.setText("Layers don't share db and schema")
+                    self.info.setText("Versioning : layers don't share db and schema")
                     return
             else:
                 previous_conn = (uri.database(), uri.schema())
@@ -181,7 +181,7 @@ class Versioning:
 
         if not len(previous_conn[0]):
             self.current_layers = []
-            self.info.setText("Not versionable")
+            self.info.setText("Versioning : not versionable")
             return
 
         layer = QgsMapLayerRegistry.instance().mapLayer(
@@ -194,9 +194,9 @@ class Versioning:
                 rev = versioning_base.revision( uri.database() )
             except:
                 self.current_layers = []
-                self.info.setText("The selected group is not a working copy")
+                self.info.setText("Versioning : the selected group is not a working copy")
                 return
-            self.info.setText( uri.database() +' rev='+str(rev))
+            self.info.setText( uri.database() +' <b>working rev</b>='+str(rev))
             selection_type = 'working copy'
         if layer.providerType() == "postgres":
             mtch = re.match(r'(.+)_([^_]+)_rev_(head|\d+)', uri.schema())
@@ -215,9 +215,9 @@ class Versioning:
                                                        uri.schema() )
                     selection_type = 'working copy'
                     self.info.setText( uri.database()+' '+uri.schema()
-                            +' rev='+str(rev) )
+                            +' <b>working rev</b>='+str(rev) )
                 except:
-                    self.info.setText('Unversioned schema')
+                    self.info.setText('Versioning : unversioned schema')
                     selection_type = 'unversioned'
 
 
@@ -243,7 +243,7 @@ class Versioning:
     def initGui(self):
         """Called once QGIS gui is loaded, before project is loaded"""
 
-        self.info.setText('No group selected')
+        self.info.setText('Versioning : no group selected')
         self.actions.append( self.iface.addToolBarWidget( self.info ) )
 
         # we could have a checkbox to either replace/add layers
@@ -357,7 +357,7 @@ class Versioning:
         # get the commit message
         if not self.q_commit_msg_dlg.exec_():
             return
-        commit_msg = self.commit_msg_dlg.commitMessage.document().toPlainText()
+        commit_msg = self.q_commit_msg_dlg.commitMessage.document().toPlainText()
         if not commit_msg:
             QMessageBox.warning(self.iface.mainWindow(), "Warning",
                 "No commit message, aborting commit")
@@ -498,19 +498,45 @@ class Versioning:
                 self.current_layers[0] )
         uri = QgsDataSourceURI(layer.source())
 
+        late_by = 0
+
         if layer.providerType() == "spatialite":
-            versioning_base.update( uri.database(), self.pg_conn_info() )
-            rev = versioning_base.revision( uri.database() )
+            late_by = versioning_base.late(
+                    uri.database(), self.pg_conn_info() )
         else: # postgres
-            versioning_base.pg_update( uri.connectionInfo(), uri.schema() )
-            rev = versioning_base.pg_revision(
-                    uri.connectionInfo(), uri.schema() )
+            late_by = versioning_base.pg_late(
+                    self.pg_conn_info(), uri.schema() )
+        if late_by:
+            if layer.providerType() == "spatialite":
+                versioning_base.update( uri.database(), self.pg_conn_info() )
+                rev = versioning_base.revision( uri.database() )
+            else: # postgres
+                versioning_base.pg_update( uri.connectionInfo(), uri.schema() )
+                rev = versioning_base.pg_revision(
+                        uri.connectionInfo(), uri.schema() )
 
-        if not self.unresolved_conflicts():
-            QMessageBox.information( self.iface.mainWindow(), "Notice",
-                    "You are up to date with revision "+str(rev-1)+".")
+            # Force refresh of map
+            if self.iface.mapCanvas().isCachingEnabled():
+                self.iface.mapCanvas().clearCache()
+                self.iface.mapCanvas().refresh()
+            else:
+                self.iface.mapCanvas().refresh()
 
+            # Force refresh of rev number in menu text
+            self.info.setText( uri.database() +' <b>working rev</b>='+str(rev))
 
+            if not self.unresolved_conflicts():
+                QMessageBox.warning( self.iface.mainWindow(), "Warning",
+                "Working copy was late by "+str(late_by)+" revision(s).\n"
+                "Now up to date with remote revision "+str(rev-1)+".")
+        else:
+            if layer.providerType() == "spatialite":
+                rev = versioning_base.revision( uri.database() )
+            else: # postgres
+                rev = versioning_base.pg_revision(
+                        uri.connectionInfo(), uri.schema() )
+            QMessageBox.information( self.iface.mainWindow(), "Info","Working "
+            "copy already up to date with remote revision "+str(rev-1)+".")
 
     def historize(self):
         """version database"""
@@ -559,8 +585,9 @@ class Versioning:
         """create working copy from versioned database layers"""
         # for each connection, we need the list of tables
         tables_for_conninfo = []
-        # for each layer, we need the list of user selected features to be checked out
-        # if a given layer has no user selected features, then all features will be checked out
+        # for each layer, we need the list of user selected features to be
+        # checked out; if a given layer has no user selected features, then all
+        # features will be checked out
         user_selected_features = []
         uri = None
         conn_info = ''
@@ -568,9 +595,11 @@ class Versioning:
             layer = QgsMapLayerRegistry.instance().mapLayer( layer_id )
             layer_selected_features = layer.selectedFeatures()
             if layer_selected_features:
-                QMessageBox.warning(None,"Warning","You will be checking out the subset of \
-"+str(len(layer_selected_features))+" features you selected in layer \""+layer.name()+"\".\n\n\
-If you want the whole data set for that layer, abort checkout in the pop up window asking for a filename, unselect features and start over.")
+                QMessageBox.warning(None,"Warning","You will be checking out "
+                "the subset of "+str(len(layer_selected_features))+" features "
+                "you selected in layer \""+layer.name()+"\".\n\nIf you want "
+                "the whole data set for that layer, abort checkout in the pop "
+                "up asking for a filename, unselect features and start over.")
                 user_selected_features.append(layer_selected_features)
             else:
                 user_selected_features.append([])
@@ -612,7 +641,6 @@ If you want the whole data set for that layer, abort checkout in the pop up wind
                     +geom,display_name, 'spatialite')
             self.iface.legendInterface().moveLayer( new_layer, grp_idx)
         self.iface.legendInterface().setGroupExpanded( grp_idx, True )
-
 
     def checkout_pg(self):
         """create postgres working copy (schema) from versioned
@@ -671,7 +699,6 @@ If you want the whole data set for that layer, abort checkout in the pop up wind
             new_layer = self.iface.addVectorLayer(src, display_name, 'postgres')
             self.iface.legendInterface().moveLayer( new_layer, grp_idx)
 
-
     def commit(self):
         """merge modifications into database"""
         print "commit"
@@ -701,7 +728,7 @@ If you want the whole data set for that layer, abort checkout in the pop up wind
         # time to get the commit message
         if not self.q_commit_msg_dlg.exec_():
             return
-        commit_msg = self.commit_msg_dlg.commitMessage.document().toPlainText()
+        commit_msg = self.q_commit_msg_dlg.commitMessage.document().toPlainText()
         if not commit_msg:
             QMessageBox.warning(self.iface.mainWindow(), "Warning",
                     "No commit message, aborting commit")
@@ -721,8 +748,15 @@ If you want the whole data set for that layer, abort checkout in the pop up wind
                     uri.connectionInfo(), uri.schema())
 
         if nb_of_updated_layer:
-            #self.iface.messageBar().pushMessage("Info", "You have successfully committed revision "+str( rev ), duration=10)
-            QMessageBox.information(self.iface.mainWindow(), "Info", "You have successfully committed revision "+str( rev ) )
+            #self.iface.messageBar().pushMessage("Info",
+            #"You have successfully committed revision "+str( rev ), duration=10)
+            QMessageBox.information(self.iface.mainWindow(), "Info",
+            "You have successfully committed remote revision "+str( rev-1 ) )
+
+            # Force refresh of rev number in menu text
+            self.info.setText( uri.database() +' <b>working rev</b>='+str(rev))
         else:
-            #self.iface.messageBar().pushMessage("Info", "There was no modification to commit", duration=10)
-            QMessageBox.information(self.iface.mainWindow(), "Info", "There was no modification to commit")
+            #self.iface.messageBar().pushMessage("Info",
+            #"There was no modification to commit", duration=10)
+            QMessageBox.information(self.iface.mainWindow(), "Info",
+            "There was no modification to commit")

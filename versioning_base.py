@@ -9,6 +9,14 @@ from pyspatialite import dbapi2
 import psycopg2
 import codecs
 from itertools import izip_longest
+import platform, sys
+
+# Deactivate stdout (like output of print statements) because windows
+# causes occasional "IOError [Errno 9] File descriptor error"
+# Not needed when there is a way to run QGIS in console mode in Windows.
+iswin = any(platform.win32_ver())
+if iswin:
+    sys.stdout = open(os.devnull, 'w')
 
 def escape_quote(msg):
     """quote single quotes"""

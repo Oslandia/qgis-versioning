@@ -23,9 +23,10 @@
 #from PyQt4.QtCore import QAction
 from PyQt4.QtGui import QAction, QDialog, QDialogButtonBox, \
     QFileDialog, QIcon, QLabel, QLineEdit, QMessageBox, QTableWidget, \
-    QTreeView, QTreeWidget, QVBoxLayout, QTableWidgetItem, QColor
+    QTreeView, QTreeWidget, QVBoxLayout, QTableWidgetItem, QColor, QProgressBar
 from qgis.core import QgsCredentials, QgsDataSourceURI, QgsMapLayerRegistry, \
     QgsFeatureRequest
+from PyQt4.QtCore import *
 from qgis.gui import QgsMessageBar
 import re
 import os
@@ -35,11 +36,11 @@ from PyQt4 import uic
 import versioning_base
 import platform, sys
 
+#Deactivate stdout (like output of print statements) on win32 because windows
+#causes the occasional "IOError [Errno 9] File descriptor error".
+#Not needed anymore when there is a way to run QGIS in console mode in Windows.
 iswin = any(platform.win32_ver())
 if iswin:
-    #Deactivate stdout (like output of print statements) if windows
-    #causes occasional "IOError [Errno 9] File descriptor error"
-    #unless there is a way to run QGIS in console mode in Windows
     sys.stdout = open(os.devnull, 'w')
 
 # We start from layers coming from one or more postgis non-versioned schemata
@@ -408,6 +409,10 @@ class Versioning:
         button_box.accepted.connect(dlg.accept)
         button_box.rejected.connect(dlg.reject)
 
+        user_msg1 = QgsMessageBar(dlg)
+        user_msg1.pushInfo("Select:", "one [many] for single [multiple] "
+        "revisions.  Fetching may take time.")
+
         pcur = versioning_base.Db( psycopg2.connect(self.pg_conn_info()) )
         pcur.execute("SELECT rev, commit_msg, branch, date, author "
             "FROM "+schema+".revisions")
@@ -415,24 +420,45 @@ class Versioning:
         pcur.close()
         tblw = QTableWidget( dlg )
         tblw.setRowCount(len(revs))
-        tblw.setColumnCount(5)
+        tblw.setColumnCount(6)
         tblw.setSortingEnabled(True)
-        tblw.setHorizontalHeaderLabels(['Revision', 'Commit Message',
+        tblw.setHorizontalHeaderLabels(['Select','Revision', 'Commit Message',
                                       'Branch', 'Date', 'Author'])
         tblw.verticalHeader().setVisible(False)
         for i, rev in enumerate(revs):
             for j, item in enumerate(rev):
-                tblw.setItem(i, j, QTableWidgetItem( str(item) ))
+                chkBoxItem = QTableWidgetItem()
+                chkBoxItem.setFlags(Qt.ItemIsUserCheckable | Qt.ItemIsEnabled)
+                chkBoxItem.setCheckState(Qt.Unchecked)
+                tblw.setItem(i, 0, chkBoxItem)
+                tblw.setItem(i, j+1, QTableWidgetItem( str(item) ))
+
+        layout.addWidget( user_msg1 )
         layout.addWidget( tblw )
         layout.addWidget( button_box )
-        dlg.resize( 600, 300 )
+        dlg.resize( 650, 300 )
         if not dlg.exec_() :
             return
 
         rows = set()
-        for i in tblw.selectedIndexes():
-            rows.add(i.row())
-        for row in rows:
+        revision_number_list = []
+        for i in range(len(revs)):
+            if  tblw.item(i,0).checkState():
+                print "Revision "+ str(i + 1) +" will be fetched"
+                revision_number_list.append(i + 1)
+                rows.add(tblw.item(i,0).row())
+
+        progressMessageBar = self.iface.messageBar().createMessage("Querying "
+        "the database for revision(s) "+str(revision_number_list))
+        progress = QProgressBar()
+        progress.setMaximum(len(rows))
+        progress.setAlignment(Qt.AlignLeft|Qt.AlignVCenter)
+        progressMessageBar.layout().addWidget(progress)
+        self.iface.messageBar().pushWidget(progressMessageBar, self.iface.messageBar().INFO)
+        progress.setValue(0)
+
+        for i, row in enumerate(rows):
+            progress.setValue(i+1)
             branch = revs[row][2]
             rev = revs[row][0]
             versioning_base.add_revision_view(uri.connectionInfo(),
@@ -452,6 +478,7 @@ class Versioning:
                 new_layer = self.iface.addVectorLayer( src,
                         display_name, 'postgres')
                 self.iface.legendInterface().moveLayer( new_layer, grp_idx)
+        self.iface.messageBar().clearWidgets()
 
     def unresolved_conflicts(self):
         """check for unresolved conflicts, add conflict layers if any"""

@@ -9,6 +9,14 @@ from pyspatialite import dbapi2
 import psycopg2
 import codecs
 from itertools import izip_longest
+import platform, sys
+
+iswin = any(platform.win32_ver())
+if iswin:
+    #Deactivate stdout (like output of print statements) if windows
+    #causes occasional "IOError [Errno 9] File descriptor error"
+    #unless there is a way to run QGIS in console mode in Windows
+    sys.stdout = open(os.devnull, 'w')
 
 def escape_quote(msg):
     """quote single quotes"""
@@ -222,9 +230,10 @@ def checkout(pg_conn_info, pg_table_names, sqlite_filename, selected_feature_lis
                     'PG:"'+pg_conn_info+'"', schema+'.'+table,
                     '-nln', table]
             if feature_list:
-                cmd += ['-where', '"'+pkey+' in ('+",".join([str(feature_list[i][pkey]) for i in range(0, len(feature_list))])+')"']
+                ##cmd += ['-where', '"'+pkey+' in ('+",".join([str(feature_list[i][pkey]) for i in range(0, len(feature_list))])+')"']
+                cmd += ['-where', '"'+pkey+' in ('+",".join([str(feature_list[i]) for i in range(0, len(feature_list))])+')"']
 
-            #print ' '.join(cmd)
+            print ' '.join(cmd)
             os.system(' '.join(cmd))
 
             # save target revision in a table
@@ -247,8 +256,10 @@ def checkout(pg_conn_info, pg_table_names, sqlite_filename, selected_feature_lis
                         'PG:"'+pg_conn_info+'"', schema+'.'+table,
                         '-nln', table]
             if feature_list:
-                cmd += ['-where', '"'+pkey+' in ('+",".join([str(feature_list[i][pkey]) for i in range(0, len(feature_list))])+')"']
-            #print ' '.join(cmd)
+                ##cmd += ['-where', '"'+pkey+' in ('+",".join([str(feature_list[i][pkey]) for i in range(0, len(feature_list))])+')"']
+                cmd += ['-where', '"'+pkey+' in ('+",".join([str(feature_list[i]) for i in range(0, len(feature_list))])+')"']
+            #print "Using selectedFeaturesIds"
+            print ' '.join(cmd)
             os.system(' '.join(cmd))
 
             # save target revision in a table if not in there

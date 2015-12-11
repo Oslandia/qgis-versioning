@@ -33,6 +33,14 @@ import os.path
 import psycopg2
 from PyQt4 import uic
 import versioning_base
+import platform, sys
+
+iswin = any(platform.win32_ver())
+if iswin:
+    #Deactivate stdout (like output of print statements) if windows
+    #causes occasional "IOError [Errno 9] File descriptor error"
+    #unless there is a way to run QGIS in console mode in Windows
+    sys.stdout = open(os.devnull, 'w')
 
 # We start from layers coming from one or more postgis non-versioned schemata
 # A widget group is displayed for each distinct schema
@@ -609,18 +617,46 @@ class Versioning:
             table_pk=versioning_base.pg_pk(pcur,mtch.group(1), uri.table())
             pcur.close()
             print "Referring table pk = " + table_pk
+            print "Key column = " +uri.keyColumn()
 
+            # Ideal : get list of PK ids from a selectedFeaturesIds()
             layer_selected_features_ids = layer.selectedFeaturesIds()
+
+            # Else : get list of PK ids from a list of QGSFeatures in the case
+            # selectedFeaturesIds() does not return the real PK field name
+            # Lists of PK filed names from feature objects was found not to
+            # scale very well
+            if layer_selected_features_ids:
+                if uri.keyColumn()!= table_pk:
+                    QMessageBox.warning(None,"Warning","Layer  \""+layer.name()+
+                    " \" does not support checking out a large number of selected "
+                    "features.  If checkout proceeds without the subset, you "
+                    "will need to select a smaller number of features.")
+
+                    layerSelectedFeaturesIterator = layer.selectedFeaturesIterator(
+                        QgsFeatureRequest().setFlags( QgsFeatureRequest.NoGeometry )
+                        .setSubsetOfAttributes( [table_pk],layer.pendingFields() ))
+                    print "Resetting ids"
+                    layer_selected_features_ids = \
+                        list(i[table_pk] for i in layerSelectedFeaturesIterator)
+                    print "Iterator size = " +str(len(layer_selected_features_ids))
+                    print "Iterator size, once more = " +str(len(layer_selected_features_ids))
+
+            #layer_selected_features_ids = layer.selectedFeaturesIds()
+            #layerSelectedFeaturesIterator = layer.selectedFeaturesIterator()
+
             if layer_selected_features_ids:
                 QMessageBox.warning(None,"Warning","You will be checking out "
                 "the subset of "+str(len(layer_selected_features_ids))+" features "
                 "you selected in layer \""+layer.name()+"\".\n\nIf you want "
                 "the whole data set for that layer, abort checkout in the pop "
                 "up asking for a filename, unselect features and start over.")
-                user_selected_features.append(list(layer.getFeatures(
-                  QgsFeatureRequest().setFilterFids(layer_selected_features_ids).
-                  setFlags( QgsFeatureRequest.NoGeometry ).setSubsetOfAttributes(
-                  [table_pk],layer.pendingFields() ))))
+                ####user_selected_features.append(list(i[table_pk] for i in layerSelectedFeaturesIterator))
+                user_selected_features.append(layer_selected_features_ids)
+                ##user_selected_features.append(list(layer.getFeatures(
+                ##  QgsFeatureRequest().setFilterFids(layer_selected_features_ids).
+                ##  setFlags( QgsFeatureRequest.NoGeometry ).setSubsetOfAttributes(
+                ##  [table_pk],layer.pendingFields() ))))
             else:
                 user_selected_features.append([])
             if not conn_info:

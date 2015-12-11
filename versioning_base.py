@@ -230,10 +230,9 @@ def checkout(pg_conn_info, pg_table_names, sqlite_filename, selected_feature_lis
                     'PG:"'+pg_conn_info+'"', schema+'.'+table,
                     '-nln', table]
             if feature_list:
-                ##cmd += ['-where', '"'+pkey+' in ('+",".join([str(feature_list[i][pkey]) for i in range(0, len(feature_list))])+')"']
                 cmd += ['-where', '"'+pkey+' in ('+",".join([str(feature_list[i]) for i in range(0, len(feature_list))])+')"']
 
-            print ' '.join(cmd)
+            #print ' '.join(cmd)
             os.system(' '.join(cmd))
 
             # save target revision in a table
@@ -256,10 +255,8 @@ def checkout(pg_conn_info, pg_table_names, sqlite_filename, selected_feature_lis
                         'PG:"'+pg_conn_info+'"', schema+'.'+table,
                         '-nln', table]
             if feature_list:
-                ##cmd += ['-where', '"'+pkey+' in ('+",".join([str(feature_list[i][pkey]) for i in range(0, len(feature_list))])+')"']
                 cmd += ['-where', '"'+pkey+' in ('+",".join([str(feature_list[i]) for i in range(0, len(feature_list))])+')"']
-            #print "Using selectedFeaturesIds"
-            print ' '.join(cmd)
+            #print ' '.join(cmd)
             os.system(' '.join(cmd))
 
             # save target revision in a table if not in there

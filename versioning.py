@@ -635,55 +635,34 @@ class Versioning:
         for layer_id in self.current_layers:
             layer = QgsMapLayerRegistry.instance().mapLayer( layer_id )
             uri = QgsDataSourceURI(layer.source())
-            # if we had a way to get the PK from QGIS (e.g.) uri.keyColumn()
-            # then we'd avoid having to refer to versioning_base.pg_pk AND we'd
-            # avoid having to manage QGSFeature objects and use a simple list
-            # of ids (selectedFeaturesIds) instead
+
+            # Get actual PK fror corresponding table
             mtch = re.match(r'(.+)_([^_]+)_rev_(head|\d+)', uri.schema())
             pcur = versioning_base.Db( psycopg2.connect(self.pg_conn_info()) )
             table_pk=versioning_base.pg_pk(pcur,mtch.group(1), uri.table())
             pcur.close()
-            print "Referring table pk = " + table_pk
-            print "Key column = " +uri.keyColumn()
+            #print "Referring table pk = " + table_pk
+            #print "Key column = " +uri.keyColumn()
 
-            # Ideal : get list of PK ids from a selectedFeaturesIds()
             layer_selected_features_ids = layer.selectedFeaturesIds()
 
-            # Else : get list of PK ids from a list of QGSFeatures in the case
-            # selectedFeaturesIds() does not return the real PK field name
-            # Lists of PK filed names from feature objects was found not to
-            # scale very well
+            # Check if PK from view [uri.keyColumn()] matches actual PK. If not,
+            # throw error.  We need the right PK from the view in order to use
+            # the efficient selectedFeaturesIds().  selectedFeatures() or other
+            # ways that lead to a list of QGSFeature objects do not scale well.
             if layer_selected_features_ids:
                 if uri.keyColumn()!= table_pk:
                     QMessageBox.warning(None,"Warning","Layer  \""+layer.name()+
-                    " \" does not support checking out a large number of selected "
-                    "features.  If checkout proceeds without the subset, you "
-                    "will need to select a smaller number of features.")
-
-                    layerSelectedFeaturesIterator = layer.selectedFeaturesIterator(
-                        QgsFeatureRequest().setFlags( QgsFeatureRequest.NoGeometry )
-                        .setSubsetOfAttributes( [table_pk],layer.pendingFields() ))
-                    print "Resetting ids"
-                    layer_selected_features_ids = \
-                        list(i[table_pk] for i in layerSelectedFeaturesIterator)
-                    print "Iterator size = " +str(len(layer_selected_features_ids))
-                    print "Iterator size, once more = " +str(len(layer_selected_features_ids))
-
-            #layer_selected_features_ids = layer.selectedFeaturesIds()
-            #layerSelectedFeaturesIterator = layer.selectedFeaturesIterator()
-
-            if layer_selected_features_ids:
-                QMessageBox.warning(None,"Warning","You will be checking out "
-                "the subset of "+str(len(layer_selected_features_ids))+" features "
-                "you selected in layer \""+layer.name()+"\".\n\nIf you want "
-                "the whole data set for that layer, abort checkout in the pop "
-                "up asking for a filename, unselect features and start over.")
-                ####user_selected_features.append(list(i[table_pk] for i in layerSelectedFeaturesIterator))
-                user_selected_features.append(layer_selected_features_ids)
-                ##user_selected_features.append(list(layer.getFeatures(
-                ##  QgsFeatureRequest().setFilterFids(layer_selected_features_ids).
-                ##  setFlags( QgsFeatureRequest.NoGeometry ).setSubsetOfAttributes(
-                ##  [table_pk],layer.pendingFields() ))))
+                    " \" does not have the right primary key.\n\nCheckout will "
+                    "proceed without the selected features subset.")
+                    user_selected_features.append([])
+                else:
+                    QMessageBox.warning(None,"Warning","You will be checking out "
+                    "the subset of "+str(len(layer_selected_features_ids))+" features "
+                    "you selected in layer \""+layer.name()+"\".\n\nIf you want "
+                    "the whole data set for that layer, abort checkout in the pop "
+                    "up asking for a filename, unselect features and start over.")
+                    user_selected_features.append(layer_selected_features_ids)
             else:
                 user_selected_features.append([])
             if not conn_info:

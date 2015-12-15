@@ -33,6 +33,14 @@ import os.path
 import psycopg2
 from PyQt4 import uic
 import versioning_base
+import platform, sys
+
+# Deactivate stdout (like output of print statements) because windows
+# causes occasional "IOError [Errno 9] File descriptor error"
+# Not needed when there is a way to run QGIS in console mode in Windows.
+iswin = any(platform.win32_ver())
+if iswin:
+    sys.stdout = open(os.devnull, 'w')
 
 # We start from layers coming from one or more postgis non-versioned schemata
 # A widget group is displayed for each distinct schema

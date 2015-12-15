@@ -637,12 +637,8 @@ class Versioning:
             uri = QgsDataSourceURI(layer.source())
 
             # Get actual PK fror corresponding table
-            mtch = re.match(r'(.+)_([^_]+)_rev_(head|\d+)', uri.schema())
-            pcur = versioning_base.Db( psycopg2.connect(self.pg_conn_info()) )
-            table_pk=versioning_base.pg_pk(pcur,mtch.group(1), uri.table())
-            pcur.close()
-            #print "Referring table pk = " + table_pk
-            #print "Key column = " +uri.keyColumn()
+            actual_table_pk = versioning_base.get_actual_pk( uri,self.pg_conn_info() )
+            #print "Actual table pk = " + actual_table_pk
 
             layer_selected_features_ids = layer.selectedFeaturesIds()
 
@@ -651,7 +647,7 @@ class Versioning:
             # the efficient selectedFeaturesIds().  selectedFeatures() or other
             # ways that lead to a list of QGSFeature objects do not scale well.
             if layer_selected_features_ids:
-                if uri.keyColumn()!= table_pk:
+                if uri.keyColumn()!= actual_table_pk:
                     QMessageBox.warning(None,"Warning","Layer  \""+layer.name()+
                     " \" does not have the right primary key.\n\nCheckout will "
                     "proceed without the selected features subset.")

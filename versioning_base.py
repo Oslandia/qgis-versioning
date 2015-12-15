@@ -18,6 +18,16 @@ iswin = any(platform.win32_ver())
 if iswin:
     sys.stdout = open(os.devnull, 'w')
 
+def get_actual_pk(uri,pg_conn_info):
+    """Get actual PK from corresponding table or view.  The result serves to
+    ascertain that the PK found by QGIS for PG views matches the real PK.
+    """
+    mtch = re.match(r'(.+)_([^_]+)_rev_(head|\d+)', uri.schema())
+    pcur = Db(psycopg2.connect(pg_conn_info))
+    actual_pk=pg_pk(pcur,mtch.group(1), uri.table())
+    pcur.close()
+    return actual_pk
+
 def escape_quote(msg):
     """quote single quotes"""
     return str.replace(str(msg),"'","''");

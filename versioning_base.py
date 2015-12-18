@@ -28,6 +28,25 @@ def get_actual_pk(uri,pg_conn_info):
     pcur.close()
     return actual_pk
 
+def preserve_fid( pkid, fetchall_tuple):
+    # This is a hack because os.system does not scale in MS Windows.
+    # We need to create a view, then emulate the "preserve_fid" behaviour of
+    # ogr2ogr.  A select * in the new view will generate random OGC_FID values
+    # which means we cannot commit modifications after a checkout.
+    # pkid = name of pkid as a string
+    # fetchall_tuple = a list of column names returned as tuples by fetchall()
+
+    str_list=[]
+    for i in fetchall_tuple:
+        str_list.append(str(i[0]))
+
+    replaceText = pkid
+    replaceData = pkid + ' as OGC_FID'
+    pos = str_list.index(replaceText)
+    str_list[pos] = replaceData
+    columns_str = ', '.join(str_list)
+    return columns_str
+
 def escape_quote(msg):
     """quote single quotes"""
     return str.replace(str(msg),"'","''");
@@ -212,6 +231,7 @@ def checkout(pg_conn_info, pg_table_names, sqlite_filename, selected_feature_lis
 
     pcur = Db(psycopg2.connect(pg_conn_info))
 
+    temp_view_names = []
     first_table = True
     for pg_table_name,feature_list in list(izip_longest(pg_table_names, selected_feature_lists)):
         [schema, table] = pg_table_name.split('.')
@@ -240,7 +260,21 @@ def checkout(pg_conn_info, pg_table_names, sqlite_filename, selected_feature_lis
                     'PG:"'+pg_conn_info+'"', schema+'.'+table,
                     '-nln', table]
             if feature_list:
-                cmd += ['-where', '"'+pkey+' in ('+",".join([str(feature_list[i]) for i in range(0, len(feature_list))])+')"']
+                # We need to create a temp view because of windows commandline
+                # limitations, e.g. ogr2ogr with a very long where clause
+                # GDAL > 2.1 allows specifying a filename for where args, e.g.
+                #cmd += ['-where', '"'+pkey+' in ('+",".join([str(feature_list[i]) for i in range(0, len(feature_list))])+')"']
+                temp_view_name = schema+"."+table+"_checkout_temp_view"
+                temp_view_names.append(temp_view_name)
+                # Get column names because we cannot just call 'SELECT *'
+                pcur.execute("SELECT column_name FROM information_schema.columns WHERE table_schema = \'"+schema+"\' AND table_name   = \'"+table+"\'")
+                column_list = pcur.fetchall()
+                new_columns_str = preserve_fid( pkey, column_list)
+                view_str = "CREATE OR REPLACE VIEW "+temp_view_name+" AS SELECT "+new_columns_str+" FROM " +schema+"."+table+" WHERE "+pkey+' in ('+",".join([str(feature_list[i]) for i in range(0, len(feature_list))])+')'
+                #print view_str
+                pcur.execute(view_str)
+                pcur.commit()
+                cmd[8] = temp_view_name
 
             #print ' '.join(cmd)
             os.system(' '.join(cmd))
@@ -265,7 +299,18 @@ def checkout(pg_conn_info, pg_table_names, sqlite_filename, selected_feature_lis
                         'PG:"'+pg_conn_info+'"', schema+'.'+table,
                         '-nln', table]
             if feature_list:
-                cmd += ['-where', '"'+pkey+' in ('+",".join([str(feature_list[i]) for i in range(0, len(feature_list))])+')"']
+                # Same comments as in 'if feature_list' above
+                temp_view_name = schema+"."+table+"_checkout_temp_view"
+                temp_view_names.append(temp_view_name)
+                pcur.execute("SELECT column_name FROM information_schema.columns WHERE table_schema = \'"+schema+"\' AND table_name   = \'"+table+"\'")
+                column_list = pcur.fetchall()
+                new_columns_str = preserve_fid( pkey, column_list)
+                view_str = "CREATE OR REPLACE VIEW "+temp_view_name+" AS SELECT "+new_columns_str+" FROM " +schema+"."+table+" WHERE "+pkey+' in ('+",".join([str(feature_list[i]) for i in range(0, len(feature_list))])+')'
+                #print view_str
+                pcur.execute(view_str)
+                pcur.commit()
+                cmd[7] = temp_view_name
+
             #print ' '.join(cmd)
             os.system(' '.join(cmd))
 
@@ -374,6 +419,13 @@ def checkout(pg_conn_info, pg_table_names, sqlite_filename, selected_feature_lis
 
         scur.commit()
         scur.close()
+    # Remove temp views after sqlite file is written
+    if feature_list:
+        for i in temp_view_names:
+            del_view_str = "DROP VIEW IF EXISTS " + i
+            #print del_view_str
+            pcur.execute(del_view_str)
+            pcur.commit()
     pcur.close()
 
 def update(sqlite_filename, pg_conn_info):

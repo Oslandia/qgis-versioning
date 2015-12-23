@@ -23,7 +23,8 @@
 #from PyQt4.QtCore import QAction
 from PyQt4.QtGui import QAction, QDialog, QDialogButtonBox, \
     QFileDialog, QIcon, QLabel, QLineEdit, QMessageBox, QTableWidget, \
-    QTreeView, QTreeWidget, QVBoxLayout, QTableWidgetItem, QColor, QProgressBar
+    QTreeView, QTreeWidget, QVBoxLayout, QTableWidgetItem, QColor, QProgressBar,\
+    QComboBox
 from PyQt4.QtCore import *
 from qgis.core import QgsCredentials, QgsDataSourceURI, QgsMapLayerRegistry
 from qgis.gui import QgsMessageBar
@@ -34,6 +35,7 @@ import psycopg2
 from PyQt4 import uic
 import versioning_base
 import platform, sys
+from itertools import groupby
 
 # Deactivate stdout (like output of print statements) because windows
 # causes occasional "IOError [Errno 9] File descriptor error"
@@ -68,7 +70,7 @@ class Versioning:
         self.plugin_dir = os.path.dirname(__file__)
 
         self.q_commit_msg_dlg = QDialog(self.iface.mainWindow())
-        self.q_commit_msg_dlg = uic.loadUi(self.plugin_dir+"/commit_msg.ui")
+        self.q_commit_msg_dlg = uic.loadUi(self.plugin_dir+"/commit_msg_test.ui")
         self.commit_msg_dlg = ""
 
         self.current_layers = []
@@ -760,10 +762,31 @@ class Versioning:
             print "aborted"
             return
 
+        #get list of pg users to populate combobox
+        pg_users_list = versioning_base.get_pg_users_list(self.pg_conn_info())
+        #print "pg_users_list = " + str(pg_users_list)
+        nb_items_in_list = self.q_commit_msg_dlg.pg_users_combobox.count()
+        if not(nb_items_in_list) :
+            self.q_commit_msg_dlg.pg_users_combobox.addItems (pg_users_list)
+        # Better if we could have a QgsDataSourceURI.username()
+        pg_username = self.pg_conn_info().split(' ')[3].replace("'","").split('=')[1]
+        current_user_index = self.q_commit_msg_dlg.pg_users_combobox.findText(pg_username)
+        # sets the current pg_user in the combobox to come
+        current_user_combobox_item = self.q_commit_msg_dlg.pg_users_combobox.setCurrentIndex(current_user_index)
+        #current_user_index = self.q_commit_msg_dlg.pg_users_combobox.findText(pg_conn_info_dict.get('user').strip("\'"))
+        #current_user_index = self.q_commit_msg_dlg.pg_users_combobox.findText(uri.username())
+        #print "current_user_index = " + str(current_user_index)
+        #pg_users_combobox_item = self.q_commit_msg_dlg.pg_users_combobox.itemText(current_user_index)
+        #pg_users_combobox_item = self.q_commit_msg_dlg.pg_users_combobox.currentText()
+        #print "pg_users_combobox_item = " + pg_users_combobox_item
+        #print "type (self.pg_conn_info()) = " + str(type (self.pg_conn_info()))
+
         # time to get the commit message
         if not self.q_commit_msg_dlg.exec_():
             return
         commit_msg = self.q_commit_msg_dlg.commitMessage.document().toPlainText()
+        commit_pg_user = self.q_commit_msg_dlg.pg_users_combobox.itemText(self.q_commit_msg_dlg.pg_users_combobox.currentIndex())
+        #print "commit_pg_user = " + commit_pg_user
         if not commit_msg:
             QMessageBox.warning(self.iface.mainWindow(), "Warning",
                     "No commit message, aborting commit")
@@ -774,7 +797,7 @@ class Versioning:
         rev = 0
         if layer.providerType() == "spatialite":
             nb_of_updated_layer = versioning_base.commit( uri.database(),
-                    commit_msg, self.pg_conn_info() )
+                    commit_msg, self.pg_conn_info(),commit_pg_user )
             rev = versioning_base.revision(uri.database())
         else: # postgres
             nb_of_updated_layer = versioning_base.pg_commit(

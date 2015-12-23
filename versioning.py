@@ -70,7 +70,7 @@ class Versioning:
         self.plugin_dir = os.path.dirname(__file__)
 
         self.q_commit_msg_dlg = QDialog(self.iface.mainWindow())
-        self.q_commit_msg_dlg = uic.loadUi(self.plugin_dir+"/commit_msg_test.ui")
+        self.q_commit_msg_dlg = uic.loadUi(self.plugin_dir+"/commit_msg.ui")
         self.commit_msg_dlg = ""
 
         self.current_layers = []

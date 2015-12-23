@@ -52,6 +52,46 @@
     <string>Commit message</string>
    </property>
   </widget>
+  <widget class="QComboBox" name="pg_users_combobox">
+   <property name="enabled">
+    <bool>true</bool>
+   </property>
+   <property name="geometry">
+    <rect>
+     <x>167</x>
+     <y>10</y>
+     <width>191</width>
+     <height>27</height>
+    </rect>
+   </property>
+   <property name="mouseTracking">
+    <bool>false</bool>
+   </property>
+   <property name="acceptDrops">
+    <bool>false</bool>
+   </property>
+   <property name="statusTip">
+    <string notr="true" extracomment="Select user"/>
+   </property>
+   <property name="autoFillBackground">
+    <bool>false</bool>
+   </property>
+   <property name="editable">
+    <bool>false</bool>
+   </property>
+   <property name="currentIndex">
+    <number>-1</number>
+   </property>
+   <property name="maxVisibleItems">
+    <number>100</number>
+   </property>
+   <property name="maxCount">
+    <number>2147483643</number>
+   </property>
+   <property name="frame">
+    <bool>false</bool>
+   </property>
+  </widget>
  </widget>
  <resources/>
  <connections>
@@ -84,6 +124,22 @@
     <hint type="destinationlabel">
      <x>286</x>
      <y>274</y>
+    </hint>
+   </hints>
+  </connection>
+  <connection>
+   <sender>pg_users_combobox</sender>
+   <signal>currentIndexChanged(QString)</signal>
+   <receiver>CommitMsgDialog</receiver>
+   <slot>setFocus()</slot>
+   <hints>
+    <hint type="sourcelabel">
+     <x>262</x>
+     <y>23</y>
+    </hint>
+    <hint type="destinationlabel">
+     <x>198</x>
+     <y>156</y>
     </hint>
    </hints>
   </connection>

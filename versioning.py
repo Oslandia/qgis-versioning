@@ -314,6 +314,13 @@ class Versioning:
         for act in self.actions:
             self.iface.addToolBarIcon(act)
 
+        #get list of pg users to populate combobox used in commit msg dialog
+        pg_users_list = versioning_base.get_pg_users_list(self.pg_conn_info())
+        #print "pg_users_list = " + str(pg_users_list)
+        self.q_commit_msg_dlg.pg_users_combobox.addItems (pg_users_list)
+
+
+
     def unload(self):
         """called when plugin is unloaded"""
         # Remove the plugin menu item and icon
@@ -366,6 +373,9 @@ class Versioning:
         pcur.close()
 
         # get the commit message
+        # get rid of the combobox asking for the pg username of committer
+        self.q_commit_msg_dlg.pg_users_combobox.setVisible(False)
+        self.q_commit_msg_dlg.pg_username_label.setVisible(False)
         if not self.q_commit_msg_dlg.exec_():
             return
         commit_msg = self.q_commit_msg_dlg.commitMessage.document().toPlainText()
@@ -762,24 +772,15 @@ class Versioning:
             print "aborted"
             return
 
-        #get list of pg users to populate combobox
-        pg_users_list = versioning_base.get_pg_users_list(self.pg_conn_info())
-        #print "pg_users_list = " + str(pg_users_list)
-        nb_items_in_list = self.q_commit_msg_dlg.pg_users_combobox.count()
-        if not(nb_items_in_list) :
-            self.q_commit_msg_dlg.pg_users_combobox.addItems (pg_users_list)
+        # Make sure the combobox is visible; could be made invisible by a
+        # previous call to branch
+        self.q_commit_msg_dlg.pg_users_combobox.setVisible(True)
+        self.q_commit_msg_dlg.pg_username_label.setVisible(True)
         # Better if we could have a QgsDataSourceURI.username()
         pg_username = self.pg_conn_info().split(' ')[3].replace("'","").split('=')[1]
         current_user_index = self.q_commit_msg_dlg.pg_users_combobox.findText(pg_username)
         # sets the current pg_user in the combobox to come
         current_user_combobox_item = self.q_commit_msg_dlg.pg_users_combobox.setCurrentIndex(current_user_index)
-        #current_user_index = self.q_commit_msg_dlg.pg_users_combobox.findText(pg_conn_info_dict.get('user').strip("\'"))
-        #current_user_index = self.q_commit_msg_dlg.pg_users_combobox.findText(uri.username())
-        #print "current_user_index = " + str(current_user_index)
-        #pg_users_combobox_item = self.q_commit_msg_dlg.pg_users_combobox.itemText(current_user_index)
-        #pg_users_combobox_item = self.q_commit_msg_dlg.pg_users_combobox.currentText()
-        #print "pg_users_combobox_item = " + pg_users_combobox_item
-        #print "type (self.pg_conn_info()) = " + str(type (self.pg_conn_info()))
 
         # time to get the commit message
         if not self.q_commit_msg_dlg.exec_():

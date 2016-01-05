@@ -127,6 +127,12 @@ class Versioning:
 
         return self._pg_conn_info
 
+    def get_pg_users_list(self):
+        #get list of pg users to populate combobox used in commit msg dialog
+        pg_users_list = versioning_base.get_pg_users_list(self.pg_conn_info())
+        #print "pg_users_list = " + str(pg_users_list)
+        self.q_commit_msg_dlg.pg_users_combobox.addItems (pg_users_list)
+
     def on_legend_click(self, current, column=0):
         "changes menu when user clicks on legend"
         self.current_group_idx = -1
@@ -313,12 +319,6 @@ class Versioning:
         # add actions in menus
         for act in self.actions:
             self.iface.addToolBarIcon(act)
-
-        #get list of pg users to populate combobox used in commit msg dialog
-        pg_users_list = versioning_base.get_pg_users_list(self.pg_conn_info())
-        #print "pg_users_list = " + str(pg_users_list)
-        self.q_commit_msg_dlg.pg_users_combobox.addItems (pg_users_list)
-
 
 
     def unload(self):
@@ -776,6 +776,10 @@ class Versioning:
         # previous call to branch
         self.q_commit_msg_dlg.pg_users_combobox.setVisible(True)
         self.q_commit_msg_dlg.pg_username_label.setVisible(True)
+        # Populate combobox with list of pg usernames
+        nb_items_in_list = self.q_commit_msg_dlg.pg_users_combobox.count()
+        if not(nb_items_in_list) :
+            self.get_pg_users_list()
         # Better if we could have a QgsDataSourceURI.username()
         pg_username = self.pg_conn_info().split(' ')[3].replace("'","").split('=')[1]
         current_user_index = self.q_commit_msg_dlg.pg_users_combobox.findText(pg_username)

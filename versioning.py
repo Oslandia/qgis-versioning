@@ -24,8 +24,9 @@
 from PyQt4.QtGui import QAction, QDialog, QDialogButtonBox, \
     QFileDialog, QIcon, QLabel, QLineEdit, QMessageBox, QTableWidget, \
     QTreeView, QTreeWidget, QVBoxLayout, QTableWidgetItem, QColor, QProgressBar
+from qgis.core import QgsCredentials, QgsDataSourceURI, QgsMapLayerRegistry, \
+    QgsFeatureRequest
 from PyQt4.QtCore import *
-from qgis.core import QgsCredentials, QgsDataSourceURI, QgsMapLayerRegistry
 from qgis.gui import QgsMessageBar
 import re
 import os
@@ -205,7 +206,9 @@ class Versioning:
                 self.current_layers = []
                 self.info.setText("Versioning : the selected group is not a working copy")
                 return
-            self.info.setText( uri.database() +' <b>working rev</b>='+str(rev))
+            # We can split on "/" irrespective of OS because QgsDataSourceURI
+            # normalises the path separator to "/"
+            self.info.setText( uri.database().split("/")[-1] +' <b>working rev</b>='+str(rev))
             selection_type = 'working copy'
         if layer.providerType() == "postgres":
             mtch = re.match(r'(.+)_([^_]+)_rev_(head|\d+)', uri.schema())
@@ -558,7 +561,10 @@ class Versioning:
                 self.iface.mapCanvas().refresh()
 
             # Force refresh of rev number in menu text
-            self.info.setText( uri.database() +' <b>working rev</b>='+str(rev))
+            if layer.providerType() == "spatialite":
+                self.info.setText( uri.database().split("/")[-1] +' <b>working rev</b>='+str(rev))
+            else:
+                self.info.setText( uri.database() +' <b>working rev</b>='+str(rev))
 
             if not self.unresolved_conflicts():
                 QMessageBox.warning( self.iface.mainWindow(), "Warning",
@@ -628,17 +634,33 @@ class Versioning:
         conn_info = ''
         for layer_id in self.current_layers:
             layer = QgsMapLayerRegistry.instance().mapLayer( layer_id )
-            layer_selected_features = layer.selectedFeatures()
-            if layer_selected_features:
-                QMessageBox.warning(None,"Warning","You will be checking out "
-                "the subset of "+str(len(layer_selected_features))+" features "
-                "you selected in layer \""+layer.name()+"\".\n\nIf you want "
-                "the whole data set for that layer, abort checkout in the pop "
-                "up asking for a filename, unselect features and start over.")
-                user_selected_features.append(layer_selected_features)
+            uri = QgsDataSourceURI(layer.source())
+
+            # Get actual PK fror corresponding table
+            actual_table_pk = versioning_base.get_actual_pk( uri,self.pg_conn_info() )
+            #print "Actual table pk = " + actual_table_pk
+
+            layer_selected_features_ids = layer.selectedFeaturesIds()
+
+            # Check if PK from view [uri.keyColumn()] matches actual PK. If not,
+            # throw error.  We need the right PK from the view in order to use
+            # the efficient selectedFeaturesIds().  selectedFeatures() or other
+            # ways that lead to a list of QGSFeature objects do not scale well.
+            if layer_selected_features_ids:
+                if uri.keyColumn()!= actual_table_pk:
+                    QMessageBox.warning(None,"Warning","Layer  \""+layer.name()+
+                    " \" does not have the right primary key.\n\nCheckout will "
+                    "proceed without the selected features subset.")
+                    user_selected_features.append([])
+                else:
+                    QMessageBox.warning(None,"Warning","You will be checking out "
+                    "the subset of "+str(len(layer_selected_features_ids))+" features "
+                    "you selected in layer \""+layer.name()+"\".\n\nIf you want "
+                    "the whole data set for that layer, abort checkout in the pop "
+                    "up asking for a filename, unselect features and start over.")
+                    user_selected_features.append(layer_selected_features_ids)
             else:
                 user_selected_features.append([])
-            uri = QgsDataSourceURI(layer.source())
             if not conn_info:
                 conn_info = uri.connectionInfo()
             else:
@@ -789,7 +811,10 @@ class Versioning:
             "You have successfully committed remote revision "+str( rev-1 ) )
 
             # Force refresh of rev number in menu text
-            self.info.setText( uri.database() +' <b>working rev</b>='+str(rev))
+            if layer.providerType() == "spatialite":
+                self.info.setText( uri.database().split("/")[-1] +' <b>working rev</b>='+str(rev))
+            else:
+                self.info.setText( uri.database() +' <b>working rev</b>='+str(rev))
         else:
             #self.iface.messageBar().pushMessage("Info",
             #"There was no modification to commit", duration=10)

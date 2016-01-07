@@ -36,7 +36,6 @@ import psycopg2
 from PyQt4 import uic
 import versioning_base
 import platform, sys
-from itertools import groupby
 
 # Deactivate stdout (like output of print statements) because windows
 # causes occasional "IOError [Errno 9] File descriptor error"
@@ -322,7 +321,6 @@ class Versioning:
         # add actions in menus
         for act in self.actions:
             self.iface.addToolBarIcon(act)
-
 
     def unload(self):
         """called when plugin is unloaded"""

@@ -800,18 +800,23 @@ class Versioning:
         nb_items_in_list = self.q_commit_msg_dlg.pg_users_combobox.count()
         if not(nb_items_in_list) :
             self.get_pg_users_list()
-        # Better if we could have a QgsDataSourceURI.username()
-        pg_username = self.pg_conn_info().split(' ')[3].replace("'","").split('=')[1]
-        current_user_index = self.q_commit_msg_dlg.pg_users_combobox.findText(pg_username)
-        # sets the current pg_user in the combobox to come
-        current_user_combobox_item = self.q_commit_msg_dlg.pg_users_combobox.setCurrentIndex(current_user_index)
+        # Better if we could have a QgsDataSourceURI.username() but no such
+        # thing in spatialite.  Next block is for the case the username cannot
+        # be found in the connection info string (mainly for plugin tests)
+        try:
+            pg_username = self.pg_conn_info().split(' ')[3].replace("'","").split('=')[1]
+            current_user_index = self.q_commit_msg_dlg.pg_users_combobox.findText(pg_username)
+            # sets the current pg_user in the combobox to come
+            current_user_combobox_item = self.q_commit_msg_dlg.pg_users_combobox.setCurrentIndex(current_user_index)
+        except (IndexError):
+            pg_username = ''
 
         # time to get the commit message
         if not self.q_commit_msg_dlg.exec_():
             return
         commit_msg = self.q_commit_msg_dlg.commitMessage.document().toPlainText()
         commit_pg_user = self.q_commit_msg_dlg.pg_users_combobox.itemText(self.q_commit_msg_dlg.pg_users_combobox.currentIndex())
-        #print "commit_pg_user = " + commit_pg_user
+
         if not commit_msg:
             QMessageBox.warning(self.iface.mainWindow(), "Warning",
                     "No commit message, aborting commit")

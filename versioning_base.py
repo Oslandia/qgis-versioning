@@ -17,22 +17,16 @@ import platform, sys
 iswin = any(platform.win32_ver())
 if iswin:
     sys.stdout = open(os.devnull, 'w')
+
 def os_info():
     os_type = platform.system()
     if os_type == "Linux":
-        #print "Linux system"
-        #print str(platform.uname())
         os_info = platform.uname()[0]
     elif os_type == "Windows":
-        #print "Windows system"
-        #print str(platform.win32_ver())
         os_info = "Windows"+platform.win32_ver()[0]
     elif os_type == "Darwin":
-        #print "Mac system"
-        #print str(platform.mac_ver())
         os_info = "MacOS"+platform.mac_ver()[0]
     else:
-        print "Unknown"
         os_info = "UnknownOS"
     return os_info
 
@@ -299,12 +293,10 @@ def checkout(pg_conn_info, pg_table_names, sqlite_filename, selected_feature_lis
                 column_list = pcur.fetchall()
                 new_columns_str = preserve_fid( pkey, column_list)
                 view_str = "CREATE OR REPLACE VIEW "+temp_view_name+" AS SELECT "+new_columns_str+" FROM " +schema+"."+table+" WHERE "+pkey+' in ('+",".join([str(feature_list[i]) for i in range(0, len(feature_list))])+')'
-                #print view_str
                 pcur.execute(view_str)
                 pcur.commit()
                 cmd[8] = temp_view_name
 
-            #print ' '.join(cmd)
             os.system(' '.join(cmd))
 
             # save target revision in a table
@@ -334,12 +326,10 @@ def checkout(pg_conn_info, pg_table_names, sqlite_filename, selected_feature_lis
                 column_list = pcur.fetchall()
                 new_columns_str = preserve_fid( pkey, column_list)
                 view_str = "CREATE OR REPLACE VIEW "+temp_view_name+" AS SELECT "+new_columns_str+" FROM " +schema+"."+table+" WHERE "+pkey+' in ('+",".join([str(feature_list[i]) for i in range(0, len(feature_list))])+')'
-                #print view_str
                 pcur.execute(view_str)
                 pcur.commit()
                 cmd[7] = temp_view_name
 
-            #print ' '.join(cmd)
             os.system(' '.join(cmd))
 
             # save target revision in a table if not in there
@@ -451,7 +441,6 @@ def checkout(pg_conn_info, pg_table_names, sqlite_filename, selected_feature_lis
     if feature_list:
         for i in temp_view_names:
             del_view_str = "DROP VIEW IF EXISTS " + i
-            #print del_view_str
             pcur.execute(del_view_str)
             pcur.commit()
     pcur.close()
@@ -834,11 +823,13 @@ def commit(sqlite_filename, commit_msg, pg_conn_info,commit_pg_user = ''):
         scur.commit()
 
         # Better if we could have a QgsDataSourceURI.username()
-        pg_username = pg_conn_info.split(' ')[3].replace("'","").split('=')[1]
-        print "pg_username = " + pg_username
+        try:
+            pg_username = pg_conn_info.split(' ')[3].replace("'","").split('=')[1]
+        except (IndexError):
+            pg_username = ''
+
         pcur = Db(psycopg2.connect(pg_conn_info))
         pg_users_list = get_pg_users_list(pg_conn_info)
-        print "pg_users_list = " + str(pg_users_list)
         pkey = pg_pk( pcur, table_schema, table )
         pgeom = pg_geom( pcur, table_schema, table )
 
@@ -1676,8 +1667,10 @@ def pg_commit(pg_conn_info, working_copy_schema, commit_msg):
             "Please update before committing your modifications")
 
     # Better if we could have a QgsDataSourceURI.username()
-    pg_username = pg_conn_info.split(' ')[3].replace("'","").split('=')[1]
-    #print "pg_username = " + pg_username
+    try :
+        pg_username = pg_conn_info.split(' ')[3].replace("'","").split('=')[1]
+    except (IndexError):
+        pg_username = ''
     pcur = Db(psycopg2.connect(pg_conn_info))
     pcur.execute("SELECT rev, branch, table_schema, table_name "
         "FROM "+wcs+".initial_revision")
@@ -1725,7 +1718,7 @@ def pg_commit(pg_conn_info, working_copy_schema, commit_msg):
             pcur.execute("INSERT INTO "+table_schema+".revisions "
                 "(rev, commit_msg, branch, author) "
                 "VALUES ("+str(rev+1)+", '"+escape_quote(commit_msg)+
-                 "', '"+branch+"', '"+get_username()+"."+pg_username+"')")
+                "', '"+branch+"', '"+get_username()+"."+pg_username+"')")
 
         # insert inserted and modified
         pcur.execute("INSERT INTO "+table_schema+"."+table+" "

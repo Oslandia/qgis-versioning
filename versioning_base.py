@@ -1717,8 +1717,8 @@ def pg_commit(pg_conn_info, working_copy_schema, commit_msg):
             print "inserting rev ", str(rev+1)
             pcur.execute("INSERT INTO "+table_schema+".revisions "
                 "(rev, commit_msg, branch, author) "
-                "VALUES ("+str(rev+1)+", '"+escape_quote(commit_msg)+
-                "', '"+branch+"', '"+get_username()+"."+pg_username+"')")
+                "VALUES ("+str(rev+1)+", '"+escape_quote(commit_msg)+"', '"+branch+"',"
+                "'"+os_info()+":"+get_username()+"."+pg_username+"')")
 
         # insert inserted and modified
         pcur.execute("INSERT INTO "+table_schema+"."+table+" "

@@ -414,7 +414,7 @@ class Versioning:
         "revisions.  Fetching may take time.")
 
         pcur = versioning_base.Db( psycopg2.connect(self.pg_conn_info()) )
-        pcur.execute("SELECT rev, author, date, branch, commit_msg "
+        pcur.execute("SELECT rev, author, date::timestamp(0), branch, commit_msg "
             "FROM "+schema+".revisions")
         revs = pcur.fetchall()
         pcur.close()

@@ -414,29 +414,31 @@ class Versioning:
         "revisions.  Fetching may take time.")
 
         pcur = versioning_base.Db( psycopg2.connect(self.pg_conn_info()) )
-        pcur.execute("SELECT rev, commit_msg, branch, date, author "
+        pcur.execute("SELECT rev, author, date, branch, commit_msg "
             "FROM "+schema+".revisions")
         revs = pcur.fetchall()
         pcur.close()
         tblw = QTableWidget( dlg )
+        tblw.setAlternatingRowColors(True)
         tblw.setRowCount(len(revs))
-        tblw.setColumnCount(6)
+        tblw.setColumnCount(5)
         tblw.setSortingEnabled(True)
-        tblw.setHorizontalHeaderLabels(['Select','Revision', 'Commit Message',
-                                      'Branch', 'Date', 'Author'])
+        tblw.setHorizontalHeaderLabels(['Rev#', 'Author', 'Date',
+                                        'Branch', 'Commit Message'])
         tblw.verticalHeader().setVisible(False)
         for i, rev in enumerate(revs):
             for j, item in enumerate(rev):
-                chkBoxItem = QTableWidgetItem()
-                chkBoxItem.setFlags(Qt.ItemIsUserCheckable | Qt.ItemIsEnabled)
-                chkBoxItem.setCheckState(Qt.Unchecked)
-                tblw.setItem(i, 0, chkBoxItem)
-                tblw.setItem(i, j+1, QTableWidgetItem( str(item) ))
+                tblw.setItem(i,j,QTableWidgetItem( str(item) ))
+                # set rev# checkable
+                if j == 0:
+                    tblw.item(i,j).setCheckState(Qt.Unchecked)
 
+        tblw.resizeRowsToContents()
+        tblw.resizeColumnsToContents()
         layout.addWidget( user_msg1 )
         layout.addWidget( tblw )
         layout.addWidget( button_box )
-        dlg.resize( 650, 300 )
+        dlg.resize( 750, 300 )
         if not dlg.exec_() :
             return
 
@@ -459,7 +461,7 @@ class Versioning:
 
         for i, row in enumerate(rows):
             progress.setValue(i+1)
-            branch = revs[row][2]
+            branch = revs[row][3]
             rev = revs[row][0]
             versioning_base.add_revision_view(uri.connectionInfo(),
                     schema, branch, rev )

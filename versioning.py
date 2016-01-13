@@ -23,7 +23,8 @@
 #from PyQt4.QtCore import QAction
 from PyQt4.QtGui import QAction, QDialog, QDialogButtonBox, \
     QFileDialog, QIcon, QLabel, QLineEdit, QMessageBox, QTableWidget, \
-    QTreeView, QTreeWidget, QVBoxLayout, QTableWidgetItem, QColor, QProgressBar
+    QTreeView, QTreeWidget, QVBoxLayout, QTableWidgetItem, QColor, QProgressBar,\
+    QCheckBox
 from qgis.core import QgsCredentials, QgsDataSourceURI, QgsMapLayerRegistry, \
     QgsFeatureRequest
 from PyQt4.QtCore import *
@@ -71,6 +72,9 @@ class Versioning:
         self.q_commit_msg_dlg = QDialog(self.iface.mainWindow())
         self.q_commit_msg_dlg = uic.loadUi(self.plugin_dir+"/commit_msg.ui")
         self.commit_msg_dlg = ""
+
+        self.q_diffmode_dlg = QDialog(self.iface.mainWindow())
+        self.q_diffmode_dlg = uic.loadUi(self.plugin_dir+"/revision_dialog.ui")
 
         self.current_layers = []
         self.actions = []
@@ -401,54 +405,54 @@ class Versioning:
         mtch = re.match(r'(.+)_([^_]+)_rev_(head|\d+)', uri.schema())
         schema = mtch.group(1)
         assert(schema)
-        dlg = QDialog()
-        layout = QVBoxLayout(dlg)
-        button_box = QDialogButtonBox(dlg)
-        button_box.setStandardButtons(
-                QDialogButtonBox.Cancel|QDialogButtonBox.Ok)
-        button_box.accepted.connect(dlg.accept)
-        button_box.rejected.connect(dlg.reject)
 
-        user_msg1 = QgsMessageBar(dlg)
-        user_msg1.pushInfo("Select:", "one [many] for single [multiple] "
-        "revisions.  Fetching may take time.")
+        ##user_msg1 = QgsMessageBar(self.q_diffmode_dlg)
+        ##user_msg1.pushInfo("Select:", "one [many] for single [multiple] "
+        ##"revisions.  Fetching may take time.")
 
         pcur = versioning_base.Db( psycopg2.connect(self.pg_conn_info()) )
         pcur.execute("SELECT rev, author, date::timestamp(0), branch, commit_msg "
             "FROM "+schema+".revisions")
         revs = pcur.fetchall()
         pcur.close()
-        tblw = QTableWidget( dlg )
-        tblw.setAlternatingRowColors(True)
-        tblw.setRowCount(len(revs))
-        tblw.setColumnCount(5)
-        tblw.setSortingEnabled(True)
-        tblw.setHorizontalHeaderLabels(['Rev#', 'Author', 'Date',
+
+        self.q_diffmode_dlg.tblw.setRowCount(len(revs))
+        self.q_diffmode_dlg.tblw.setColumnCount(5)
+        self.q_diffmode_dlg.tblw.setHorizontalHeaderLabels(['Rev#', 'Author', 'Date',
                                         'Branch', 'Commit Message'])
-        tblw.verticalHeader().setVisible(False)
+
         for i, rev in enumerate(revs):
             for j, item in enumerate(rev):
-                tblw.setItem(i,j,QTableWidgetItem( str(item) ))
+                self.q_diffmode_dlg.tblw.setItem(i,j,QTableWidgetItem( str(item) ))
                 # set rev# checkable
                 if j == 0:
-                    tblw.item(i,j).setCheckState(Qt.Unchecked)
+                    self.q_diffmode_dlg.tblw.item(i,j).setCheckState(Qt.Unchecked)
 
-        tblw.resizeRowsToContents()
-        tblw.resizeColumnsToContents()
-        layout.addWidget( user_msg1 )
-        layout.addWidget( tblw )
-        layout.addWidget( button_box )
-        dlg.resize( 750, 300 )
-        if not dlg.exec_() :
+        ##nb_chkbx_checked = 2
+        ##if nb_chkbx_checked == 2:
+        ##    self.q_diffmode_dlg.diffmode_chk.setCheckState(Qt.Checked)
+        ##    self.q_diffmode_dlg.diffmode_chk.setEnabled(True)
+        ##    self.q_diffmode_dlg.diffmode_chk.setCheckable(True)
+        ##else :
+        ##    self.q_diffmode_dlg.diffmode_chk.setEnabled(False)
+        ##    self.q_diffmode_dlg.diffmode_chk.setCheckable(False)
+
+        self.q_diffmode_dlg.tblw.resizeRowsToContents()
+        self.q_diffmode_dlg.tblw.resizeColumnsToContents()
+
+        ##self.q_diffmode_dlg.resize( 750, 300 )
+        if not self.q_diffmode_dlg.exec_():
             return
 
         rows = set()
         revision_number_list = []
+
         for i in range(len(revs)):
-            if  tblw.item(i,0).checkState():
+            if  self.q_diffmode_dlg.tblw.item(i,0).checkState():
                 print "Revision "+ str(i + 1) +" will be fetched"
                 revision_number_list.append(i + 1)
-                rows.add(tblw.item(i,0).row())
+                rows.add(self.q_diffmode_dlg.tblw.item(i,0).row())
+
 
         progressMessageBar = self.iface.messageBar().createMessage("Querying "
         "the database for revision(s) "+str(revision_number_list))

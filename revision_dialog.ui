@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <ui version="4.0">
- <class>diffmode_dlg</class>
- <widget class="QDialog" name="diffmode_dlg">
+ <class>view_dlg</class>
+ <widget class="QDialog" name="view_dlg">
   <property name="geometry">
    <rect>
     <x>0</x>
@@ -17,7 +17,7 @@
    </sizepolicy>
   </property>
   <property name="windowTitle">
-   <string>Dialog</string>
+   <string>Revisions selection</string>
   </property>
   <property name="modal">
    <bool>false</bool>
@@ -26,7 +26,7 @@
    <item row="0" column="0">
     <widget class="QCheckBox" name="diffmode_chk">
      <property name="enabled">
-      <bool>true</bool>
+      <bool>false</bool>
      </property>
      <property name="toolTip">
       <string>Check to go to diff mode for any two revisions</string>
@@ -83,7 +83,7 @@
   <connection>
    <sender>buttonBox</sender>
    <signal>accepted()</signal>
-   <receiver>diffmode_dlg</receiver>
+   <receiver>view_dlg</receiver>
    <slot>accept()</slot>
    <hints>
     <hint type="sourcelabel">
@@ -99,7 +99,7 @@
   <connection>
    <sender>buttonBox</sender>
    <signal>rejected()</signal>
-   <receiver>diffmode_dlg</receiver>
+   <receiver>view_dlg</receiver>
    <slot>reject()</slot>
    <hints>
     <hint type="sourcelabel">

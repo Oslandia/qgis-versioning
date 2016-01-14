@@ -73,8 +73,8 @@ class Versioning:
         self.q_commit_msg_dlg = uic.loadUi(self.plugin_dir+"/commit_msg.ui")
         self.commit_msg_dlg = ""
 
-        self.q_diffmode_dlg = QDialog(self.iface.mainWindow())
-        self.q_diffmode_dlg = uic.loadUi(self.plugin_dir+"/revision_dialog.ui")
+        self.q_view_dlg = QDialog(self.iface.mainWindow())
+        self.q_view_dlg = uic.loadUi(self.plugin_dir+"/revision_dialog.ui")
 
         self.current_layers = []
         self.actions = []
@@ -92,6 +92,24 @@ class Versioning:
         else: # qgis 2.4
             self.legend = self.iface.mainWindow().findChild( QTreeView, 'theLayerTreeView')
             self.legend.clicked.connect(self.on_legend_click)
+
+    # This function enables the diffmode checkbox iif the number of checked
+    # revision == 2.  The reason is that we want to apply diff styles to
+    # features only between two revisions.  When the checkbox is enabled, users
+    # can check it.  If it was checked at one point and the number of selected
+    # revisions != 2, then it is unchecked and disabled.
+    # Intended use : view() method
+    def enable_diffmode(self):
+        nb_checked_revs = 0
+        for i in range(self.q_view_dlg.tblw.rowCount()):
+            if  self.q_view_dlg.tblw.item(i,0).checkState():
+                nb_checked_revs += 1
+
+        if nb_checked_revs == 2:
+            self.q_view_dlg.diffmode_chk.setEnabled(True)
+        else :
+            self.q_view_dlg.diffmode_chk.setCheckState(Qt.Unchecked)
+            self.q_view_dlg.diffmode_chk.setEnabled(False)
 
     def pg_conn_info(self):
         """returns current postgis versioned DB connection info
@@ -406,52 +424,52 @@ class Versioning:
         schema = mtch.group(1)
         assert(schema)
 
-        ##user_msg1 = QgsMessageBar(self.q_diffmode_dlg)
-        ##user_msg1.pushInfo("Select:", "one [many] for single [multiple] "
-        ##"revisions.  Fetching may take time.")
-
         pcur = versioning_base.Db( psycopg2.connect(self.pg_conn_info()) )
         pcur.execute("SELECT rev, author, date::timestamp(0), branch, commit_msg "
             "FROM "+schema+".revisions")
         revs = pcur.fetchall()
         pcur.close()
 
-        self.q_diffmode_dlg.tblw.setRowCount(len(revs))
-        self.q_diffmode_dlg.tblw.setColumnCount(5)
-        self.q_diffmode_dlg.tblw.setHorizontalHeaderLabels(['Rev#', 'Author', 'Date',
+        self.q_view_dlg.tblw.setRowCount(len(revs))
+        self.q_view_dlg.tblw.setColumnCount(5)
+        self.q_view_dlg.tblw.setHorizontalHeaderLabels(['Rev#', 'Author', 'Date',
                                         'Branch', 'Commit Message'])
 
         for i, rev in enumerate(revs):
             for j, item in enumerate(rev):
-                self.q_diffmode_dlg.tblw.setItem(i,j,QTableWidgetItem( str(item) ))
+                self.q_view_dlg.tblw.setItem(i,j,QTableWidgetItem( str(item) ))
                 # set rev# checkable
                 if j == 0:
-                    self.q_diffmode_dlg.tblw.item(i,j).setCheckState(Qt.Unchecked)
+                    self.q_view_dlg.tblw.item(i,j).setCheckState(Qt.Unchecked)
 
-        ##nb_chkbx_checked = 2
-        ##if nb_chkbx_checked == 2:
-        ##    self.q_diffmode_dlg.diffmode_chk.setCheckState(Qt.Checked)
-        ##    self.q_diffmode_dlg.diffmode_chk.setEnabled(True)
-        ##    self.q_diffmode_dlg.diffmode_chk.setCheckable(True)
-        ##else :
-        ##    self.q_diffmode_dlg.diffmode_chk.setEnabled(False)
-        ##    self.q_diffmode_dlg.diffmode_chk.setCheckable(False)
+        self.q_view_dlg.tblw.itemChanged.connect(self.enable_diffmode)
 
-        self.q_diffmode_dlg.tblw.resizeRowsToContents()
-        self.q_diffmode_dlg.tblw.resizeColumnsToContents()
+        self.q_view_dlg.tblw.resizeRowsToContents()
+        self.q_view_dlg.tblw.resizeColumnsToContents()
 
-        ##self.q_diffmode_dlg.resize( 750, 300 )
-        if not self.q_diffmode_dlg.exec_():
+        if not self.q_view_dlg.exec_():
             return
+
+        # if diffmode, create one layer with feature differences between the
+        # two revisions; else checkout the full data sets for the specified
+        # revisions and put them in separate layers (original behaviour)
+        if self.q_view_dlg.diffmode_chk.isChecked():
+            print "checked; not implemented yet"
+            self.iface.messageBar().pushMessage("info", "Diff mode not "
+            "implemented yet", level=QgsMessageBar.INFO, duration = 5 )
+            return
+        else:
+            print "unchecked"
+            # most of the remainder of this method's code will be moved here
 
         rows = set()
         revision_number_list = []
 
         for i in range(len(revs)):
-            if  self.q_diffmode_dlg.tblw.item(i,0).checkState():
+            if  self.q_view_dlg.tblw.item(i,0).checkState():
                 print "Revision "+ str(i + 1) +" will be fetched"
                 revision_number_list.append(i + 1)
-                rows.add(self.q_diffmode_dlg.tblw.item(i,0).row())
+                rows.add(self.q_view_dlg.tblw.item(i,0).row())
 
 
         progressMessageBar = self.iface.messageBar().createMessage("Querying "

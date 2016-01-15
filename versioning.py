@@ -450,18 +450,6 @@ class Versioning:
         if not self.q_view_dlg.exec_():
             return
 
-        # if diffmode, create one layer with feature differences between the
-        # two revisions; else checkout the full data sets for the specified
-        # revisions and put them in separate layers (original behaviour)
-        if self.q_view_dlg.diffmode_chk.isChecked():
-            print "checked; not implemented yet"
-            self.iface.messageBar().pushMessage("info", "Diff mode not "
-            "implemented yet", level=QgsMessageBar.INFO, duration = 5 )
-            return
-        else:
-            print "unchecked"
-            # most of the remainder of this method's code will be moved here
-
         rows = set()
         revision_number_list = []
 
@@ -471,6 +459,21 @@ class Versioning:
                 revision_number_list.append(i + 1)
                 rows.add(self.q_view_dlg.tblw.item(i,0).row())
 
+        # if diffmode, create one layer with feature differences between the
+        # two revisions; else checkout the full data sets for the specified
+        # revisions and put them in separate layers (original behaviour)
+        if self.q_view_dlg.diffmode_chk.isChecked():
+            # revision_number_list necessarily has only two items in diffmode
+            rev_begin = revision_number_list[0]
+            rev_end = revision_number_list[1]
+            if rev_begin > rev_end:
+                rev_begin, rev_end = rev_end, rev_begin
+            self.iface.messageBar().pushMessage("info", "Diff mode not "
+            "implemented yet", level=QgsMessageBar.INFO, duration = 5 )
+            return
+        else:
+            print "unchecked"
+            # most of the remainder of this method's code will be moved here
 
         progressMessageBar = self.iface.messageBar().createMessage("Querying "
         "the database for revision(s) "+str(revision_number_list))

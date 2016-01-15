@@ -9,6 +9,65 @@ from pyspatialite import dbapi2
 import psycopg2
 import codecs
 from itertools import izip_longest
+import platform, sys
+
+# Deactivate stdout (like output of print statements) because windows
+# causes occasional "IOError [Errno 9] File descriptor error"
+# Not needed when there is a way to run QGIS in console mode in Windows.
+iswin = any(platform.win32_ver())
+if iswin:
+    sys.stdout = open(os.devnull, 'w')
+
+def os_info():
+    os_type = platform.system()
+    if os_type == "Linux":
+        os_info = platform.uname()[0]
+    elif os_type == "Windows":
+        os_info = "Windows"+platform.win32_ver()[0]
+    elif os_type == "Darwin":
+        os_info = "MacOS"+platform.mac_ver()[0]
+    else:
+        os_info = "UnknownOS"
+    return os_info
+
+def get_pg_users_list(pg_conn_info):
+    pcur = Db(psycopg2.connect(pg_conn_info))
+    pcur.execute("select usename from pg_user order by usename ASC")
+    pg_users_list = pcur.fetchall()
+    pg_users_str_list=[]
+    for i in pg_users_list:
+        pg_users_str_list.append(str(i[0]))
+    pcur.close()
+    return pg_users_str_list
+
+def get_actual_pk(uri,pg_conn_info):
+    """Get actual PK from corresponding table or view.  The result serves to
+    ascertain that the PK found by QGIS for PG views matches the real PK.
+    """
+    mtch = re.match(r'(.+)_([^_]+)_rev_(head|\d+)', uri.schema())
+    pcur = Db(psycopg2.connect(pg_conn_info))
+    actual_pk=pg_pk(pcur,mtch.group(1), uri.table())
+    pcur.close()
+    return actual_pk
+
+def preserve_fid( pkid, fetchall_tuple):
+    # This is a hack because os.system does not scale in MS Windows.
+    # We need to create a view, then emulate the "preserve_fid" behaviour of
+    # ogr2ogr.  A select * in the new view will generate random OGC_FID values
+    # which means we cannot commit modifications after a checkout.
+    # pkid = name of pkid as a string
+    # fetchall_tuple = a list of column names returned as tuples by fetchall()
+
+    str_list=[]
+    for i in fetchall_tuple:
+        str_list.append(str(i[0]))
+
+    replaceText = pkid
+    replaceData = pkid + ' as OGC_FID'
+    pos = str_list.index(replaceText)
+    str_list[pos] = replaceData
+    columns_str = ', '.join(str_list)
+    return columns_str
 
 def escape_quote(msg):
     """quote single quotes"""
@@ -194,6 +253,7 @@ def checkout(pg_conn_info, pg_table_names, sqlite_filename, selected_feature_lis
 
     pcur = Db(psycopg2.connect(pg_conn_info))
 
+    temp_view_names = []
     first_table = True
     for pg_table_name,feature_list in list(izip_longest(pg_table_names, selected_feature_lists)):
         [schema, table] = pg_table_name.split('.')
@@ -222,9 +282,21 @@ def checkout(pg_conn_info, pg_table_names, sqlite_filename, selected_feature_lis
                     'PG:"'+pg_conn_info+'"', schema+'.'+table,
                     '-nln', table]
             if feature_list:
-                cmd += ['-where', '"'+pkey+' in ('+",".join([str(feature_list[i][pkey]) for i in range(0, len(feature_list))])+')"']
+                # We need to create a temp view because of windows commandline
+                # limitations, e.g. ogr2ogr with a very long where clause
+                # GDAL > 2.1 allows specifying a filename for where args, e.g.
+                #cmd += ['-where', '"'+pkey+' in ('+",".join([str(feature_list[i]) for i in range(0, len(feature_list))])+')"']
+                temp_view_name = schema+"."+table+"_checkout_temp_view"
+                temp_view_names.append(temp_view_name)
+                # Get column names because we cannot just call 'SELECT *'
+                pcur.execute("SELECT column_name FROM information_schema.columns WHERE table_schema = \'"+schema+"\' AND table_name   = \'"+table+"\'")
+                column_list = pcur.fetchall()
+                new_columns_str = preserve_fid( pkey, column_list)
+                view_str = "CREATE OR REPLACE VIEW "+temp_view_name+" AS SELECT "+new_columns_str+" FROM " +schema+"."+table+" WHERE "+pkey+' in ('+",".join([str(feature_list[i]) for i in range(0, len(feature_list))])+')'
+                pcur.execute(view_str)
+                pcur.commit()
+                cmd[8] = temp_view_name
 
-            #print ' '.join(cmd)
             os.system(' '.join(cmd))
 
             # save target revision in a table
@@ -247,8 +319,17 @@ def checkout(pg_conn_info, pg_table_names, sqlite_filename, selected_feature_lis
                         'PG:"'+pg_conn_info+'"', schema+'.'+table,
                         '-nln', table]
             if feature_list:
-                cmd += ['-where', '"'+pkey+' in ('+",".join([str(feature_list[i][pkey]) for i in range(0, len(feature_list))])+')"']
-            #print ' '.join(cmd)
+                # Same comments as in 'if feature_list' above
+                temp_view_name = schema+"."+table+"_checkout_temp_view"
+                temp_view_names.append(temp_view_name)
+                pcur.execute("SELECT column_name FROM information_schema.columns WHERE table_schema = \'"+schema+"\' AND table_name   = \'"+table+"\'")
+                column_list = pcur.fetchall()
+                new_columns_str = preserve_fid( pkey, column_list)
+                view_str = "CREATE OR REPLACE VIEW "+temp_view_name+" AS SELECT "+new_columns_str+" FROM " +schema+"."+table+" WHERE "+pkey+' in ('+",".join([str(feature_list[i]) for i in range(0, len(feature_list))])+')'
+                pcur.execute(view_str)
+                pcur.commit()
+                cmd[7] = temp_view_name
+
             os.system(' '.join(cmd))
 
             # save target revision in a table if not in there
@@ -356,6 +437,12 @@ def checkout(pg_conn_info, pg_table_names, sqlite_filename, selected_feature_lis
 
         scur.commit()
         scur.close()
+    # Remove temp views after sqlite file is written
+    if feature_list:
+        for i in temp_view_names:
+            del_view_str = "DROP VIEW IF EXISTS " + i
+            pcur.execute(del_view_str)
+            pcur.commit()
     pcur.close()
 
 def update(sqlite_filename, pg_conn_info):
@@ -661,7 +748,7 @@ def revision( sqlite_filename ):
     scur.close()
     return rev+ 1
 
-def commit(sqlite_filename, commit_msg, pg_conn_info):
+def commit(sqlite_filename, commit_msg, pg_conn_info,commit_pg_user = ''):
     """merge modifications into database
     returns the number of updated layers"""
     # get the target revision from the spatialite db
@@ -735,7 +822,14 @@ def commit(sqlite_filename, commit_msg, pg_conn_info):
         print "there_is_something_to_commit ", there_is_something_to_commit
         scur.commit()
 
+        # Better if we could have a QgsDataSourceURI.username()
+        try:
+            pg_username = pg_conn_info.split(' ')[3].replace("'","").split('=')[1]
+        except (IndexError):
+            pg_username = ''
+
         pcur = Db(psycopg2.connect(pg_conn_info))
+        pg_users_list = get_pg_users_list(pg_conn_info)
         pkey = pg_pk( pcur, table_schema, table )
         pgeom = pg_geom( pcur, table_schema, table )
 
@@ -783,7 +877,7 @@ def commit(sqlite_filename, commit_msg, pg_conn_info):
             pcur.execute("INSERT INTO "+table_schema+".revisions "
                 "(rev, commit_msg, branch, author) "
                 "VALUES ("+str(rev+1)+", '"+escape_quote(commit_msg)+"', '"+branch+"',"
-                "'"+get_username()+"')")
+                "'"+os_info()+":"+get_username()+"."+pg_username+"."+commit_pg_user+"')")
 
         # TODO remove when ogr2ogr will be able to convert multiple geom column
         # from postgis to spatialite
@@ -1572,6 +1666,11 @@ def pg_commit(pg_conn_info, working_copy_schema, commit_msg):
             "is not up to date. It's late by "+str(late_by)+" commit(s).\n\n"
             "Please update before committing your modifications")
 
+    # Better if we could have a QgsDataSourceURI.username()
+    try :
+        pg_username = pg_conn_info.split(' ')[3].replace("'","").split('=')[1]
+    except (IndexError):
+        pg_username = ''
     pcur = Db(psycopg2.connect(pg_conn_info))
     pcur.execute("SELECT rev, branch, table_schema, table_name "
         "FROM "+wcs+".initial_revision")
@@ -1618,8 +1717,8 @@ def pg_commit(pg_conn_info, working_copy_schema, commit_msg):
             print "inserting rev ", str(rev+1)
             pcur.execute("INSERT INTO "+table_schema+".revisions "
                 "(rev, commit_msg, branch, author) "
-                "VALUES ("+str(rev+1)+", '"+escape_quote(commit_msg)+
-                "', '"+branch+"', '"+get_username()+"')")
+                "VALUES ("+str(rev+1)+", '"+escape_quote(commit_msg)+"', '"+branch+"',"
+                "'"+os_info()+":"+get_username()+"."+pg_username+"')")
 
         # insert inserted and modified
         pcur.execute("INSERT INTO "+table_schema+"."+table+" "

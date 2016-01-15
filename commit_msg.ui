@@ -6,8 +6,8 @@
    <rect>
     <x>0</x>
     <y>0</y>
-    <width>398</width>
-    <height>314</height>
+    <width>388</width>
+    <height>334</height>
    </rect>
   </property>
   <property name="windowTitle">
@@ -17,7 +17,7 @@
    <property name="geometry">
     <rect>
      <x>20</x>
-     <y>260</y>
+     <y>280</y>
      <width>341</width>
      <height>32</height>
     </rect>
@@ -33,23 +33,82 @@
    <property name="geometry">
     <rect>
      <x>40</x>
-     <y>50</y>
+     <y>60</y>
      <width>321</width>
-     <height>191</height>
+     <height>211</height>
     </rect>
    </property>
   </widget>
-  <widget class="QLabel" name="label_4">
+  <widget class="QLabel" name="commitMsgLabel">
    <property name="geometry">
     <rect>
      <x>40</x>
-     <y>20</y>
-     <width>311</width>
+     <y>37</y>
+     <width>121</width>
      <height>18</height>
     </rect>
    </property>
    <property name="text">
     <string>Commit message</string>
+   </property>
+  </widget>
+  <widget class="QComboBox" name="pg_users_combobox">
+   <property name="enabled">
+    <bool>true</bool>
+   </property>
+   <property name="geometry">
+    <rect>
+     <x>167</x>
+     <y>10</y>
+     <width>191</width>
+     <height>27</height>
+    </rect>
+   </property>
+   <property name="mouseTracking">
+    <bool>false</bool>
+   </property>
+   <property name="acceptDrops">
+    <bool>false</bool>
+   </property>
+   <property name="statusTip">
+    <string notr="true" extracomment="Select user"/>
+   </property>
+   <property name="autoFillBackground">
+    <bool>false</bool>
+   </property>
+   <property name="editable">
+    <bool>false</bool>
+   </property>
+   <property name="currentIndex">
+    <number>-1</number>
+   </property>
+   <property name="maxVisibleItems">
+    <number>100</number>
+   </property>
+   <property name="maxCount">
+    <number>2147483643</number>
+   </property>
+   <property name="frame">
+    <bool>false</bool>
+   </property>
+  </widget>
+  <widget class="QLabel" name="pg_username_label">
+   <property name="enabled">
+    <bool>true</bool>
+   </property>
+   <property name="geometry">
+    <rect>
+     <x>40</x>
+     <y>14</y>
+     <width>91</width>
+     <height>20</height>
+    </rect>
+   </property>
+   <property name="toolTip">
+    <string>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p&gt;Select username of data editor&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</string>
+   </property>
+   <property name="text">
+    <string>PG username</string>
    </property>
   </widget>
  </widget>
@@ -84,6 +143,22 @@
     <hint type="destinationlabel">
      <x>286</x>
      <y>274</y>
+    </hint>
+   </hints>
+  </connection>
+  <connection>
+   <sender>pg_users_combobox</sender>
+   <signal>currentIndexChanged(QString)</signal>
+   <receiver>CommitMsgDialog</receiver>
+   <slot>setFocus()</slot>
+   <hints>
+    <hint type="sourcelabel">
+     <x>262</x>
+     <y>23</y>
+    </hint>
+    <hint type="destinationlabel">
+     <x>198</x>
+     <y>156</y>
     </hint>
    </hints>
   </connection>

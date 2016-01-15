@@ -23,8 +23,11 @@
 #from PyQt4.QtCore import QAction
 from PyQt4.QtGui import QAction, QDialog, QDialogButtonBox, \
     QFileDialog, QIcon, QLabel, QLineEdit, QMessageBox, QTableWidget, \
-    QTreeView, QTreeWidget, QVBoxLayout, QTableWidgetItem, QColor
-from qgis.core import QgsCredentials, QgsDataSourceURI, QgsMapLayerRegistry
+    QTreeView, QTreeWidget, QVBoxLayout, QTableWidgetItem, QColor, QProgressBar,\
+    QComboBox
+from qgis.core import QgsCredentials, QgsDataSourceURI, QgsMapLayerRegistry, \
+    QgsFeatureRequest
+from PyQt4.QtCore import *
 from qgis.gui import QgsMessageBar
 import re
 import os
@@ -32,6 +35,14 @@ import os.path
 import psycopg2
 from PyQt4 import uic
 import versioning_base
+import platform, sys
+
+# Deactivate stdout (like output of print statements) because windows
+# causes occasional "IOError [Errno 9] File descriptor error"
+# Not needed when there is a way to run QGIS in console mode in Windows.
+iswin = any(platform.win32_ver())
+if iswin:
+    sys.stdout = open(os.devnull, 'w')
 
 # We start from layers coming from one or more postgis non-versioned schemata
 # A widget group is displayed for each distinct schema
@@ -116,6 +127,12 @@ class Versioning:
 
         return self._pg_conn_info
 
+    def get_pg_users_list(self):
+        #get list of pg users to populate combobox used in commit msg dialog
+        pg_users_list = versioning_base.get_pg_users_list(self.pg_conn_info())
+        #print "pg_users_list = " + str(pg_users_list)
+        self.q_commit_msg_dlg.pg_users_combobox.addItems (pg_users_list)
+
     def on_legend_click(self, current, column=0):
         "changes menu when user clicks on legend"
         self.current_group_idx = -1
@@ -196,7 +213,9 @@ class Versioning:
                 self.current_layers = []
                 self.info.setText("Versioning : the selected group is not a working copy")
                 return
-            self.info.setText( uri.database() +' <b>working rev</b>='+str(rev))
+            # We can split on "/" irrespective of OS because QgsDataSourceURI
+            # normalises the path separator to "/"
+            self.info.setText( uri.database().split("/")[-1] +' <b>working rev</b>='+str(rev))
             selection_type = 'working copy'
         if layer.providerType() == "postgres":
             mtch = re.match(r'(.+)_([^_]+)_rev_(head|\d+)', uri.schema())
@@ -355,6 +374,9 @@ class Versioning:
         pcur.close()
 
         # get the commit message
+        # get rid of the combobox asking for the pg username of committer
+        self.q_commit_msg_dlg.pg_users_combobox.setVisible(False)
+        self.q_commit_msg_dlg.pg_username_label.setVisible(False)
         if not self.q_commit_msg_dlg.exec_():
             return
         commit_msg = self.q_commit_msg_dlg.commitMessage.document().toPlainText()
@@ -397,6 +419,10 @@ class Versioning:
         button_box.accepted.connect(dlg.accept)
         button_box.rejected.connect(dlg.reject)
 
+        user_msg1 = QgsMessageBar(dlg)
+        user_msg1.pushInfo("Select:", "one [many] for single [multiple] "
+        "revisions.  Fetching may take time.")
+
         pcur = versioning_base.Db( psycopg2.connect(self.pg_conn_info()) )
         pcur.execute("SELECT rev, commit_msg, branch, date, author "
             "FROM "+schema+".revisions")
@@ -404,24 +430,45 @@ class Versioning:
         pcur.close()
         tblw = QTableWidget( dlg )
         tblw.setRowCount(len(revs))
-        tblw.setColumnCount(5)
+        tblw.setColumnCount(6)
         tblw.setSortingEnabled(True)
-        tblw.setHorizontalHeaderLabels(['Revision', 'Commit Message',
+        tblw.setHorizontalHeaderLabels(['Select','Revision', 'Commit Message',
                                       'Branch', 'Date', 'Author'])
         tblw.verticalHeader().setVisible(False)
         for i, rev in enumerate(revs):
             for j, item in enumerate(rev):
-                tblw.setItem(i, j, QTableWidgetItem( str(item) ))
+                chkBoxItem = QTableWidgetItem()
+                chkBoxItem.setFlags(Qt.ItemIsUserCheckable | Qt.ItemIsEnabled)
+                chkBoxItem.setCheckState(Qt.Unchecked)
+                tblw.setItem(i, 0, chkBoxItem)
+                tblw.setItem(i, j+1, QTableWidgetItem( str(item) ))
+
+        layout.addWidget( user_msg1 )
         layout.addWidget( tblw )
         layout.addWidget( button_box )
-        dlg.resize( 600, 300 )
+        dlg.resize( 650, 300 )
         if not dlg.exec_() :
             return
 
         rows = set()
-        for i in tblw.selectedIndexes():
-            rows.add(i.row())
-        for row in rows:
+        revision_number_list = []
+        for i in range(len(revs)):
+            if  tblw.item(i,0).checkState():
+                print "Revision "+ str(i + 1) +" will be fetched"
+                revision_number_list.append(i + 1)
+                rows.add(tblw.item(i,0).row())
+
+        progressMessageBar = self.iface.messageBar().createMessage("Querying "
+        "the database for revision(s) "+str(revision_number_list))
+        progress = QProgressBar()
+        progress.setMaximum(len(rows))
+        progress.setAlignment(Qt.AlignLeft|Qt.AlignVCenter)
+        progressMessageBar.layout().addWidget(progress)
+        self.iface.messageBar().pushWidget(progressMessageBar, self.iface.messageBar().INFO)
+        progress.setValue(0)
+
+        for i, row in enumerate(rows):
+            progress.setValue(i+1)
             branch = revs[row][2]
             rev = revs[row][0]
             versioning_base.add_revision_view(uri.connectionInfo(),
@@ -441,6 +488,7 @@ class Versioning:
                 new_layer = self.iface.addVectorLayer( src,
                         display_name, 'postgres')
                 self.iface.legendInterface().moveLayer( new_layer, grp_idx)
+        self.iface.messageBar().clearWidgets()
 
     def unresolved_conflicts(self):
         """check for unresolved conflicts, add conflict layers if any"""
@@ -523,7 +571,10 @@ class Versioning:
                 self.iface.mapCanvas().refresh()
 
             # Force refresh of rev number in menu text
-            self.info.setText( uri.database() +' <b>working rev</b>='+str(rev))
+            if layer.providerType() == "spatialite":
+                self.info.setText( uri.database().split("/")[-1] +' <b>working rev</b>='+str(rev))
+            else:
+                self.info.setText( uri.database() +' <b>working rev</b>='+str(rev))
 
             if not self.unresolved_conflicts():
                 QMessageBox.warning( self.iface.mainWindow(), "Warning",
@@ -593,17 +644,33 @@ class Versioning:
         conn_info = ''
         for layer_id in self.current_layers:
             layer = QgsMapLayerRegistry.instance().mapLayer( layer_id )
-            layer_selected_features = layer.selectedFeatures()
-            if layer_selected_features:
-                QMessageBox.warning(None,"Warning","You will be checking out "
-                "the subset of "+str(len(layer_selected_features))+" features "
-                "you selected in layer \""+layer.name()+"\".\n\nIf you want "
-                "the whole data set for that layer, abort checkout in the pop "
-                "up asking for a filename, unselect features and start over.")
-                user_selected_features.append(layer_selected_features)
+            uri = QgsDataSourceURI(layer.source())
+
+            # Get actual PK fror corresponding table
+            actual_table_pk = versioning_base.get_actual_pk( uri,self.pg_conn_info() )
+            #print "Actual table pk = " + actual_table_pk
+
+            layer_selected_features_ids = layer.selectedFeaturesIds()
+
+            # Check if PK from view [uri.keyColumn()] matches actual PK. If not,
+            # throw error.  We need the right PK from the view in order to use
+            # the efficient selectedFeaturesIds().  selectedFeatures() or other
+            # ways that lead to a list of QGSFeature objects do not scale well.
+            if layer_selected_features_ids:
+                if uri.keyColumn()!= actual_table_pk:
+                    QMessageBox.warning(None,"Warning","Layer  \""+layer.name()+
+                    " \" does not have the right primary key.\n\nCheckout will "
+                    "proceed without the selected features subset.")
+                    user_selected_features.append([])
+                else:
+                    QMessageBox.warning(None,"Warning","You will be checking out "
+                    "the subset of "+str(len(layer_selected_features_ids))+" features "
+                    "you selected in layer \""+layer.name()+"\".\n\nIf you want "
+                    "the whole data set for that layer, abort checkout in the pop "
+                    "up asking for a filename, unselect features and start over.")
+                    user_selected_features.append(layer_selected_features_ids)
             else:
                 user_selected_features.append([])
-            uri = QgsDataSourceURI(layer.source())
             if not conn_info:
                 conn_info = uri.connectionInfo()
             else:
@@ -725,10 +792,31 @@ class Versioning:
             print "aborted"
             return
 
+        # Make sure the combobox is visible; could be made invisible by a
+        # previous call to branch
+        self.q_commit_msg_dlg.pg_users_combobox.setVisible(True)
+        self.q_commit_msg_dlg.pg_username_label.setVisible(True)
+        # Populate combobox with list of pg usernames
+        nb_items_in_list = self.q_commit_msg_dlg.pg_users_combobox.count()
+        if not(nb_items_in_list) :
+            self.get_pg_users_list()
+        # Better if we could have a QgsDataSourceURI.username() but no such
+        # thing in spatialite.  Next block is for the case the username cannot
+        # be found in the connection info string (mainly for plugin tests)
+        try:
+            pg_username = self.pg_conn_info().split(' ')[3].replace("'","").split('=')[1]
+            current_user_index = self.q_commit_msg_dlg.pg_users_combobox.findText(pg_username)
+            # sets the current pg_user in the combobox to come
+            current_user_combobox_item = self.q_commit_msg_dlg.pg_users_combobox.setCurrentIndex(current_user_index)
+        except (IndexError):
+            pg_username = ''
+
         # time to get the commit message
         if not self.q_commit_msg_dlg.exec_():
             return
         commit_msg = self.q_commit_msg_dlg.commitMessage.document().toPlainText()
+        commit_pg_user = self.q_commit_msg_dlg.pg_users_combobox.itemText(self.q_commit_msg_dlg.pg_users_combobox.currentIndex())
+
         if not commit_msg:
             QMessageBox.warning(self.iface.mainWindow(), "Warning",
                     "No commit message, aborting commit")
@@ -739,7 +827,7 @@ class Versioning:
         rev = 0
         if layer.providerType() == "spatialite":
             nb_of_updated_layer = versioning_base.commit( uri.database(),
-                    commit_msg, self.pg_conn_info() )
+                    commit_msg, self.pg_conn_info(),commit_pg_user )
             rev = versioning_base.revision(uri.database())
         else: # postgres
             nb_of_updated_layer = versioning_base.pg_commit(
@@ -754,7 +842,10 @@ class Versioning:
             "You have successfully committed remote revision "+str( rev-1 ) )
 
             # Force refresh of rev number in menu text
-            self.info.setText( uri.database() +' <b>working rev</b>='+str(rev))
+            if layer.providerType() == "spatialite":
+                self.info.setText( uri.database().split("/")[-1] +' <b>working rev</b>='+str(rev))
+            else:
+                self.info.setText( uri.database() +' <b>working rev</b>='+str(rev))
         else:
             #self.iface.messageBar().pushMessage("Info",
             #"There was no modification to commit", duration=10)

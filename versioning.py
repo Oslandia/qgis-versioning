@@ -24,7 +24,7 @@
 from PyQt4.QtGui import QAction, QDialog, QDialogButtonBox, \
     QFileDialog, QIcon, QLabel, QLineEdit, QMessageBox, QTableWidget, \
     QTreeView, QTreeWidget, QVBoxLayout, QTableWidgetItem, QColor, QProgressBar,\
-    QCheckBox
+    QCheckBox, QComboBox
 from qgis.core import QgsCredentials, QgsDataSourceURI, QgsMapLayerRegistry, \
     QgsFeatureRequest
 from PyQt4.QtCore import *
@@ -147,6 +147,12 @@ class Versioning:
             self._pg_conn_info = uri.connectionInfo()
 
         return self._pg_conn_info
+
+    def get_pg_users_list(self):
+        #get list of pg users to populate combobox used in commit msg dialog
+        pg_users_list = versioning_base.get_pg_users_list(self.pg_conn_info())
+        #print "pg_users_list = " + str(pg_users_list)
+        self.q_commit_msg_dlg.pg_users_combobox.addItems (pg_users_list)
 
     def on_legend_click(self, current, column=0):
         "changes menu when user clicks on legend"
@@ -389,6 +395,9 @@ class Versioning:
         pcur.close()
 
         # get the commit message
+        # get rid of the combobox asking for the pg username of committer
+        self.q_commit_msg_dlg.pg_users_combobox.setVisible(False)
+        self.q_commit_msg_dlg.pg_username_label.setVisible(False)
         if not self.q_commit_msg_dlg.exec_():
             return
         commit_msg = self.q_commit_msg_dlg.commitMessage.document().toPlainText()
@@ -809,10 +818,31 @@ class Versioning:
             print "aborted"
             return
 
+        # Make sure the combobox is visible; could be made invisible by a
+        # previous call to branch
+        self.q_commit_msg_dlg.pg_users_combobox.setVisible(True)
+        self.q_commit_msg_dlg.pg_username_label.setVisible(True)
+        # Populate combobox with list of pg usernames
+        nb_items_in_list = self.q_commit_msg_dlg.pg_users_combobox.count()
+        if not(nb_items_in_list) :
+            self.get_pg_users_list()
+        # Better if we could have a QgsDataSourceURI.username() but no such
+        # thing in spatialite.  Next block is for the case the username cannot
+        # be found in the connection info string (mainly for plugin tests)
+        try:
+            pg_username = self.pg_conn_info().split(' ')[3].replace("'","").split('=')[1]
+            current_user_index = self.q_commit_msg_dlg.pg_users_combobox.findText(pg_username)
+            # sets the current pg_user in the combobox to come
+            current_user_combobox_item = self.q_commit_msg_dlg.pg_users_combobox.setCurrentIndex(current_user_index)
+        except (IndexError):
+            pg_username = ''
+
         # time to get the commit message
         if not self.q_commit_msg_dlg.exec_():
             return
         commit_msg = self.q_commit_msg_dlg.commitMessage.document().toPlainText()
+        commit_pg_user = self.q_commit_msg_dlg.pg_users_combobox.itemText(self.q_commit_msg_dlg.pg_users_combobox.currentIndex())
+
         if not commit_msg:
             QMessageBox.warning(self.iface.mainWindow(), "Warning",
                     "No commit message, aborting commit")
@@ -823,7 +853,7 @@ class Versioning:
         rev = 0
         if layer.providerType() == "spatialite":
             nb_of_updated_layer = versioning_base.commit( uri.database(),
-                    commit_msg, self.pg_conn_info() )
+                    commit_msg, self.pg_conn_info(),commit_pg_user )
             rev = versioning_base.revision(uri.database())
         else: # postgres
             nb_of_updated_layer = versioning_base.pg_commit(

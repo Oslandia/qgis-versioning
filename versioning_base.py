@@ -18,6 +18,28 @@ iswin = any(platform.win32_ver())
 if iswin:
     sys.stdout = open(os.devnull, 'w')
 
+def os_info():
+    os_type = platform.system()
+    if os_type == "Linux":
+        os_info = platform.uname()[0]
+    elif os_type == "Windows":
+        os_info = "Windows"+platform.win32_ver()[0]
+    elif os_type == "Darwin":
+        os_info = "MacOS"+platform.mac_ver()[0]
+    else:
+        os_info = "UnknownOS"
+    return os_info
+
+def get_pg_users_list(pg_conn_info):
+    pcur = Db(psycopg2.connect(pg_conn_info))
+    pcur.execute("select usename from pg_user order by usename ASC")
+    pg_users_list = pcur.fetchall()
+    pg_users_str_list=[]
+    for i in pg_users_list:
+        pg_users_str_list.append(str(i[0]))
+    pcur.close()
+    return pg_users_str_list
+
 def get_actual_pk(uri,pg_conn_info):
     """Get actual PK from corresponding table or view.  The result serves to
     ascertain that the PK found by QGIS for PG views matches the real PK.
@@ -271,12 +293,10 @@ def checkout(pg_conn_info, pg_table_names, sqlite_filename, selected_feature_lis
                 column_list = pcur.fetchall()
                 new_columns_str = preserve_fid( pkey, column_list)
                 view_str = "CREATE OR REPLACE VIEW "+temp_view_name+" AS SELECT "+new_columns_str+" FROM " +schema+"."+table+" WHERE "+pkey+' in ('+",".join([str(feature_list[i]) for i in range(0, len(feature_list))])+')'
-                #print view_str
                 pcur.execute(view_str)
                 pcur.commit()
                 cmd[8] = temp_view_name
 
-            #print ' '.join(cmd)
             os.system(' '.join(cmd))
 
             # save target revision in a table
@@ -306,12 +326,10 @@ def checkout(pg_conn_info, pg_table_names, sqlite_filename, selected_feature_lis
                 column_list = pcur.fetchall()
                 new_columns_str = preserve_fid( pkey, column_list)
                 view_str = "CREATE OR REPLACE VIEW "+temp_view_name+" AS SELECT "+new_columns_str+" FROM " +schema+"."+table+" WHERE "+pkey+' in ('+",".join([str(feature_list[i]) for i in range(0, len(feature_list))])+')'
-                #print view_str
                 pcur.execute(view_str)
                 pcur.commit()
                 cmd[7] = temp_view_name
 
-            #print ' '.join(cmd)
             os.system(' '.join(cmd))
 
             # save target revision in a table if not in there
@@ -423,7 +441,6 @@ def checkout(pg_conn_info, pg_table_names, sqlite_filename, selected_feature_lis
     if feature_list:
         for i in temp_view_names:
             del_view_str = "DROP VIEW IF EXISTS " + i
-            #print del_view_str
             pcur.execute(del_view_str)
             pcur.commit()
     pcur.close()
@@ -731,7 +748,7 @@ def revision( sqlite_filename ):
     scur.close()
     return rev+ 1
 
-def commit(sqlite_filename, commit_msg, pg_conn_info):
+def commit(sqlite_filename, commit_msg, pg_conn_info,commit_pg_user = ''):
     """merge modifications into database
     returns the number of updated layers"""
     # get the target revision from the spatialite db
@@ -805,7 +822,14 @@ def commit(sqlite_filename, commit_msg, pg_conn_info):
         print "there_is_something_to_commit ", there_is_something_to_commit
         scur.commit()
 
+        # Better if we could have a QgsDataSourceURI.username()
+        try:
+            pg_username = pg_conn_info.split(' ')[3].replace("'","").split('=')[1]
+        except (IndexError):
+            pg_username = ''
+
         pcur = Db(psycopg2.connect(pg_conn_info))
+        pg_users_list = get_pg_users_list(pg_conn_info)
         pkey = pg_pk( pcur, table_schema, table )
         pgeom = pg_geom( pcur, table_schema, table )
 
@@ -853,7 +877,7 @@ def commit(sqlite_filename, commit_msg, pg_conn_info):
             pcur.execute("INSERT INTO "+table_schema+".revisions "
                 "(rev, commit_msg, branch, author) "
                 "VALUES ("+str(rev+1)+", '"+escape_quote(commit_msg)+"', '"+branch+"',"
-                "'"+get_username()+"')")
+                "'"+os_info()+":"+get_username()+"."+pg_username+"."+commit_pg_user+"')")
 
         # TODO remove when ogr2ogr will be able to convert multiple geom column
         # from postgis to spatialite
@@ -1642,6 +1666,11 @@ def pg_commit(pg_conn_info, working_copy_schema, commit_msg):
             "is not up to date. It's late by "+str(late_by)+" commit(s).\n\n"
             "Please update before committing your modifications")
 
+    # Better if we could have a QgsDataSourceURI.username()
+    try :
+        pg_username = pg_conn_info.split(' ')[3].replace("'","").split('=')[1]
+    except (IndexError):
+        pg_username = ''
     pcur = Db(psycopg2.connect(pg_conn_info))
     pcur.execute("SELECT rev, branch, table_schema, table_name "
         "FROM "+wcs+".initial_revision")
@@ -1688,8 +1717,8 @@ def pg_commit(pg_conn_info, working_copy_schema, commit_msg):
             print "inserting rev ", str(rev+1)
             pcur.execute("INSERT INTO "+table_schema+".revisions "
                 "(rev, commit_msg, branch, author) "
-                "VALUES ("+str(rev+1)+", '"+escape_quote(commit_msg)+
-                "', '"+branch+"', '"+get_username()+"')")
+                "VALUES ("+str(rev+1)+", '"+escape_quote(commit_msg)+"', '"+branch+"',"
+                "'"+os_info()+":"+get_username()+"."+pg_username+"')")
 
         # insert inserted and modified
         pcur.execute("INSERT INTO "+table_schema+"."+table+" "

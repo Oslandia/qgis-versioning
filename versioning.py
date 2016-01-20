@@ -452,7 +452,6 @@ class Versioning:
                     self.q_view_dlg.tblw.item(i,j).setCheckState(Qt.Unchecked)
 
         self.q_view_dlg.tblw.itemChanged.connect(self.enable_diffmode)
-
         self.q_view_dlg.tblw.resizeRowsToContents()
         self.q_view_dlg.tblw.resizeColumnsToContents()
 
@@ -497,14 +496,15 @@ class Versioning:
             progress.setValue(i+1)
             branch = revs[row][3]
             rev = revs[row][0]
-            versioning_base.add_revision_view(uri.connectionInfo(),
+            versioning_base.add_diff_revision_view(uri.connectionInfo(),
                     schema, branch, rev )
             grp_name = branch+' revision '+str(rev)
             grp_idx = self.iface.legendInterface().addGroup( grp_name )
             for layer_id in reversed(self.current_layers):
                 layer = QgsMapLayerRegistry.instance().mapLayer(layer_id)
                 new_uri = QgsDataSourceURI(layer.source())
-                new_uri.setDataSource(schema+'_'+branch+'_rev_'+str(rev),
+                new_uri.setDataSource(uri.username() + "_revision_views",
+                #new_uri.setDataSource(schema+'_'+branch+'_rev_'+str(rev),
                         new_uri.table(),
                         new_uri.geometryColumn(),
                         new_uri.sql(),

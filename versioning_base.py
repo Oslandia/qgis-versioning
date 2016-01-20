@@ -1092,6 +1092,76 @@ def add_branch( pg_conn_info, schema, branch, commit_msg,
     pcur.commit()
     pcur.close()
 
+def add_diff_revision_view(pg_conn_info, schema, branch, rev):
+    """Create schema with a view of the specified revision difference.
+    To avoid access problems of existing views created by other users, the name
+    of the schema created is that of the current user.
+    """
+    try:
+        pg_username = pg_conn_info.split(' ')[3].replace("'","").split('=')[1]
+    except (IndexError):
+        pg_username = ''
+    print pg_username
+    pcur = Db(psycopg2.connect(pg_conn_info))
+
+    pcur.execute("SELECT * FROM "+schema+".revisions "
+        "WHERE branch = '"+branch+"'")
+    if not pcur.fetchone():
+        pcur.close()
+        raise RuntimeError("Branch "+branch+" doesn't exist")
+    pcur.execute("SELECT MAX(rev) FROM "+schema+".revisions")
+    [max_rev] = pcur.fetchone()
+    if int(rev) > max_rev or int(rev) <= 0:
+        pcur.close()
+        raise RuntimeError("Revision "+str(rev)+" doesn't exist")
+
+    history_columns = sum([
+        [brch+'_rev_end', brch+'_rev_begin',
+        brch+'_child', brch+'_parent' ] for brch in pg_branches( pcur, schema )],[])
+    rev_schema = pg_username + "_revision_views"
+    security = ' WITH (security_barrier)'
+    #rev_schema = schema+"_"+branch+"_rev_"+str(rev)
+    print rev_schema
+    pcur.execute("SELECT schema_name FROM information_schema.schemata "
+        "WHERE schema_name = '"+rev_schema+"'")
+    if pcur.fetchone():
+        print rev_schema, ' already exists'
+    else:
+        print "Creating new schema " + rev_schema
+        #security = ' WITH (security_barrier)'
+        pcur.execute("SELECT version()")
+        [version] = pcur.fetchone()
+        mtch = re.match( r'^PostgreSQL (\d+)\.(\d+)\.(\d+) ', version )
+
+        if mtch and int(mtch.group(1)) <= 9 and int(mtch.group(2)) <= 2 :
+            security = ''
+        pcur.execute("CREATE SCHEMA "+rev_schema)
+
+    pcur.execute("SELECT table_name FROM information_schema.tables "
+    "WHERE table_schema = '"+schema+"' "
+    "AND table_type = 'BASE TABLE'")
+
+    for [table] in pcur.fetchall():
+        if table == 'revisions':
+            continue
+        pcur.execute("SELECT column_name "
+            "FROM information_schema.columns "
+            "WHERE table_schema = '"+schema+"' "
+            "AND table_name = '"+table+"'")
+        cols = ""
+        for [col] in pcur.fetchall():
+            if col not in history_columns:
+                cols = quote_ident(col)+", "+cols
+        cols = cols[:-2] # remove last coma and space
+        pcur.execute("CREATE OR REPLACE VIEW "+rev_schema+"."+table+" "+security+" AS "
+                "SELECT "+cols+" FROM "+schema+"."+table+" "
+                "WHERE ("+branch+"_rev_end IS NULL "
+                "OR "+branch+"_rev_end >= "+str(rev)+") "
+                "AND "+branch+"_rev_begin <= "+str(rev))
+
+    pcur.commit()
+    pcur.close()
+
 def add_revision_view(pg_conn_info, schema, branch, rev):
     """Create schema with views of the specified revision"""
     pcur = Db(psycopg2.connect(pg_conn_info))

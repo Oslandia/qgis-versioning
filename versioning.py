@@ -26,7 +26,7 @@ from PyQt4.QtGui import QAction, QDialog, QDialogButtonBox, \
     QTreeView, QTreeWidget, QVBoxLayout, QTableWidgetItem, QColor, QProgressBar,\
     QCheckBox, QComboBox
 from qgis.core import QgsCredentials, QgsDataSourceURI, QgsMapLayerRegistry, \
-    QgsFeatureRequest
+    QgsFeatureRequest, QGis, QgsFeature, QgsGeometry, QgsPoint
 from PyQt4.QtCore import *
 from qgis.gui import QgsMessageBar
 import re
@@ -513,7 +513,36 @@ class Versioning:
                 src = new_uri.uri().replace('()','')
                 new_layer = self.iface.addVectorLayer( src,
                         display_name, 'postgres')
+                name_type_lst = [(str(f.name()), ':', str(f.typeName())) for f
+                    in new_layer.pendingFields().toList()]
+                field_list = [''.join(tuples) for tuples in name_type_lst]
+                concatenated_field_list = ''
+                for i in range(len(field_list)):
+                    concatenated_field_list += "field=" + field_list[i] +'&'
+                str1 = concatenated_field_list.replace("int4", "integer")
+                str2 = str1.replace("float8", "double")
+                str3 = str2.replace("varchar", "string")
+
+                if new_layer.wkbType() == QGis.WKBPoint:
+                    print 'Layer is a point layer'
+                    mem_uri = "point?crs=epsg:4326&" + str3 + "index=yes"
+                if new_layer.wkbType() == QGis.WKBPolygon:
+                    print 'Layer is a polygon layer'
+                    mem_uri = "polygon?crs=epsg:4326&" + str3 + "index=yes"
+                new_mem_layer = self.iface.addVectorLayer( mem_uri,
+                        display_name + '_mem', 'memory')
+                pr = new_mem_layer.dataProvider()
+                ##fet = QgsFeature()
+                ##fet.setGeometry(QgsGeometry.fromPoint(QgsPoint(10,10)))
+                ##fet.setAttributes([2])
+                ##pr.addFeatures([fet])
+                new_layer_features = [f for f in new_layer.getFeatures()]
+                print "Got features from vector layer"
+                new_mem_layer.addFeatures(new_layer_features)
+                pr.addFeatures(new_layer_features)
+                print "Copied features to mem layer"
                 self.iface.legendInterface().moveLayer( new_layer, grp_idx)
+                self.iface.legendInterface().moveLayer( new_mem_layer, grp_idx)
         self.iface.messageBar().clearWidgets()
 
     def unresolved_conflicts(self):

@@ -93,13 +93,14 @@ class Versioning:
             self.legend = self.iface.mainWindow().findChild( QTreeView, 'theLayerTreeView')
             self.legend.clicked.connect(self.on_legend_click)
 
-    # This function enables the diffmode checkbox iif the number of checked
-    # revision == 2.  The reason is that we want to apply diff styles to
-    # features only between two revisions.  When the checkbox is enabled, users
-    # can check it.  If it was checked at one point and the number of selected
-    # revisions != 2, then it is unchecked and disabled.
-    # Intended use : view() method
     def enable_diffmode(self):
+        '''This function enables the diffmode checkbox iif the number of checked
+        revision == 2.  The reason is that we want to apply diff styles to
+        features only between two revisions.  When the checkbox is enabled, users
+        can check it.  If it was checked at one point and the number of selected
+        revisions != 2, then it is unchecked and disabled.
+        Intended use in : versioning.view
+        '''
         nb_checked_revs = 0
         for i in range(self.q_view_dlg.tblw.rowCount()):
             if  self.q_view_dlg.tblw.item(i,0).checkState():
@@ -110,6 +111,58 @@ class Versioning:
         else :
             self.q_view_dlg.diffmode_chk.setCheckState(Qt.Unchecked)
             self.q_view_dlg.diffmode_chk.setEnabled(False)
+    def field_names_types(self, pg_layer):
+        '''String massaging to get field names and types in memory layer uri
+        format.  The provider supports string, int and double fields.  Types
+        returned by pg_layer need to be cast as follows :
+        int4    => integer
+        float8  => double
+        varchar => string
+        Intended use in : versioning.mem_layer_uri
+        To do : check for field type not supported and exit
+        '''
+        name_type_lst = [(str(f.name()), ':', str(f.typeName())) for f
+            in pg_layer.pendingFields().toList()]
+        field_list = [''.join(tuples) for tuples in name_type_lst]
+        concatenated_field_list = ''
+        for i in range(len(field_list)):
+            concatenated_field_list += "field=" + field_list[i] +'&'
+        #
+        str1 = concatenated_field_list.replace("int4", "integer")
+        str2 = str1.replace("float8", "double")
+        str3 = str2.replace("varchar", "string")
+        # delete last "&"
+        str4 = str3[:-1]
+        return str4
+
+    def mem_layer_uri(self, pg_layer):
+        '''Final string concatenation to get a proper memory layer uri.  Example:
+        "Point?crs=epsg:4326&field=id:integer&field=name:string(20)&index=yes"
+        Geometry identifiers supported in memory layers :
+        Point, LineString, Polygon, MultiPoint, MultiLineString, MultiPolygon
+        Intended use in : versioning.view
+        '''
+        mem_uri = 'Unknown'
+        srid = str(QgsDataSourceURI(pg_layer.source()).srid())
+        if pg_layer.wkbType() == QGis.WKBPoint:
+            print 'Layer is a point layer'
+            mem_uri = "Point?crs=epsg:" + srid +"&" + self.field_names_types(pg_layer) + "&index=yes"
+        if pg_layer.wkbType()==QGis.WKBLineString:
+            print 'Layer is a linestring layer'
+            mem_uri = "LineString?crs=epsg:" + srid +"&" + self.field_names_types(pg_layer) + "&index=yes"
+        if pg_layer.wkbType() == QGis.WKBPolygon:
+            print 'Layer is a polygon layer'
+            mem_uri = "Polygon?crs=epsg:" + srid +"&" + self.field_names_types(pg_layer) + "&index=yes"
+        if pg_layer.wkbType() == QGis.WKBMultiPoint:
+            print 'Layer is a multi-point layer'
+            mem_uri = "MultiPoint?crs=epsg:" + srid +"&" + self.field_names_types(pg_layer) + "&index=yes"
+        if pg_layer.wkbType()==QGis.WKBMultiLineString:
+            print 'Layer is a multi-linestring layer'
+            mem_uri = "MultiLineString?crs=epsg:" + srid +"&" + self.field_names_types(pg_layer) + "&index=yes"
+        if pg_layer.wkbType()==QGis.WKBMultiPolygon:
+            print 'Layer is a multi-polygon layer'
+            mem_uri = "MultiPolygon?crs=epsg:" + srid +"&" + self.field_names_types(pg_layer) + "&index=yes"
+        return mem_uri
 
     def pg_conn_info(self):
         """returns current postgis versioned DB connection info
@@ -467,22 +520,6 @@ class Versioning:
                 revision_number_list.append(i + 1)
                 rows.add(self.q_view_dlg.tblw.item(i,0).row())
 
-        # if diffmode, create one layer with feature differences between the
-        # two revisions; else checkout the full data sets for the specified
-        # revisions and put them in separate layers (original behaviour)
-        if self.q_view_dlg.diffmode_chk.isChecked():
-            # revision_number_list necessarily has only two items in diffmode
-            rev_begin = revision_number_list[0]
-            rev_end = revision_number_list[1]
-            if rev_begin > rev_end:
-                rev_begin, rev_end = rev_end, rev_begin
-            self.iface.messageBar().pushMessage("info", "Diff mode not "
-            "implemented yet", level=QgsMessageBar.INFO, duration = 5 )
-            return
-        else:
-            print "unchecked"
-            # most of the remainder of this method's code will be moved here
-
         progressMessageBar = self.iface.messageBar().createMessage("Querying "
         "the database for revision(s) "+str(revision_number_list))
         progress = QProgressBar()
@@ -492,57 +529,72 @@ class Versioning:
         self.iface.messageBar().pushWidget(progressMessageBar, self.iface.messageBar().INFO)
         progress.setValue(0)
 
-        for i, row in enumerate(rows):
-            progress.setValue(i+1)
-            branch = revs[row][3]
-            rev = revs[row][0]
-            versioning_base.add_diff_revision_view(uri.connectionInfo(),
-                    schema, branch, rev )
-            grp_name = branch+' revision '+str(rev)
-            grp_idx = self.iface.legendInterface().addGroup( grp_name )
-            for layer_id in reversed(self.current_layers):
-                layer = QgsMapLayerRegistry.instance().mapLayer(layer_id)
-                new_uri = QgsDataSourceURI(layer.source())
-                new_uri.setDataSource(uri.username() + "_revision_views",
-                #new_uri.setDataSource(schema+'_'+branch+'_rev_'+str(rev),
-                        new_uri.table(),
-                        new_uri.geometryColumn(),
-                        new_uri.sql(),
-                        new_uri.keyColumn())
-                display_name =  QgsMapLayerRegistry.instance().mapLayer(layer_id).name()
-                src = new_uri.uri().replace('()','')
-                new_layer = self.iface.addVectorLayer( src,
-                        display_name, 'postgres')
-                name_type_lst = [(str(f.name()), ':', str(f.typeName())) for f
-                    in new_layer.pendingFields().toList()]
-                field_list = [''.join(tuples) for tuples in name_type_lst]
-                concatenated_field_list = ''
-                for i in range(len(field_list)):
-                    concatenated_field_list += "field=" + field_list[i] +'&'
-                str1 = concatenated_field_list.replace("int4", "integer")
-                str2 = str1.replace("float8", "double")
-                str3 = str2.replace("varchar", "string")
-
-                if new_layer.wkbType() == QGis.WKBPoint:
-                    print 'Layer is a point layer'
-                    mem_uri = "point?crs=epsg:4326&" + str3 + "index=yes"
-                if new_layer.wkbType() == QGis.WKBPolygon:
-                    print 'Layer is a polygon layer'
-                    mem_uri = "polygon?crs=epsg:4326&" + str3 + "index=yes"
-                new_mem_layer = self.iface.addVectorLayer( mem_uri,
+        # if diffmode, create one layer with feature differences between the
+        # two revisions; else checkout the full data sets for the specified
+        # revisions and put them in separate layers (original behaviour)
+        rev_begin = 0
+        rev_end = 0
+        if self.q_view_dlg.diffmode_chk.isChecked():
+            print "Diffmode checked"
+            # revision_number_list necessarily has only two items in diffmode
+            rev_begin = revision_number_list[0]
+            rev_end = revision_number_list[1]
+            if rev_begin > rev_end:
+                rev_begin, rev_end = rev_end, rev_begin
+            for i, row in reversed(list(enumerate(rows))):
+                progress.setValue(i+1)
+                branch = revs[row][3]
+                rev = revs[row][0]
+                versioning_base.add_diff_revision_view(uri.connectionInfo(),
+                        schema, branch, rev )
+                grp_name = 'Diffmode revision '+str(rev)
+                grp_idx = self.iface.legendInterface().addGroup( grp_name )
+                for layer_id in reversed(self.current_layers):
+                    layer = QgsMapLayerRegistry.instance().mapLayer(layer_id)
+                    new_uri = QgsDataSourceURI(layer.source())
+                    new_uri.setDataSource(uri.username() + "_revision_views",
+                            new_uri.table(),
+                            new_uri.geometryColumn(),
+                            new_uri.sql(),
+                            new_uri.keyColumn())
+                    display_name =  QgsMapLayerRegistry.instance().mapLayer(layer_id).name()
+                    src = new_uri.uri().replace('()','')
+                    mem_uri = self.mem_layer_uri(layer)
+                    print "mem_uri = " + mem_uri
+                    if  mem_uri == "Unknown":
+                        return
+                    new_mem_layer = self.iface.addVectorLayer( mem_uri,
                         display_name + '_mem', 'memory')
-                pr = new_mem_layer.dataProvider()
-                ##fet = QgsFeature()
-                ##fet.setGeometry(QgsGeometry.fromPoint(QgsPoint(10,10)))
-                ##fet.setAttributes([2])
-                ##pr.addFeatures([fet])
-                new_layer_features = [f for f in new_layer.getFeatures()]
-                print "Got features from vector layer"
-                new_mem_layer.addFeatures(new_layer_features)
-                pr.addFeatures(new_layer_features)
-                print "Copied features to mem layer"
-                self.iface.legendInterface().moveLayer( new_layer, grp_idx)
-                self.iface.legendInterface().moveLayer( new_mem_layer, grp_idx)
+                    pr = new_mem_layer.dataProvider()
+                    source_layer_features = [f for f in layer.getFeatures()]
+                    print "Got features from source vector layer"
+                    new_mem_layer.addFeatures(source_layer_features)
+                    pr.addFeatures(source_layer_features)
+                    print "Copied source features to mem layer"
+                    self.iface.legendInterface().moveLayer( new_mem_layer, grp_idx)
+        else:
+            print "Diffmode unchecked"
+            for i, row in reversed(list(enumerate(rows))):
+                progress.setValue(i+1)
+                branch = revs[row][3]
+                rev = revs[row][0]
+                versioning_base.add_revision_view(uri.connectionInfo(),
+                        schema, branch, rev )
+                grp_name = branch+' revision '+str(rev)
+                grp_idx = self.iface.legendInterface().addGroup( grp_name )
+                for layer_id in reversed(self.current_layers):
+                    layer = QgsMapLayerRegistry.instance().mapLayer(layer_id)
+                    new_uri = QgsDataSourceURI(layer.source())
+                    new_uri.setDataSource(schema+'_'+branch+'_rev_'+str(rev),
+                            new_uri.table(),
+                            new_uri.geometryColumn(),
+                            new_uri.sql(),
+                            new_uri.keyColumn())
+                    display_name =  QgsMapLayerRegistry.instance().mapLayer(layer_id).name()
+                    src = new_uri.uri().replace('()','')
+                    new_layer = self.iface.addVectorLayer( src,
+                            display_name, 'postgres')
+                    self.iface.legendInterface().moveLayer( new_layer, grp_idx)
         self.iface.messageBar().clearWidgets()
 
     def unresolved_conflicts(self):

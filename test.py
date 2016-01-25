@@ -5,11 +5,11 @@ import os
 import sys
 from subprocess import Popen, PIPE
 
-__currendir = os.path.dirname(__file__)
+__current_dir = os.path.dirname(__file__)
 tests = []
 test_directories = ["test"]
 for dir_ in test_directories:
-    test_dir = os.path.join(__currendir, dir_)
+    test_dir = os.path.join(__current_dir, dir_)
     for file_ in os.listdir(test_dir):
         if file_[-8:]=="_test.py":
             tests.append(os.path.join(test_dir, file_))
@@ -32,8 +32,8 @@ if failed:
     exit(1)
 else:
     sys.stdout.write("%d/%d test passed (%d%%)\n"%(
-        len(tests)-failed, 
-        len(tests), 
+        len(tests)-failed,
+        len(tests),
         int((100.*(len(tests)-failed))/len(tests))))
 
 exit(0)

@@ -6,11 +6,11 @@ import zipfile
 import tempfile
 import shutil
 
-__currendir = os.path.abspath(os.path.dirname(__file__))
-out = os.path.join(__currendir,"qgis_versioning.zip")
+__current_dir = os.path.abspath(os.path.dirname(__file__))
+out = os.path.join(__current_dir,"qgis_versioning.zip")
 
 files = ["README.md", "LICENSE", "metadata.txt"]
-for file_ in os.listdir(__currendir):
+for file_ in os.listdir(__current_dir):
     if file_[-4:]==".svg" or file_[-3:]==".py" or file_[-3:]==".ui":
         files.append(file_)
 
@@ -22,7 +22,7 @@ else:
     os.mkdir(tmpdir)
 
 for file_ in files:
-    shutil.copy(os.path.join(__currendir, file_),
+    shutil.copy(os.path.join(__current_dir, file_),
                 os.path.join(tmpdir, file_))
 
 os.chdir(tempfile.gettempdir())

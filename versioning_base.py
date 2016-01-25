@@ -1093,9 +1093,8 @@ def add_branch( pg_conn_info, schema, branch, commit_msg,
     pcur.close()
 
 def add_diff_revision_view(pg_conn_info, schema, branch, rev):
-    """Create schema with a view of the specified revision difference.
-    To avoid access problems of existing views created by other users, the name
-    of the schema created is that of the current user.
+    """Create temporary view of the specified revision difference (comparison).
+    Revisions can only be compared if they belong to the same branch.
     """
     try:
         pg_username = pg_conn_info.split(' ')[3].replace("'","").split('=')[1]

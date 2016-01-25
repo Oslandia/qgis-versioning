@@ -32,7 +32,7 @@
       <string>Check to go to diff mode for any two revisions</string>
      </property>
      <property name="text">
-      <string>Diff mode</string>
+      <string>Compare selected revisions</string>
      </property>
     </widget>
    </item>

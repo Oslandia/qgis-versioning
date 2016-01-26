@@ -1092,7 +1092,7 @@ def add_branch( pg_conn_info, schema, branch, commit_msg,
     pcur.commit()
     pcur.close()
 
-def add_diff_revision_view(pg_conn_info, schema, branch, rev):
+def add_diff_revision_view(pg_conn_info, table, schema, branch, rev_begin, rev_end):
     """Create temporary view of the specified revision difference (comparison).
     Revisions can only be compared if they belong to the same branch.
     """
@@ -1100,7 +1100,7 @@ def add_diff_revision_view(pg_conn_info, schema, branch, rev):
         pg_username = pg_conn_info.split(' ')[3].replace("'","").split('=')[1]
     except (IndexError):
         pg_username = ''
-    print pg_username
+
     pcur = Db(psycopg2.connect(pg_conn_info))
 
     pcur.execute("SELECT * FROM "+schema+".revisions "
@@ -1110,56 +1110,46 @@ def add_diff_revision_view(pg_conn_info, schema, branch, rev):
         raise RuntimeError("Branch "+branch+" doesn't exist")
     pcur.execute("SELECT MAX(rev) FROM "+schema+".revisions")
     [max_rev] = pcur.fetchone()
-    if int(rev) > max_rev or int(rev) <= 0:
+    if int(rev_begin) > max_rev or int(rev_begin) <= 0:
         pcur.close()
-        raise RuntimeError("Revision "+str(rev)+" doesn't exist")
+        raise RuntimeError("Revision 1 (begin) "+str(rev_begin)+" doesn't exist")
+    if int(rev_end) > max_rev or int(rev_end) <= 0:
+        pcur.close()
+        raise RuntimeError("Revision 2 (end) "+str(rev_end)+" doesn't exist")
 
-    history_columns = sum([
-        [brch+'_rev_end', brch+'_rev_begin',
-        brch+'_child', brch+'_parent' ] for brch in pg_branches( pcur, schema )],[])
-    rev_schema = pg_username + "_revision_views"
+    #print "Rev begin passed to base = " + str(rev_begin)
+    #print "Rev end passed to base = " + str(rev_end)
+
     security = ' WITH (security_barrier)'
-    #rev_schema = schema+"_"+branch+"_rev_"+str(rev)
-    print rev_schema
-    pcur.execute("SELECT schema_name FROM information_schema.schemata "
-        "WHERE schema_name = '"+rev_schema+"'")
-    if pcur.fetchone():
-        print rev_schema, ' already exists'
-    else:
-        print "Creating new schema " + rev_schema
-        #security = ' WITH (security_barrier)'
-        pcur.execute("SELECT version()")
-        [version] = pcur.fetchone()
-        mtch = re.match( r'^PostgreSQL (\d+)\.(\d+)\.(\d+) ', version )
+    pcur.execute("SELECT version()")
+    [version] = pcur.fetchone()
+    mtch = re.match( r'^PostgreSQL (\d+)\.(\d+)\.(\d+) ', version )
+    if mtch and int(mtch.group(1)) <= 9 and int(mtch.group(2)) <= 2 :
+        security = ''
 
-        if mtch and int(mtch.group(1)) <= 9 and int(mtch.group(2)) <= 2 :
-            security = ''
-        pcur.execute("CREATE SCHEMA "+rev_schema)
+    temp_view_name = schema+"."+table+"_rev_" +str(rev_begin) + "_vs_" \
+        + str(rev_end) + "_" + pg_username
+    view_str = "CREATE OR REPLACE VIEW "+temp_view_name+" "+security+" AS SELECT *, \
+    CASE WHEN " +schema+"."+table+"."+branch+"_rev_begin > "+str(rev_begin)+" \
+     AND " +schema+"."+table+"."+branch+"_rev_begin <= "+str(rev_end)+" \
+     AND " +schema+"."+table+"."+branch+"_parent IS NULL THEN 'a' \
+    WHEN " +schema+"."+table+"."+branch+"_rev_begin > "+str(rev_begin)+" \
+    AND " +schema+"."+table+"."+branch+"_rev_end IS NULL \
+    AND " +schema+"."+table+"."+branch+"_parent IS NOT NULL THEN 'u' \
+    WHEN " +schema+"."+table+"."+branch+"_rev_end > "+str(rev_begin)+" AND \
+    " +schema+"."+table+"."+branch+"_rev_end <= "+str(rev_end)+" AND \
+    " +schema+"."+table+"."+branch+"_child IS NULL THEN 'd' END \
+    as diff_status FROM "+schema+"."+table+" \
+    WHERE (" +schema+"."+table+"."+branch+"_rev_begin > "+str(rev_begin)+" AND \
+    " +schema+"."+table+"."+branch+"_rev_begin <= "+str(rev_end)+") OR \
+    (" +schema+"."+table+"."+branch+"_rev_end > "+str(rev_begin)+" AND \
+    " +schema+"."+table+"."+branch+"_rev_end <= "+str(rev_end)+" AND \
+    " +schema+"."+table+"."+branch+"_child is NULL)"
 
-    pcur.execute("SELECT table_name FROM information_schema.tables "
-    "WHERE table_schema = '"+schema+"' "
-    "AND table_type = 'BASE TABLE'")
-
-    for [table] in pcur.fetchall():
-        if table == 'revisions':
-            continue
-        pcur.execute("SELECT column_name "
-            "FROM information_schema.columns "
-            "WHERE table_schema = '"+schema+"' "
-            "AND table_name = '"+table+"'")
-        cols = ""
-        for [col] in pcur.fetchall():
-            if col not in history_columns:
-                cols = quote_ident(col)+", "+cols
-        cols = cols[:-2] # remove last coma and space
-        pcur.execute("CREATE OR REPLACE VIEW "+rev_schema+"."+table+" "+security+" AS "
-                "SELECT "+cols+" FROM "+schema+"."+table+" "
-                "WHERE ("+branch+"_rev_end IS NULL "
-                "OR "+branch+"_rev_end >= "+str(rev)+") "
-                "AND "+branch+"_rev_begin <= "+str(rev))
-
+    pcur.execute(view_str)
     pcur.commit()
     pcur.close()
+    return temp_view_name
 
 def add_revision_view(pg_conn_info, schema, branch, rev):
     """Create schema with views of the specified revision"""

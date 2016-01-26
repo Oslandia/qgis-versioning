@@ -26,7 +26,8 @@ from PyQt4.QtGui import QAction, QDialog, QDialogButtonBox, \
     QTreeView, QTreeWidget, QVBoxLayout, QTableWidgetItem, QColor, QProgressBar,\
     QCheckBox, QComboBox
 from qgis.core import QgsCredentials, QgsDataSourceURI, QgsMapLayerRegistry, \
-    QgsFeatureRequest, QGis, QgsFeature, QgsGeometry, QgsPoint
+    QgsFeatureRequest, QGis, QgsFeature, QgsGeometry, QgsPoint, QgsSymbolV2, \
+    QgsRuleBasedRendererV2
 from PyQt4.QtCore import *
 from qgis.gui import QgsMessageBar
 import re
@@ -156,9 +157,10 @@ class Versioning:
         str1 = concatenated_field_list.replace("int4", "integer")
         str2 = str1.replace("float8", "double")
         str3 = str2.replace("varchar", "string")
+        str4 = str3.replace("text", "string")
         # delete last "&"
-        str4 = str3[:-1]
-        return str4
+        str5 = str4[:-1]
+        return str5
 
     def mem_layer_uri(self, pg_layer):
         '''Final string concatenation to get a proper memory layer uri.  Example:
@@ -539,11 +541,13 @@ class Versioning:
 
         rows = set()
         revision_number_list = []
+        branches = []
 
         for i in range(len(revs)):
             if  self.q_view_dlg.tblw.item(i,0).checkState():
                 print "Revision "+ self.q_view_dlg.tblw.item(i,0).text() +" will be fetched"
                 revision_number_list.append(int(self.q_view_dlg.tblw.item(i,0).text()))
+                branches.append(self.q_view_dlg.tblw.item(i,3).text())
                 rows.add(self.q_view_dlg.tblw.item(i,0).row())
 
         progressMessageBar = self.iface.messageBar().createMessage("Querying "
@@ -570,47 +574,89 @@ class Versioning:
             # if the two revisions are not on the same branch, exit
             if revs[rev_begin - 1][3] != revs[rev_end - 1][3]:
                 print "Revisions are not on the same branch, exiting"
-                print "Rev_begin " +  str(rev_begin) + " is on " + revs[rev_begin - 1][3] + ".\n"
-                print "Rev_end " + str(rev_end) + " is on " + revs[rev_end - 1][3] + ".\n"
+                print "Rev_begin " +  str(rev_begin) + " is on " + revs[rev_begin - 1][3]
+                print "Rev_end " + str(rev_end) + " is on " + revs[rev_end - 1][3]
                 return
             else :
                 print "Revisions are on the same branch :"
-                print "Rev_begin " + str(rev_begin) + " is on " + revs[rev_begin - 1][3] + ".\n"
-                print "Rev_end " +str(rev_end) + " is on " + revs[rev_end - 1][3] + ".\n"
-            ##for i, row in reversed(list(enumerate(rows))):
-            ##    progress.setValue(i+1)
-            ##    branch = revs[row][3]
-            ##    rev = revs[row][0]
-            ##    versioning_base.add_diff_revision_view(uri.connectionInfo(),
-            ##            schema, branch, rev )
-            ##    grp_name = 'Diffmode revision '+str(rev)
-            ##    grp_idx = self.iface.legendInterface().addGroup( grp_name )
-            ##    for layer_id in reversed(self.current_layers):
-            ##        layer = QgsMapLayerRegistry.instance().mapLayer(layer_id)
-            ##        new_uri = QgsDataSourceURI(layer.source())
-            ##        new_uri.setDataSource(uri.username() + "_revision_views",
-            ##                new_uri.table(),
-            ##                new_uri.geometryColumn(),
-            ##                new_uri.sql(),
-            ##                new_uri.keyColumn())
-            ##        display_name =  QgsMapLayerRegistry.instance().mapLayer(layer_id).name()
-            ##        src = new_uri.uri().replace('()','')
-            ##        mem_uri = self.mem_layer_uri(layer)
-            ##        print "mem_uri = " + mem_uri
-            ##        if  mem_uri == "Unknown":
-            ##            return
-            ##        new_mem_layer = self.iface.addVectorLayer( mem_uri,
-            ##            display_name + '_mem', 'memory')
-            ##        pr = new_mem_layer.dataProvider()
-            ##        source_layer_features = [f for f in layer.getFeatures()]
-            ##        print "Got features from source vector layer"
-            ##        new_mem_layer.addFeatures(source_layer_features)
-            ##        pr.addFeatures(source_layer_features)
-            ##        print "Copied source features to mem layer"
-            ##        self.iface.legendInterface().moveLayer( new_mem_layer, grp_idx)
+                print "Rev_begin " + str(rev_begin) + " is on " + revs[rev_begin - 1][3]
+                print "Rev_end " +str(rev_end) + " is on " + revs[rev_end - 1][3]
+
+            grp_name = "Compare revisions "+str(rev_begin)+" vs "+ str(rev_end)
+            grp_idx = self.iface.legendInterface().addGroup( grp_name )
+
+            for i, layer_id in enumerate(reversed(self.current_layers)):
+                progress.setValue(i+1)
+                layer = QgsMapLayerRegistry.instance().mapLayer(layer_id)
+                new_uri = QgsDataSourceURI(layer.source())
+                qualified_diff_view_name = versioning_base.add_diff_revision_view( uri.connectionInfo(),
+                    new_uri.table(),schema, branches[0], rev_begin, rev_end )
+                print "qualified_diff_view_name = " + qualified_diff_view_name
+                new_uri.setDataSource(qualified_diff_view_name.split('.')[0],
+                        qualified_diff_view_name.split('.')[1],
+                        new_uri.geometryColumn(),
+                        new_uri.sql(),
+                        new_uri.keyColumn())
+                display_name =  QgsMapLayerRegistry.instance().mapLayer(layer_id).name()
+                src = new_uri.uri().replace('()','')
+                tmp_pg_layer = self.iface.addVectorLayer( src,
+                        display_name, 'postgres')
+                mem_uri = self.mem_layer_uri(tmp_pg_layer)
+
+                print "mem_uri = " + mem_uri
+                if  mem_uri == "Unknown":
+                    return
+                new_mem_layer = self.iface.addVectorLayer( mem_uri,
+                    display_name + '_diff', 'memory')
+                pr = new_mem_layer.dataProvider()
+                source_layer_features = [f for f in tmp_pg_layer.getFeatures()]
+                print "Got features from source vector layer"
+                QgsMapLayerRegistry.instance().removeMapLayer( tmp_pg_layer.id() )
+                print "Removed tmp layer"
+                pr.addFeatures(source_layer_features)
+                print "Copied source features to mem layer"
+                # Style layer to show features as a function of whether they were
+                # - added/created ('a')
+                # - updated ('u')
+                # - deleted ('d')
+                # For all feature types, so do once
+                # Code from http://snorf.net/blog/2014/03/04/symbology-of-vector-layers-in-qgis-python-plugins
+                # For colors, use the names at http://www.w3schools.com/HTML/html_colornames.asp, but lowercase only; tested with "aliceblue"
+                # define some rules: label, expression, color name, size, (min scale, max scale)
+                modification_type_rules = (
+                    ('NoMode', '"diff_status" IS NULL', 'aliceblue', 2.0, None),
+                    ('Created', '"diff_status" LIKE \'a\'', 'chartreuse', 3.0, None),
+                    ('Updated', '"diff_status" LIKE \'u\'', 'sandybrown', 3.0, None),
+                    ('Deleted', '"diff_status" LIKE \'d\'', 'red', 3.0, None),)
+
+                symbol = QgsSymbolV2.defaultSymbol(new_mem_layer.geometryType())
+                renderer = QgsRuleBasedRendererV2(symbol)
+                root_rule = renderer.rootRule()
+                for label, expression, color_name, size, scale in modification_type_rules:
+                    # create a clone (i.e. a copy) of the default rule
+                    rule = root_rule.children()[0].clone()
+                    # set the label, expression and color
+                    rule.setLabel(label)
+                    rule.setFilterExpression(expression)
+                    rule.symbol().setColor(QColor(color_name))
+                    ##rule.symbol().setSize(size)
+                    # set the scale limits if they have been specified
+                    ##if scale is not None:
+                    ##    rule.setScaleMinDenom(scale[0])
+                    ##    rule.setScaleMaxDenom(scale[1])
+                    # append the rule to the list of rules
+                    root_rule.appendChild(rule)
+
+                # delete the default rule
+                root_rule.removeChildAt(0)
+                new_mem_layer.setRendererV2(renderer)
+                # refresh map and legend
+                self.iface.mapCanvas().refresh()
+                self.iface.legendInterface().refreshLayerSymbology(new_mem_layer)
+                self.iface.legendInterface().moveLayer( new_mem_layer, grp_idx)
         else:
             print "Diffmode unchecked"
-            for i, row in reversed(list(enumerate(rows))):
+            for i, row in enumerate(rows):
                 progress.setValue(i+1)
                 branch = revs[row][3]
                 rev = revs[row][0]

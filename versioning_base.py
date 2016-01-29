@@ -30,6 +30,35 @@ def os_info():
         os_info = "UnknownOS"
     return os_info
 
+def mem_field_names_types(pg_layer):
+    '''String massaging to get field names and types in memory layer uri
+    format.  The provider supports string, int and double fields.  Types
+    returned by pg_layer need to be cast as follows :
+    int4    => integer
+    float8  => double
+    varchar => string
+    text => string
+    Intended use in : versioning.mem_layer_uri
+    To do : check for field type not supported and exit
+    '''
+    name_type_lst = [(str(f.name()), ':', str(f.typeName())) for f
+        in pg_layer.pendingFields().toList()]
+    field_list = [''.join(tuples) for tuples in name_type_lst]
+    concatenated_field_str = ''
+    for i in range(len(field_list)):
+        concatenated_field_str += "field=" + field_list[i] +'&'
+
+    #print "concatenated_field_str = " + concatenated_field_str +"\n"
+
+    rep = {'float8': 'double', 'int4': 'integer', 'text': 'string',
+        'varchar': 'string'}
+    pattern = re.compile("|".join(rep.keys()))
+    temp_str = pattern.sub(
+        lambda m: rep[re.escape(m.group(0))],concatenated_field_str )
+    final_str = temp_str[:-1]
+    #print "\n" + "final_str = " + final_str +"\n"
+    return final_str
+
 def get_pg_users_list(pg_conn_info):
     pcur = Db(psycopg2.connect(pg_conn_info))
     pcur.execute("select usename from pg_user order by usename ASC")
@@ -1092,15 +1121,9 @@ def add_branch( pg_conn_info, schema, branch, commit_msg,
     pcur.commit()
     pcur.close()
 
-def add_diff_revision_view(pg_conn_info, table, schema, branch, rev_begin, rev_end):
-    """Create temporary view of the specified revision difference (comparison).
-    Revisions can only be compared if they belong to the same branch.
+def diff_rev_view_str(pg_conn_info, schema, table, branch, rev_begin, rev_end):
+    """Create view string of the specified revision difference (comparison).
     """
-    try:
-        pg_username = pg_conn_info.split(' ')[3].replace("'","").split('=')[1]
-    except (IndexError):
-        pg_username = ''
-
     pcur = Db(psycopg2.connect(pg_conn_info))
 
     pcur.execute("SELECT * FROM "+schema+".revisions "
@@ -1117,39 +1140,28 @@ def add_diff_revision_view(pg_conn_info, table, schema, branch, rev_begin, rev_e
         pcur.close()
         raise RuntimeError("Revision 2 (end) "+str(rev_end)+" doesn't exist")
 
-    #print "Rev begin passed to base = " + str(rev_begin)
-    #print "Rev end passed to base = " + str(rev_end)
+    select_str = ("SELECT "
+    "CASE WHEN "
+        +schema+"."+table+"."+branch+"_rev_begin > "+str(rev_begin)+ " "
+        "AND " +schema+"."+table+"."+branch+"_rev_begin <= "+str(rev_end)+ " "
+        "AND " +schema+"."+table+"."+branch+"_parent IS NULL THEN 'a' "
+    "WHEN (" +schema+"."+table+"."+branch+"_rev_begin > "+str(rev_begin)+ " "
+        "AND " +schema+"."+table+"."+branch+"_rev_end IS NULL "
+        "AND " +schema+"."+table+"."+branch+"_parent IS NOT NULL) "
+        "OR ("+schema+"."+table+"."+branch+"_rev_end >= "+str(rev_end)+" "
+        "AND "+schema+"."+table+"."+branch+"_child IS NOT NULL) "
+        "THEN 'u' "
+    "WHEN " +schema+"."+table+"."+branch+"_rev_end > "+str(rev_begin)+ " "
+        "AND " +schema+"."+table+"."+branch+"_rev_end <= "+str(rev_end)+ " "
+        "AND " +schema+"."+table+"."+branch+"_child IS NULL THEN 'd' END "
+    "as diff_status, * FROM "+schema+"."+table+ " "
+    "WHERE (" +schema+"."+table+"."+branch+"_rev_begin > "+str(rev_begin)+ " "
+        "AND " +schema+"."+table+"."+branch+"_rev_begin <= "+str(rev_end)+") "
+        "OR (" +schema+"."+table+"."+branch+"_rev_end > "+str(rev_begin)+ " "
+        "AND " +schema+"."+table+"."+branch+"_rev_end <= "+str(rev_end)+ " )")
 
-    security = ' WITH (security_barrier)'
-    pcur.execute("SELECT version()")
-    [version] = pcur.fetchone()
-    mtch = re.match( r'^PostgreSQL (\d+)\.(\d+)\.(\d+) ', version )
-    if mtch and int(mtch.group(1)) <= 9 and int(mtch.group(2)) <= 2 :
-        security = ''
-
-    temp_view_name = schema+"."+table+"_rev_" +str(rev_begin) + "_vs_" \
-        + str(rev_end) + "_" + pg_username
-    view_str = "CREATE OR REPLACE VIEW "+temp_view_name+" "+security+" AS SELECT *, \
-    CASE WHEN " +schema+"."+table+"."+branch+"_rev_begin > "+str(rev_begin)+" \
-     AND " +schema+"."+table+"."+branch+"_rev_begin <= "+str(rev_end)+" \
-     AND " +schema+"."+table+"."+branch+"_parent IS NULL THEN 'a' \
-    WHEN " +schema+"."+table+"."+branch+"_rev_begin > "+str(rev_begin)+" \
-    AND " +schema+"."+table+"."+branch+"_rev_end IS NULL \
-    AND " +schema+"."+table+"."+branch+"_parent IS NOT NULL THEN 'u' \
-    WHEN " +schema+"."+table+"."+branch+"_rev_end > "+str(rev_begin)+" AND \
-    " +schema+"."+table+"."+branch+"_rev_end <= "+str(rev_end)+" AND \
-    " +schema+"."+table+"."+branch+"_child IS NULL THEN 'd' END \
-    as diff_status FROM "+schema+"."+table+" \
-    WHERE (" +schema+"."+table+"."+branch+"_rev_begin > "+str(rev_begin)+" AND \
-    " +schema+"."+table+"."+branch+"_rev_begin <= "+str(rev_end)+") OR \
-    (" +schema+"."+table+"."+branch+"_rev_end > "+str(rev_begin)+" AND \
-    " +schema+"."+table+"."+branch+"_rev_end <= "+str(rev_end)+" AND \
-    " +schema+"."+table+"."+branch+"_child is NULL)"
-
-    pcur.execute(view_str)
-    pcur.commit()
     pcur.close()
-    return temp_view_name
+    return select_str
 
 def add_revision_view(pg_conn_info, schema, branch, rev):
     """Create schema with views of the specified revision"""

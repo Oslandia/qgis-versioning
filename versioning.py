@@ -102,10 +102,15 @@ class Versioning:
         revisions != 2, then it is unchecked and disabled.
         Intended use in : versioning.view
         '''
+        #print "in enable_diffmode"
         nb_checked_revs = 0
         for i in range(self.q_view_dlg.tblw.rowCount()):
-            if  self.q_view_dlg.tblw.item(i,0).checkState():
-                nb_checked_revs += 1
+            # check if tblw.item(0,0) is not None (bug with Qt slots ?)
+            if self.q_view_dlg.tblw.item(0,0) :
+                if  self.q_view_dlg.tblw.item(i,0).checkState():
+                    nb_checked_revs += 1
+            else:
+                return
 
         if nb_checked_revs == 2:
             self.q_view_dlg.diffmode_chk.setEnabled(True)
@@ -114,15 +119,20 @@ class Versioning:
             self.q_view_dlg.diffmode_chk.setEnabled(False)
 
     def check_branches(self):
+        ''' In the comparison mode (diffmode), only two revisions are compared.
+        Both revisions must be on the same branch for comparison to happen.  If
+        that is not the case, branch names of the revision items are highlighted.
+        '''
+        #print "in check_branches"
         if self.q_view_dlg.diffmode_chk.isChecked():
-            print "Checkbox is checked"
+            #print "Checkbox is checked"
             branches = []
             indexes = []
             for i in range(self.q_view_dlg.tblw.rowCount()):
                 if  self.q_view_dlg.tblw.item(i,0).checkState():
                     branches.append(self.q_view_dlg.tblw.item(i,3).text())
                     indexes.append(i)
-            print "Compared branches are " + branches[0] + ", " + branches[1]
+            #print "Compared branches are " + branches[0] + ", " + branches[1]
 
             if  branches[0] !=  branches[1]:
                 print "Branches are not equal"
@@ -136,32 +146,6 @@ class Versioning:
                 self.q_view_dlg.tblw.item(indexes[1],3).setBackground (QColor(255,255,0))
         return
 
-
-    def field_names_types(self, pg_layer):
-        '''String massaging to get field names and types in memory layer uri
-        format.  The provider supports string, int and double fields.  Types
-        returned by pg_layer need to be cast as follows :
-        int4    => integer
-        float8  => double
-        varchar => string
-        Intended use in : versioning.mem_layer_uri
-        To do : check for field type not supported and exit
-        '''
-        name_type_lst = [(str(f.name()), ':', str(f.typeName())) for f
-            in pg_layer.pendingFields().toList()]
-        field_list = [''.join(tuples) for tuples in name_type_lst]
-        concatenated_field_list = ''
-        for i in range(len(field_list)):
-            concatenated_field_list += "field=" + field_list[i] +'&'
-        #
-        str1 = concatenated_field_list.replace("int4", "integer")
-        str2 = str1.replace("float8", "double")
-        str3 = str2.replace("varchar", "string")
-        str4 = str3.replace("text", "string")
-        # delete last "&"
-        str5 = str4[:-1]
-        return str5
-
     def mem_layer_uri(self, pg_layer):
         '''Final string concatenation to get a proper memory layer uri.  Example:
         "Point?crs=epsg:4326&field=id:integer&field=name:string(20)&index=yes"
@@ -172,23 +156,23 @@ class Versioning:
         mem_uri = 'Unknown'
         srid = str(QgsDataSourceURI(pg_layer.source()).srid())
         if pg_layer.wkbType() == QGis.WKBPoint:
-            print 'Layer is a point layer'
-            mem_uri = "Point?crs=epsg:" + srid +"&" + self.field_names_types(pg_layer) + "&index=yes"
+            #print "Layer \"" + pg_layer.name()+ "\" is a point layer"
+            mem_uri = "Point?crs=epsg:" + srid +"&" + versioning_base.mem_field_names_types(pg_layer) + "&index=yes"
         if pg_layer.wkbType()==QGis.WKBLineString:
-            print 'Layer is a linestring layer'
-            mem_uri = "LineString?crs=epsg:" + srid +"&" + self.field_names_types(pg_layer) + "&index=yes"
+            #print "Layer \"" + pg_layer.name()+ "\" is a linestring layer"
+            mem_uri = "LineString?crs=epsg:" + srid +"&" + versioning_base.mem_field_names_types(pg_layer) + "&index=yes"
         if pg_layer.wkbType() == QGis.WKBPolygon:
-            print 'Layer is a polygon layer'
-            mem_uri = "Polygon?crs=epsg:" + srid +"&" + self.field_names_types(pg_layer) + "&index=yes"
+            #print "Layer \"" + pg_layer.name()+ "\" is a polygon layer"
+            mem_uri = "Polygon?crs=epsg:" + srid +"&" + versioning_base.mem_field_names_types(pg_layer) + "&index=yes"
         if pg_layer.wkbType() == QGis.WKBMultiPoint:
-            print 'Layer is a multi-point layer'
-            mem_uri = "MultiPoint?crs=epsg:" + srid +"&" + self.field_names_types(pg_layer) + "&index=yes"
+            #print "Layer \"" + pg_layer.name()+ "\" is a multi-point layer"
+            mem_uri = "MultiPoint?crs=epsg:" + srid +"&" + versioning_base.mem_field_names_types(pg_layer) + "&index=yes"
         if pg_layer.wkbType()==QGis.WKBMultiLineString:
-            print 'Layer is a multi-linestring layer'
-            mem_uri = "MultiLineString?crs=epsg:" + srid +"&" + self.field_names_types(pg_layer) + "&index=yes"
+            #print "Layer \"" + pg_layer.name()+ "\" is a multi-linestring layer"
+            mem_uri = "MultiLineString?crs=epsg:" + srid +"&" + versioning_base.mem_field_names_types(pg_layer) + "&index=yes"
         if pg_layer.wkbType()==QGis.WKBMultiPolygon:
-            print 'Layer is a multi-polygon layer'
-            mem_uri = "MultiPolygon?crs=epsg:" + srid +"&" + self.field_names_types(pg_layer) + "&index=yes"
+            #print "Layer \"" + pg_layer.name()+ "\" is a multi-polygon layer"
+            mem_uri = "MultiPolygon?crs=epsg:" + srid +"&" + versioning_base.mem_field_names_types(pg_layer) + "&index=yes"
         return mem_uri
 
     def pg_conn_info(self):
@@ -513,6 +497,20 @@ class Versioning:
         schema = mtch.group(1)
         assert(schema)
 
+        # Disconnect signals previously connected upon calling this function
+        # The first time this function is called will throw an error because no
+        # previous connections to the slots were made
+        try:
+            #print "Disconnecting ..."
+            self.q_view_dlg.tblw.itemChanged.disconnect()
+            self.q_view_dlg.diffmode_chk.stateChanged.disconnect()
+        except:
+            print "Failed disconnection"
+
+        # Make sure combobox is initalized correctly
+        self.q_view_dlg.diffmode_chk.setCheckState(Qt.Unchecked)
+        self.q_view_dlg.diffmode_chk.setEnabled(False)
+
         pcur = versioning_base.Db( psycopg2.connect(self.pg_conn_info()) )
         pcur.execute("SELECT rev, author, date::timestamp(0), branch, commit_msg "
             "FROM "+schema+".revisions")
@@ -564,6 +562,9 @@ class Versioning:
         # revisions and put them in separate layers (original behaviour)
         rev_begin = 0
         rev_end = 0
+        empty_layers = []
+        grp_name=''
+
         if self.q_view_dlg.diffmode_chk.isChecked():
             print "Diffmode checked"
             # revision_number_list necessarily has only two items in diffmode
@@ -574,13 +575,13 @@ class Versioning:
             # if the two revisions are not on the same branch, exit
             if revs[rev_begin - 1][3] != revs[rev_end - 1][3]:
                 print "Revisions are not on the same branch, exiting"
-                print "Rev_begin " +  str(rev_begin) + " is on " + revs[rev_begin - 1][3]
-                print "Rev_end " + str(rev_end) + " is on " + revs[rev_end - 1][3]
+                #print "Rev_begin " +  str(rev_begin) + " is on " + revs[rev_begin - 1][3]
+                #print "Rev_end " + str(rev_end) + " is on " + revs[rev_end - 1][3]
                 return
             else :
-                print "Revisions are on the same branch :"
-                print "Rev_begin " + str(rev_begin) + " is on " + revs[rev_begin - 1][3]
-                print "Rev_end " +str(rev_end) + " is on " + revs[rev_end - 1][3]
+                print "Revisions are on the same branch"
+                #print "Rev_begin " + str(rev_begin) + " is on " + revs[rev_begin - 1][3]
+                #print "Rev_end " +str(rev_end) + " is on " + revs[rev_end - 1][3]
 
             grp_name = "Compare revisions "+str(rev_begin)+" vs "+ str(rev_end)
             grp_idx = self.iface.legendInterface().addGroup( grp_name )
@@ -589,32 +590,40 @@ class Versioning:
                 progress.setValue(i+1)
                 layer = QgsMapLayerRegistry.instance().mapLayer(layer_id)
                 new_uri = QgsDataSourceURI(layer.source())
-                qualified_diff_view_name = versioning_base.add_diff_revision_view( uri.connectionInfo(),
-                    new_uri.table(),schema, branches[0], rev_begin, rev_end )
-                print "qualified_diff_view_name = " + qualified_diff_view_name
-                new_uri.setDataSource(qualified_diff_view_name.split('.')[0],
-                        qualified_diff_view_name.split('.')[1],
-                        new_uri.geometryColumn(),
-                        new_uri.sql(),
-                        new_uri.keyColumn())
+                select_str = versioning_base.diff_rev_view_str( uri.connectionInfo(),
+                    schema, new_uri.table(), branches[0], rev_begin, rev_end )
+                #print "select_str = " + select_str
+                # change data source uri to point to select sql
+                # schema needs to be set to empty
+                new_uri.setDataSource("",
+                    "("+select_str+")",
+                    new_uri.geometryColumn(),
+                    new_uri.sql(),
+                    new_uri.keyColumn())
                 display_name =  QgsMapLayerRegistry.instance().mapLayer(layer_id).name()
-                src = new_uri.uri().replace('()','')
-                tmp_pg_layer = self.iface.addVectorLayer( src,
-                        display_name, 'postgres')
+                #print "new_uri.uri() = " + new_uri.uri()
+                tmp_pg_layer = self.iface.addVectorLayer( new_uri.uri(),
+                       display_name, 'postgres')
+                #print "Number of features in layer " + display_name + " = " + str(tmp_pg_layer.featureCount())
+                # if layer has no feature, delete tmp layer and resume for loop
+                if not(tmp_pg_layer.featureCount()):
+                    QgsMapLayerRegistry.instance().removeMapLayer( tmp_pg_layer.id() )
+                    empty_layers.append(str(display_name))
+                    continue
                 mem_uri = self.mem_layer_uri(tmp_pg_layer)
 
-                print "mem_uri = " + mem_uri
+                #print "mem_uri = " + mem_uri
                 if  mem_uri == "Unknown":
                     return
                 new_mem_layer = self.iface.addVectorLayer( mem_uri,
                     display_name + '_diff', 'memory')
                 pr = new_mem_layer.dataProvider()
                 source_layer_features = [f for f in tmp_pg_layer.getFeatures()]
-                print "Got features from source vector layer"
+                #print "Got features from source vector layer"
                 QgsMapLayerRegistry.instance().removeMapLayer( tmp_pg_layer.id() )
-                print "Removed tmp layer"
+                #print "Removed tmp layer"
                 pr.addFeatures(source_layer_features)
-                print "Copied source features to mem layer"
+                #print "Copied source features to mem layer"
                 # Style layer to show features as a function of whether they were
                 # - added/created ('a')
                 # - updated ('u')
@@ -624,7 +633,7 @@ class Versioning:
                 # For colors, use the names at http://www.w3schools.com/HTML/html_colornames.asp, but lowercase only; tested with "aliceblue"
                 # define some rules: label, expression, color name, size, (min scale, max scale)
                 modification_type_rules = (
-                    ('NoMode', '"diff_status" IS NULL', 'aliceblue', 2.0, None),
+                    ('Intermediate', '"diff_status" IS NULL', 'aliceblue', 2.0, None),
                     ('Created', '"diff_status" LIKE \'a\'', 'chartreuse', 3.0, None),
                     ('Updated', '"diff_status" LIKE \'u\'', 'sandybrown', 3.0, None),
                     ('Deleted', '"diff_status" LIKE \'d\'', 'red', 3.0, None),)
@@ -639,7 +648,7 @@ class Versioning:
                     rule.setLabel(label)
                     rule.setFilterExpression(expression)
                     rule.symbol().setColor(QColor(color_name))
-                    ##rule.symbol().setSize(size)
+                    ##rule.symbol().setSize(size) # works only for POINT layers
                     # set the scale limits if they have been specified
                     ##if scale is not None:
                     ##    rule.setScaleMinDenom(scale[0])
@@ -660,24 +669,48 @@ class Versioning:
                 progress.setValue(i+1)
                 branch = revs[row][3]
                 rev = revs[row][0]
-                versioning_base.add_revision_view(uri.connectionInfo(),
-                        schema, branch, rev )
+                # No call to versioning_base necessary since this is a simple
+                # filter
+    #            versioning_base.add_revision_view(uri.connectionInfo(),
+    #                    schema, branch, rev )
                 grp_name = branch+' revision '+str(rev)
                 grp_idx = self.iface.legendInterface().addGroup( grp_name )
                 for layer_id in reversed(self.current_layers):
                     layer = QgsMapLayerRegistry.instance().mapLayer(layer_id)
                     new_uri = QgsDataSourceURI(layer.source())
-                    new_uri.setDataSource(schema+'_'+branch+'_rev_'+str(rev),
-                            new_uri.table(),
-                            new_uri.geometryColumn(),
-                            new_uri.sql(),
-                            new_uri.keyColumn())
+                    select_str = "SELECT * FROM "+schema+"."+new_uri.table()
+                    #print "select_str = " + select_str
+                    where_str = ("("+branches[0] + "_rev_end IS NULL "
+                        "OR "+branches[0]+"_rev_end >= "+str(rev) + ") "
+                         "AND "+branches[0]+"_rev_begin <= "+str(rev) )
+                    #print "where_str = " + where_str
+                    new_uri.setSql(where_str)
+                    new_uri.setDataSource("",
+                        "("+select_str+")",
+                        new_uri.geometryColumn(),
+                        new_uri.sql(),
+                        new_uri.keyColumn())
+
                     display_name =  QgsMapLayerRegistry.instance().mapLayer(layer_id).name()
                     src = new_uri.uri().replace('()','')
                     new_layer = self.iface.addVectorLayer( src,
-                            display_name, 'postgres')
+                        display_name, 'postgres')
                     self.iface.legendInterface().moveLayer( new_layer, grp_idx)
         self.iface.messageBar().clearWidgets()
+        #print "len (self.current_layers) = " + str(len (self.current_layers))
+        #print "len(empty_layers) = " + str(len(empty_layers))
+        if empty_layers and len(empty_layers) == len (self.current_layers):
+            print "No layers in layer group"
+            self.iface.messageBar().pushMessage("Notice",
+                "No layers will be shown; deleted the \"" +grp_name +"\" layer group",
+                level=QgsMessageBar.WARNING, duration = 15)
+            self.iface.legendInterface().removeGroup(grp_idx)
+        elif empty_layers :
+            print "Empty layers"
+            self.iface.messageBar().pushMessage("Notice",
+                "No modified features between revisions "+str(rev_begin)+" "
+                "and "+str(rev_end)+" for layer(s) "+str(empty_layers)+". ",
+                level=QgsMessageBar.WARNING, duration = 15)
 
     def unresolved_conflicts(self):
         """check for unresolved conflicts, add conflict layers if any"""

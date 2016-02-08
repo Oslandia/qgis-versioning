@@ -633,7 +633,7 @@ class Versioning:
                 # For colors, use the names at http://www.w3schools.com/HTML/html_colornames.asp, but lowercase only; tested with "aliceblue"
                 # define some rules: label, expression, color name, size, (min scale, max scale)
                 modification_type_rules = (
-                    ('Intermediate', '"diff_status" IS NULL', 'aliceblue', 2.0, None),
+                    ('Intermediate', '"diff_status" LIKE \'i\'', 'aliceblue', 2.0, None),
                     ('Created', '"diff_status" LIKE \'a\'', 'chartreuse', 3.0, None),
                     ('Updated', '"diff_status" LIKE \'u\'', 'sandybrown', 3.0, None),
                     ('Deleted', '"diff_status" LIKE \'d\'', 'red', 3.0, None),)
@@ -669,21 +669,23 @@ class Versioning:
                 progress.setValue(i+1)
                 branch = revs[row][3]
                 rev = revs[row][0]
-                # No call to versioning_base necessary since this is a simple
-                # filter
-    #            versioning_base.add_revision_view(uri.connectionInfo(),
-    #                    schema, branch, rev )
                 grp_name = branch+' revision '+str(rev)
                 grp_idx = self.iface.legendInterface().addGroup( grp_name )
                 for layer_id in reversed(self.current_layers):
                     layer = QgsMapLayerRegistry.instance().mapLayer(layer_id)
                     new_uri = QgsDataSourceURI(layer.source())
-                    select_str = "SELECT * FROM "+schema+"."+new_uri.table()
-                    #print "select_str = " + select_str
-                    where_str = ("("+branches[0] + "_rev_end IS NULL "
-                        "OR "+branches[0]+"_rev_end >= "+str(rev) + ") "
-                         "AND "+branches[0]+"_rev_begin <= "+str(rev) )
-                    #print "where_str = " + where_str
+                    select_and_where_str =  versioning_base.rev_view_str(
+                        self.pg_conn_info(), schema, new_uri.table(), branches[0], rev)
+                    select_str = select_and_where_str[0]
+                    where_str = select_and_where_str[1]
+                    #select_str_orig = "SELECT * FROM "+schema+"."+new_uri.table()
+                    #print "select_str_orig = " + "     " + select_str_orig
+                    #print "select_str from base = " + select_str
+                    #where_str_orig = ("("+branches[0] + "_rev_end IS NULL "
+                    #    "OR "+branches[0]+"_rev_end >= "+str(rev) + ") "
+                    #     "AND "+branches[0]+"_rev_begin <= "+str(rev) )
+                    #print "where_str_orig = "  + "     " + where_str_orig
+                    #print "where_str from base = " + where_str
                     new_uri.setSql(where_str)
                     new_uri.setDataSource("",
                         "("+select_str+")",

@@ -962,7 +962,7 @@ def commit(sqlite_filename, commit_msg, pg_conn_info,commit_pg_user = ''):
             "SELECT "+cols_cast+" FROM "+diff_schema+"."+table+"_diff "
             "WHERE "+branch+"_rev_begin = "+str(rev+1))
 
-        # apdate deleted and modified
+        # update deleted and modified
         pcur.execute("UPDATE "+table_schema+"."+table+" AS dest "
                 "SET ("+branch+"_rev_end, "+branch+"_child)"
                 "=(src."+branch+"_rev_end, src."+branch+"_child) "
@@ -1122,7 +1122,8 @@ def add_branch( pg_conn_info, schema, branch, commit_msg,
     pcur.close()
 
 def diff_rev_view_str(pg_conn_info, schema, table, branch, rev_begin, rev_end):
-    """Create view string of the specified revision difference (comparison).
+    """DIFFerence_REVision_VIEW_STRing
+    Create the SQL view string of the specified revision difference (comparison).
     """
     pcur = Db(psycopg2.connect(pg_conn_info))
 
@@ -1153,7 +1154,7 @@ def diff_rev_view_str(pg_conn_info, schema, table, branch, rev_begin, rev_end):
         "THEN 'u' "
     "WHEN " +schema+"."+table+"."+branch+"_rev_end > "+str(rev_begin)+ " "
         "AND " +schema+"."+table+"."+branch+"_rev_end <= "+str(rev_end)+ " "
-        "AND " +schema+"."+table+"."+branch+"_child IS NULL THEN 'd' END "
+        "AND " +schema+"."+table+"."+branch+"_child IS NULL THEN 'd' ELSE 'i' END "
     "as diff_status, * FROM "+schema+"."+table+ " "
     "WHERE (" +schema+"."+table+"."+branch+"_rev_begin > "+str(rev_begin)+ " "
         "AND " +schema+"."+table+"."+branch+"_rev_begin <= "+str(rev_end)+") "
@@ -1163,8 +1164,37 @@ def diff_rev_view_str(pg_conn_info, schema, table, branch, rev_begin, rev_end):
     pcur.close()
     return select_str
 
+def rev_view_str(pg_conn_info, schema, table, branch, rev):
+    """REVision_VIEW_STRing
+    Create the SQL view string of the specified revision.
+    Replaces add_revision_view()
+    """
+    pcur = Db(psycopg2.connect(pg_conn_info))
+
+    pcur.execute("SELECT * FROM "+schema+".revisions "
+        "WHERE branch = '"+branch+"'")
+    if not pcur.fetchone():
+        pcur.close()
+        raise RuntimeError("Branch "+branch+" doesn't exist")
+    pcur.execute("SELECT MAX(rev) FROM "+schema+".revisions")
+    [max_rev] = pcur.fetchone()
+    if int(rev) > max_rev or int(rev) <= 0:
+        pcur.close()
+        raise RuntimeError("Revision "+str(rev)+" doesn't exist")
+
+    select_str = "SELECT * FROM "+schema+"."+table
+    #print "select_str = " + select_str
+    where_str = ("("+branch + "_rev_end IS NULL "
+        "OR "+branch+"_rev_end >= "+str(rev) + ") "
+         "AND "+branch+"_rev_begin <= "+str(rev) )
+
+    pcur.close()
+    return [select_str, where_str]
+
 def add_revision_view(pg_conn_info, schema, branch, rev):
-    """Create schema with views of the specified revision"""
+    """Create schema with views of the specified revision.
+    Deprecated as of version 0.5.
+    """
     pcur = Db(psycopg2.connect(pg_conn_info))
 
     pcur.execute("SELECT * FROM "+schema+".revisions "

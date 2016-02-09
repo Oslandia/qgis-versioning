@@ -1125,6 +1125,9 @@ def diff_rev_view_str(pg_conn_info, schema, table, branch, rev_begin, rev_end):
     """DIFFerence_REVision_VIEW_STRing
     Create the SQL view string of the specified revision difference (comparison).
     """
+    rev_begin = str(rev_begin)
+    rev_end = str(rev_end)
+
     pcur = Db(psycopg2.connect(pg_conn_info))
 
     pcur.execute("SELECT * FROM "+schema+".revisions "
@@ -1136,30 +1139,30 @@ def diff_rev_view_str(pg_conn_info, schema, table, branch, rev_begin, rev_end):
     [max_rev] = pcur.fetchone()
     if int(rev_begin) > max_rev or int(rev_begin) <= 0:
         pcur.close()
-        raise RuntimeError("Revision 1 (begin) "+str(rev_begin)+" doesn't exist")
+        raise RuntimeError("Revision 1 (begin) "+rev_begin+" doesn't exist")
     if int(rev_end) > max_rev or int(rev_end) <= 0:
         pcur.close()
-        raise RuntimeError("Revision 2 (end) "+str(rev_end)+" doesn't exist")
+        raise RuntimeError("Revision 2 (end) "+rev_end+" doesn't exist")
 
     select_str = ("SELECT "
     "CASE WHEN "
-        +schema+"."+table+"."+branch+"_rev_begin > "+str(rev_begin)+ " "
-        "AND " +schema+"."+table+"."+branch+"_rev_begin <= "+str(rev_end)+ " "
+        +schema+"."+table+"."+branch+"_rev_begin > "+rev_begin+ " "
+        "AND " +schema+"."+table+"."+branch+"_rev_begin <= "+rev_end+ " "
         "AND " +schema+"."+table+"."+branch+"_parent IS NULL THEN 'a' "
-    "WHEN (" +schema+"."+table+"."+branch+"_rev_begin > "+str(rev_begin)+ " "
+    "WHEN (" +schema+"."+table+"."+branch+"_rev_begin > "+rev_begin+ " "
         "AND " +schema+"."+table+"."+branch+"_rev_end IS NULL "
         "AND " +schema+"."+table+"."+branch+"_parent IS NOT NULL) "
-        "OR ("+schema+"."+table+"."+branch+"_rev_end >= "+str(rev_end)+" "
+        "OR ("+schema+"."+table+"."+branch+"_rev_end >= "+rev_end+" "
         "AND "+schema+"."+table+"."+branch+"_child IS NOT NULL) "
         "THEN 'u' "
-    "WHEN " +schema+"."+table+"."+branch+"_rev_end > "+str(rev_begin)+ " "
-        "AND " +schema+"."+table+"."+branch+"_rev_end <= "+str(rev_end)+ " "
+    "WHEN " +schema+"."+table+"."+branch+"_rev_end > "+rev_begin+ " "
+        "AND " +schema+"."+table+"."+branch+"_rev_end < "+rev_end+ " "
         "AND " +schema+"."+table+"."+branch+"_child IS NULL THEN 'd' ELSE 'i' END "
     "as diff_status, * FROM "+schema+"."+table+ " "
-    "WHERE (" +schema+"."+table+"."+branch+"_rev_begin > "+str(rev_begin)+ " "
-        "AND " +schema+"."+table+"."+branch+"_rev_begin <= "+str(rev_end)+") "
-        "OR (" +schema+"."+table+"."+branch+"_rev_end > "+str(rev_begin)+ " "
-        "AND " +schema+"."+table+"."+branch+"_rev_end <= "+str(rev_end)+ " )")
+    "WHERE (" +schema+"."+table+"."+branch+"_rev_begin > "+rev_begin+ " "
+        "AND " +schema+"."+table+"."+branch+"_rev_begin <= "+rev_end+") "
+        "OR (" +schema+"."+table+"."+branch+"_rev_end > "+rev_begin+ " "
+        "AND " +schema+"."+table+"."+branch+"_rev_end <= "+rev_end+ " )")
 
     pcur.close()
     return select_str
@@ -1189,7 +1192,7 @@ def rev_view_str(pg_conn_info, schema, table, branch, rev):
          "AND "+branch+"_rev_begin <= "+str(rev) )
 
     pcur.close()
-    return [select_str, where_str]
+    return select_str, where_str
 
 def add_revision_view(pg_conn_info, schema, branch, rev):
     """Create schema with views of the specified revision.

@@ -93,13 +93,11 @@ assert( len(pcur.fetchall()) == 1 )
 ##pcur.execute("SELECT * FROM epanet_mybranch_rev_2.pipes")
 ##assert( len(pcur.fetchall()) == 1 )
 
-select_and_where_str =  versioning_base.rev_view_str( pg_conn_info, 'epanet', 'junctions','mybranch', 2)
-#print select_and_where_str[0] + " WHERE " + select_and_where_str[1]
-pcur.execute(select_and_where_str[0] + " WHERE " + select_and_where_str[1])
+select_str, where_str =  versioning_base.rev_view_str( pg_conn_info, 'epanet', 'junctions','mybranch', 2)
+pcur.execute(select_str + " WHERE " + where_str)
 assert( len(pcur.fetchall()) == 2 )
-select_and_where_str =  versioning_base.rev_view_str( pg_conn_info, 'epanet', 'pipes','mybranch', 2)
-#print select_and_where_str[0] + " WHERE " + select_and_where_str[1]
-pcur.execute(select_and_where_str[0] + " WHERE " + select_and_where_str[1])
+select_str, where_str =  versioning_base.rev_view_str( pg_conn_info, 'epanet', 'pipes','mybranch', 2)
+pcur.execute(select_str + " WHERE " + where_str)
 assert( len(pcur.fetchall()) == 1 )
 
 pcur.close()

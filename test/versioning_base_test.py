@@ -99,29 +99,47 @@ versioning_base.commit(sqlite_test_filename4, 'delete id=0 commit', "dbname=epan
 
 pg_conn_info = "dbname=epanet_test_db"
 select_str = versioning_base.diff_rev_view_str(pg_conn_info, 'epanet', 'junctions','trunk', 1,2)
-#print "select_str = " + select_str
 pcur.execute(select_str)
 res = pcur.fetchall()
-print "fetchall 1 vs 2 = " + str(res)
-
-select_and_where_str =  versioning_base.rev_view_str(pg_conn_info, 'epanet', 'junctions','trunk', 1)
-select_str = select_and_where_str[0]
-where_str = select_and_where_str[1]
+assert(res[0][0] == 'u')
+#print "fetchall 1 vs 2 = " + str(res)
+#fetchall 1 vs 2 = [
+#('u', 3, '1', 8.0, None, None, '01010000206A0800000000000000000000000000000000F03F', 2, 2, 2, 4)]
 
 select_str = versioning_base.diff_rev_view_str(pg_conn_info, 'epanet', 'junctions','trunk', 1,3)
-#print "select_str = " + select_str
 pcur.execute(select_str)
 res = pcur.fetchall()
-print "fetchall 1 vs 3 = " + str(res)
+assert(res[0][0] == 'u')
+assert(res[1][0] == 'i')
+#print "fetchall 1 vs 3 = " + str(res)
+#fetchall 1 vs 3 = [
+#('u', 4, '1', 22.0, None, None, '01010000206A0800000000000000000000000000000000F03F', 3, None, 3, None),
+#('i', 3, '1', 8.0, None, None, '01010000206A0800000000000000000000000000000000F03F', 2, 2, 2, 4)]
 
 select_str = versioning_base.diff_rev_view_str(pg_conn_info, 'epanet', 'junctions','trunk', 1,4)
-print "select_str 1 vs 4 = " + select_str
 pcur.execute(select_str)
 res = pcur.fetchall()
-print "fetchall 1 vs 4 = " + str(res)
+assert(res[0][0] == 'u')
+assert(res[1][0] == 'i')
+assert(res[2][0] == 'a')
+assert(res[3][0] == 'i') # object is in intermediate state; will be deleted in rev 5
+#print "fetchall 1 vs 4 = " + str(res)
+#fetchall 1 vs 4 = [
+#('u', 4, '1', 22.0, None, None, '01010000206A0800000000000000000000000000000000F03F', 3, None, 3, None),
+#('i', 3, '1', 8.0, None, None, '01010000206A0800000000000000000000000000000000F03F', 2, 2, 2, 4),
+#('a', 5, '10', 100.0, None, None, '01010000206A08000000000000000000400000000000000000', 4, None, None, None),
+#('i', 1, '0', 0.0, None, None, '01010000206A080000000000000000F03F0000000000000000', 1, 4, None, None)]
 
 select_str = versioning_base.diff_rev_view_str(pg_conn_info, 'epanet', 'junctions','trunk', 1,5)
-print "select_str 1 vs 5 = " + select_str
 pcur.execute(select_str)
 res = pcur.fetchall()
-print "fetchall 1 vs 5 = " + str(res)
+assert(res[0][0] == 'u')
+assert(res[1][0] == 'i')
+assert(res[2][0] == 'a')
+assert(res[3][0] == 'd')
+#print "fetchall 1 vs 5 = " + str(res)
+#fetchall 1 vs 5 = [
+#('u', 4, '1', 22.0, None, None, '01010000206A0800000000000000000000000000000000F03F', 3, None, 3, None),
+#('i', 3, '1', 8.0, None, None, '01010000206A0800000000000000000000000000000000F03F', 2, 2, 2, 4),
+#('a', 5, '10', 100.0, None, None, '01010000206A08000000000000000000400000000000000000', 4, None, None, None),
+#('d', 1, '0', 0.0, None, None, '01010000206A080000000000000000F03F0000000000000000', 1, 4, None, None)]

@@ -505,7 +505,8 @@ class Versioning:
             self.q_view_dlg.tblw.itemChanged.disconnect()
             self.q_view_dlg.diffmode_chk.stateChanged.disconnect()
         except:
-            print "Failed disconnection"
+            #print "Failed disconnection"
+            pass
 
         # Make sure combobox is initalized correctly
         self.q_view_dlg.diffmode_chk.setCheckState(Qt.Unchecked)
@@ -513,7 +514,7 @@ class Versioning:
 
         pcur = versioning_base.Db( psycopg2.connect(self.pg_conn_info()) )
         pcur.execute("SELECT rev, author, date::timestamp(0), branch, commit_msg "
-            "FROM "+schema+".revisions")
+            "FROM "+schema+".revisions ORDER BY rev ASC")
         revs = pcur.fetchall()
         pcur.close()
 
@@ -592,7 +593,6 @@ class Versioning:
                 new_uri = QgsDataSourceURI(layer.source())
                 select_str = versioning_base.diff_rev_view_str( uri.connectionInfo(),
                     schema, new_uri.table(), branches[0], rev_begin, rev_end )
-                #print "select_str = " + select_str
                 # change data source uri to point to select sql
                 # schema needs to be set to empty
                 new_uri.setDataSource("",
@@ -674,18 +674,12 @@ class Versioning:
                 for layer_id in reversed(self.current_layers):
                     layer = QgsMapLayerRegistry.instance().mapLayer(layer_id)
                     new_uri = QgsDataSourceURI(layer.source())
-                    select_and_where_str =  versioning_base.rev_view_str(
-                        self.pg_conn_info(), schema, new_uri.table(), branches[0], rev)
-                    select_str = select_and_where_str[0]
-                    where_str = select_and_where_str[1]
-                    #select_str_orig = "SELECT * FROM "+schema+"."+new_uri.table()
-                    #print "select_str_orig = " + "     " + select_str_orig
-                    #print "select_str from base = " + select_str
-                    #where_str_orig = ("("+branches[0] + "_rev_end IS NULL "
-                    #    "OR "+branches[0]+"_rev_end >= "+str(rev) + ") "
-                    #     "AND "+branches[0]+"_rev_begin <= "+str(rev) )
-                    #print "where_str_orig = "  + "     " + where_str_orig
-                    #print "where_str from base = " + where_str
+                    select_str, where_str =  versioning_base.rev_view_str(
+                        self.pg_conn_info(),
+                        schema,
+                        new_uri.table(),
+                        branches[0],
+                        rev)
                     new_uri.setSql(where_str)
                     new_uri.setDataSource("",
                         "("+select_str+")",
@@ -967,9 +961,26 @@ class Versioning:
             return
         working_copy_schema = line_edit.text()
         if not working_copy_schema:
-            print "aborted"
+            print "Name not provided; aborted"
+            self.iface.messageBar().pushMessage("Warning",
+            "Please provide a schema name.", duration=5)
             return
-
+        # Check if name is valid for a PG object; only characters and max length
+        # are checked; use of reserved words is not checked
+        if len(working_copy_schema) > 63:
+            print "Name too long; aborted"
+            self.iface.messageBar().pushMessage("Warning",
+            "\""+working_copy_schema+"\" is "+str(len(working_copy_schema))+
+            " characters long;  maximum is 63.", duration=5)
+            return
+        valid_name = re.match('^[a-z_][a-z_0-9$]*$', str(working_copy_schema))
+        if not(valid_name):
+            print "Not a valid name"
+            self.iface.messageBar().pushMessage("Warning",
+            "\""+working_copy_schema+"\" is not valid; first character must be "
+            "<b>lowercase</b> letter or underscore; other characters may be "
+            "<b>lowercase</b> letters, underscore or digits.", duration=10)
+            return
         print "checking out ", tables_for_conninfo, " from ", uri.connectionInfo()
         versioning_base.pg_checkout( self.pg_conn_info(),
                 tables_for_conninfo, working_copy_schema )

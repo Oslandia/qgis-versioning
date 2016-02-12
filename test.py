@@ -1,11 +1,25 @@
 #!/usr/bin/python
 # coding=UTF-8
+'''
+To run this script from the current directory where this file resides :
+  - set the PYTHONPATH environment variable : 'export PYTHONPATH=$PWD'
+
+All files must be in the 'test' directory and end with the string '_test.py'
+'''
 
 import os
 import sys
 from subprocess import Popen, PIPE
 
-__current_dir = os.path.dirname(__file__)
+try:
+    print os.environ['PYTHONPATH']
+except(KeyError):
+    print "Missing PYTHONPATH environment variable"
+    print __doc__
+    exit()
+
+__currendir = os.path.dirname(__file__)
+
 tests = []
 test_directories = ["test"]
 for dir_ in test_directories:

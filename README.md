@@ -6,15 +6,17 @@ Build and install the qgis plugin
 
     cd
     git clone https://github.com/Oslandia/qgis-versioning.git
-    cd .qgis2/python/plugins/ 
+    cd qgis-versioning
+    ./package.py # compresses all files into qgis_versioning.zip
+    cd .qgis2/python/plugins/
     mkdir qgis-versioning
     cd qgis-versioning
-    cmake $HOME/qgis-versioning && make
+    # unzip contents of directory *qgis_versioning* found in qgis_versioning.zip
 
 If you have admin acces to a local postgres/postis server, you can run the regression tests:
-    
+
     export PYTHONPATH=$PWD
-    make test
+    ./test.py # As of version 0.4; was *make test* in prior versions
 
 Use the plugin in qgis
 ----------------------

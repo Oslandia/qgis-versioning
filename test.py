@@ -19,10 +19,11 @@ except(KeyError):
     exit()
 
 __currendir = os.path.dirname(__file__)
+
 tests = []
 test_directories = ["test"]
 for dir_ in test_directories:
-    test_dir = os.path.join(__currendir, dir_)
+    test_dir = os.path.join(__current_dir, dir_)
     for file_ in os.listdir(test_dir):
         if file_[-8:]=="_test.py":
             tests.append(os.path.join(test_dir, file_))

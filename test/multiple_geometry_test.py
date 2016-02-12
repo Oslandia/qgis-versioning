@@ -21,9 +21,9 @@ pcur.execute("""
     CREATE TABLE epanet.junctions (
         hid serial PRIMARY KEY,
         id varchar,
-        elevation float, 
-        base_demand_flow float, 
-        demand_pattern_id varchar, 
+        elevation float,
+        base_demand_flow float,
+        demand_pattern_id varchar,
         geometry geometry('POINT',2154),
         geometry_schematic geometry('POLYGON',2154)
     )""")
@@ -58,7 +58,7 @@ pcur.execute("""
 
 pcur.execute("""
     INSERT INTO epanet.pipes
-        (id, start_node, end_node, length, diameter, geometry) 
+        (id, start_node, end_node, length, diameter, geometry)
         VALUES
         ('0','0','1',1,2,ST_GeometryFromText('LINESTRING(1 0,0 1)',2154))""")
 
@@ -70,7 +70,7 @@ versioning_base.historize( pg_conn_info, 'epanet' )
 failed = False
 try:
     versioning_base.add_branch( pg_conn_info, 'epanet', 'trunk' )
-except: 
+except:
     failed = True
 assert( failed )
 
@@ -90,20 +90,30 @@ assert( len(pcur.fetchall()) == 2 )
 pcur.execute("SELECT * FROM epanet_mybranch_rev_head.pipes")
 assert( len(pcur.fetchall()) == 1 )
 
-versioning_base.add_revision_view( pg_conn_info, 'epanet', 'mybranch', 2)
-pcur.execute("SELECT * FROM epanet_mybranch_rev_2.junctions")
+##versioning_base.add_revision_view( pg_conn_info, 'epanet', 'mybranch', 2)
+##pcur.execute("SELECT * FROM epanet_mybranch_rev_2.junctions")
+##assert( len(pcur.fetchall()) == 2 )
+##pcur.execute("SELECT * FROM epanet_mybranch_rev_2.pipes")
+##assert( len(pcur.fetchall()) == 1 )
+
+select_and_where_str =  versioning_base.rev_view_str( pg_conn_info, 'epanet', 'junctions','mybranch', 2)
+#print select_and_where_str[0] + " WHERE " + select_and_where_str[1]
+pcur.execute(select_and_where_str[0] + " WHERE " + select_and_where_str[1])
 assert( len(pcur.fetchall()) == 2 )
-pcur.execute("SELECT * FROM epanet_mybranch_rev_2.pipes")
+select_and_where_str =  versioning_base.rev_view_str( pg_conn_info, 'epanet', 'pipes','mybranch', 2)
+#print select_and_where_str[0] + " WHERE " + select_and_where_str[1]
+pcur.execute(select_and_where_str[0] + " WHERE " + select_and_where_str[1])
 assert( len(pcur.fetchall()) == 1 )
 
-pcur.execute("SELECT ST_AsText(geometry), ST_AsText(geometry_schematic) FROM epanet_mybranch_rev_2.junctions")
+##pcur.execute("SELECT ST_AsText(geometry), ST_AsText(geometry_schematic) FROM epanet_mybranch_rev_2.junctions")
+pcur.execute("SELECT ST_AsText(geometry), ST_AsText(geometry_schematic) FROM epanet.junctions")
 res = pcur.fetchall()
 assert( res[0][0] == 'POINT(0 0)' )
 assert( res[1][1] == 'POLYGON((0 0,2 0,2 2,0 2,0 0))' )
 
 
 wc = tmp_dir+'/wc_multiple_geometry_test.sqlite'
-if os.path.isfile(wc): os.remove(wc) 
+if os.path.isfile(wc): os.remove(wc)
 versioning_base.checkout( pg_conn_info, ['epanet_trunk_rev_head.pipes','epanet_trunk_rev_head.junctions'], wc )
 
 
@@ -119,5 +129,3 @@ for r in res: print r
 assert( res[0][0] == 'POINT(3 3)' )
 assert( res[1][1] == 'POLYGON((0 0,2 0,2 2,0 2,0 0))' )
 pcur.close()
-
-

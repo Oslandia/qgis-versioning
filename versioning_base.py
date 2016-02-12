@@ -30,6 +30,35 @@ def os_info():
         os_info = "UnknownOS"
     return os_info
 
+def mem_field_names_types(pg_layer):
+    '''String massaging to get field names and types in memory layer uri
+    format.  The provider supports string, int and double fields.  Types
+    returned by pg_layer need to be cast as follows :
+    int4    => integer
+    float8  => double
+    varchar => string
+    text => string
+    Intended use in : versioning.mem_layer_uri
+    To do : check for field type not supported and exit
+    '''
+    name_type_lst = [(str(f.name()), ':', str(f.typeName())) for f
+        in pg_layer.pendingFields().toList()]
+    field_list = [''.join(tuples) for tuples in name_type_lst]
+    concatenated_field_str = ''
+    for i in range(len(field_list)):
+        concatenated_field_str += "field=" + field_list[i] +'&'
+
+    #print "concatenated_field_str = " + concatenated_field_str +"\n"
+
+    rep = {'float8': 'double', 'int4': 'integer', 'text': 'string',
+        'varchar': 'string'}
+    pattern = re.compile("|".join(rep.keys()))
+    temp_str = pattern.sub(
+        lambda m: rep[re.escape(m.group(0))],concatenated_field_str )
+    final_str = temp_str[:-1]
+    #print "\n" + "final_str = " + final_str +"\n"
+    return final_str
+
 def get_pg_users_list(pg_conn_info):
     pcur = Db(psycopg2.connect(pg_conn_info))
     pcur.execute("select usename from pg_user order by usename ASC")
@@ -933,7 +962,7 @@ def commit(sqlite_filename, commit_msg, pg_conn_info,commit_pg_user = ''):
             "SELECT "+cols_cast+" FROM "+diff_schema+"."+table+"_diff "
             "WHERE "+branch+"_rev_begin = "+str(rev+1))
 
-        # apdate deleted and modified
+        # update deleted and modified
         pcur.execute("UPDATE "+table_schema+"."+table+" AS dest "
                 "SET ("+branch+"_rev_end, "+branch+"_child)"
                 "=(src."+branch+"_rev_end, src."+branch+"_child) "
@@ -1092,8 +1121,83 @@ def add_branch( pg_conn_info, schema, branch, commit_msg,
     pcur.commit()
     pcur.close()
 
+def diff_rev_view_str(pg_conn_info, schema, table, branch, rev_begin, rev_end):
+    """DIFFerence_REVision_VIEW_STRing
+    Create the SQL view string of the specified revision difference (comparison).
+    """
+    rev_begin = str(rev_begin)
+    rev_end = str(rev_end)
+
+    pcur = Db(psycopg2.connect(pg_conn_info))
+
+    pcur.execute("SELECT * FROM "+schema+".revisions "
+        "WHERE branch = '"+branch+"'")
+    if not pcur.fetchone():
+        pcur.close()
+        raise RuntimeError("Branch "+branch+" doesn't exist")
+    pcur.execute("SELECT MAX(rev) FROM "+schema+".revisions")
+    [max_rev] = pcur.fetchone()
+    if int(rev_begin) > max_rev or int(rev_begin) <= 0:
+        pcur.close()
+        raise RuntimeError("Revision 1 (begin) "+rev_begin+" doesn't exist")
+    if int(rev_end) > max_rev or int(rev_end) <= 0:
+        pcur.close()
+        raise RuntimeError("Revision 2 (end) "+rev_end+" doesn't exist")
+
+    select_str = ("SELECT "
+    "CASE WHEN "
+        +schema+"."+table+"."+branch+"_rev_begin > "+rev_begin+ " "
+        "AND " +schema+"."+table+"."+branch+"_rev_begin <= "+rev_end+ " "
+        "AND " +schema+"."+table+"."+branch+"_parent IS NULL THEN 'a' "
+    "WHEN (" +schema+"."+table+"."+branch+"_rev_begin > "+rev_begin+ " "
+        "AND " +schema+"."+table+"."+branch+"_rev_end IS NULL "
+        "AND " +schema+"."+table+"."+branch+"_parent IS NOT NULL) "
+        "OR ("+schema+"."+table+"."+branch+"_rev_end >= "+rev_end+" "
+        "AND "+schema+"."+table+"."+branch+"_child IS NOT NULL) "
+        "THEN 'u' "
+    "WHEN " +schema+"."+table+"."+branch+"_rev_end > "+rev_begin+ " "
+        "AND " +schema+"."+table+"."+branch+"_rev_end < "+rev_end+ " "
+        "AND " +schema+"."+table+"."+branch+"_child IS NULL THEN 'd' ELSE 'i' END "
+    "as diff_status, * FROM "+schema+"."+table+ " "
+    "WHERE (" +schema+"."+table+"."+branch+"_rev_begin > "+rev_begin+ " "
+        "AND " +schema+"."+table+"."+branch+"_rev_begin <= "+rev_end+") "
+        "OR (" +schema+"."+table+"."+branch+"_rev_end > "+rev_begin+ " "
+        "AND " +schema+"."+table+"."+branch+"_rev_end <= "+rev_end+ " )")
+
+    pcur.close()
+    return select_str
+
+def rev_view_str(pg_conn_info, schema, table, branch, rev):
+    """REVision_VIEW_STRing
+    Create the SQL view string of the specified revision.
+    Replaces add_revision_view()
+    """
+    pcur = Db(psycopg2.connect(pg_conn_info))
+
+    pcur.execute("SELECT * FROM "+schema+".revisions "
+        "WHERE branch = '"+branch+"'")
+    if not pcur.fetchone():
+        pcur.close()
+        raise RuntimeError("Branch "+branch+" doesn't exist")
+    pcur.execute("SELECT MAX(rev) FROM "+schema+".revisions")
+    [max_rev] = pcur.fetchone()
+    if int(rev) > max_rev or int(rev) <= 0:
+        pcur.close()
+        raise RuntimeError("Revision "+str(rev)+" doesn't exist")
+
+    select_str = "SELECT * FROM "+schema+"."+table
+    #print "select_str = " + select_str
+    where_str = ("("+branch + "_rev_end IS NULL "
+        "OR "+branch+"_rev_end >= "+str(rev) + ") "
+         "AND "+branch+"_rev_begin <= "+str(rev) )
+
+    pcur.close()
+    return select_str, where_str
+
 def add_revision_view(pg_conn_info, schema, branch, rev):
-    """Create schema with views of the specified revision"""
+    """Create schema with views of the specified revision.
+    Deprecated as of version 0.5.
+    """
     pcur = Db(psycopg2.connect(pg_conn_info))
 
     pcur.execute("SELECT * FROM "+schema+".revisions "

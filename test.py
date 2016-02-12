@@ -1,9 +1,22 @@
 #!/usr/bin/python
 # coding=UTF-8
+'''
+To run this script from the current directory where this file resides :
+  - set the PYTHONPATH environment variable : 'export PYTHONPATH=$PWD'
+
+All files must be in the 'test' directory and end with the string '_test.py'
+'''
 
 import os
 import sys
 from subprocess import Popen, PIPE
+
+try:
+    print os.environ['PYTHONPATH']
+except(KeyError):
+    print "Missing PYTHONPATH environment variable"
+    print __doc__
+    exit()
 
 __currendir = os.path.dirname(__file__)
 tests = []
@@ -32,8 +45,8 @@ if failed:
     exit(1)
 else:
     sys.stdout.write("%d/%d test passed (%d%%)\n"%(
-        len(tests)-failed, 
-        len(tests), 
+        len(tests)-failed,
+        len(tests),
         int((100.*(len(tests)-failed))/len(tests))))
 
 exit(0)

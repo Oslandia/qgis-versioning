@@ -248,6 +248,10 @@ class Versioning:
 
         if not name or name not in rel_map: # not a group
             return
+        # if group is empty
+        if not(rel_map[name]):
+            self.info.setText('Versioning : empty group')
+            return
 
         group_idx = [i for i, x in
                 enumerate(self.iface.legendInterface().groups()) if x == name]
@@ -409,7 +413,7 @@ class Versioning:
             u"help", self.iface.mainWindow()) )
         self.actions[-1].setWhatsThis("versioning-help")
         self.actions[-1].setToolTip ("versioning help")
-        url = "http://eha-qgis-versioning.readthedocs.org/en/docs/index.html"
+        url = "http://eha-qgis-versioning.readthedocs.org/en/documentation/"
         self.actions[-1].triggered.connect(lambda:QDesktopServices.openUrl(QUrl(url)))
         self.actions[-1].setVisible(True)
 

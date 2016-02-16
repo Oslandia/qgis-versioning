@@ -7,4 +7,6 @@ Introductory text
 Summary
 =======
 
-The |plugin| allows many users to collaborate on geographical features stored in PostGIS databases.  A typical use case met by the plugin involves checking out a local working copy to edit features in (potentially) offline mode using SpatiaLite.  Changes are then committed back to the PostGIS server.  The `original documentation`_ explains all supported use cases thoroughly.
+The |plugin| provides versioning of geographical features stored in PostGIS databases.  A typical use case met by the plugin involves one or more users checking out a local working copy to edit features in (potentially) offline mode using SpatiaLite and committing changes back to the PostGIS server.
+
+More information can be found in the plugin's `original documentation`_ page.

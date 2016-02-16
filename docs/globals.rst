@@ -5,6 +5,8 @@
 .. |qg| replace:: :mod:`QGIS`
 .. _qg: http://qgis.org
 
+.. _contributors: https://github.com/Oslandia/qgis-versioning/graphs/contributors
+
 .. |plugin| replace:: :mod:`qgis-versioning plugin`
 .. _plugin: https://github.com/Oslandia/qgis-versioning
 
@@ -33,4 +35,20 @@
 .. |unversioned_menu_png| image:: images/unversioned_menu.png
 .. |historize_warning_png| image:: images/historize_warning.png
 .. |versioned_menu_png| image:: images/versioned_menu.png
+.. |working_copy_sl_png| image:: images/working_copy_sl.png
+.. |working_copy_pg_png| image:: images/working_copy_pg.png
 .. |working_copy_png| image:: images/working_copy.png
+.. |no_group_selected_png| image:: images/no_group_selected.png
+.. |layers_not_same_db_png| image:: images/layers_not_same_db.png
+.. |groups_same_name_png| image:: images/groups_same_name.png
+.. |empty_group_png| image:: images/empty_group.png
+.. |view_dialog_png| image:: images/view_dialog.png
+.. |view_dialog_diff_mode_png| image:: images/view_dialog_diff_mode.png
+.. |diff_mode_symbology_png| image:: images/diff_mode_symbology.png
+.. |unversioned_png| image:: images/unversioned.png
+.. |versioned_png| image:: images/versioned.png
+.. |sl_checkout_png| image:: images/sl_checkout.png
+.. |pg_checkout_png| image:: images/pg_checkout.png
+.. |branch_group_png| image:: images/branch_group.png
+.. |full_mode_view_png| image:: images/full_mode_view.png
+.. |diff_mode_view_png| image:: images/diff_mode_view.png

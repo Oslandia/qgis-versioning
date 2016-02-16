@@ -16,4 +16,6 @@ eHealth Africa joined the development effort in Fall 2015 ...
 
 Other
 =====
+Plugin `contributors`_
+
 Other organizations the efforts of which need to be underlined ...

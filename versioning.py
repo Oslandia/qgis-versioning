@@ -413,7 +413,7 @@ class Versioning:
             u"help", self.iface.mainWindow()) )
         self.actions[-1].setWhatsThis("versioning-help")
         self.actions[-1].setToolTip ("versioning help")
-        url = "http://eha-qgis-versioning.readthedocs.org/en/documentation/"
+        url = "http://qgis-versioning.readthedocs.org/en/latest/"
         self.actions[-1].triggered.connect(lambda:QDesktopServices.openUrl(QUrl(url)))
         self.actions[-1].setVisible(True)
 

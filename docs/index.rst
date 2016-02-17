@@ -25,6 +25,7 @@ This is the temporary location of the |plugin|_ documentation.  Click this link 
    :maxdepth: 1
 
    introduction
+   requirements
    functionality
    spatialfiltering
    contributors

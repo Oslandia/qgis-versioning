@@ -24,7 +24,7 @@
 from PyQt4.QtGui import QAction, QDialog, QDialogButtonBox, \
     QFileDialog, QIcon, QLabel, QLineEdit, QMessageBox, QTableWidget, \
     QTreeView, QTreeWidget, QVBoxLayout, QTableWidgetItem, QColor, QProgressBar,\
-    QCheckBox, QComboBox
+    QCheckBox, QComboBox, QDesktopServices
 from qgis.core import QgsCredentials, QgsDataSourceURI, QgsMapLayerRegistry, \
     QgsFeatureRequest, QGis, QgsFeature, QgsGeometry, QgsPoint, QgsSymbolV2, \
     QgsRuleBasedRendererV2

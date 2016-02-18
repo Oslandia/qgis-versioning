@@ -759,11 +759,11 @@ class Versioning:
             QMessageBox.warning( self.iface.mainWindow(), "Warning",
                     "Unresolved conflics for layer(s) "+', '.join(unresolved)+
                     ".\n\nPlease resolve conflicts by opening the conflict "
-                    "layer atribute table and deleting either 'mine' or "
-                    "'theirs' before continuing.\n\n"
+                    "layer attribute table, deleting either 'mine' or "
+                    "'theirs' and saving before continuing.\n\n"
                     "Please note that the attribute table is not "
-                    "refreshed on save (known bug), once you have deleted "
-                    "the unwanted change in the conflict layer, close and "
+                    "refreshed on save (known bug), once you have deleted and "
+                    "saved the unwanted change in the conflict layer, close and "
                     "reopen the attribute table to check it's empty.")
             return True
         else:

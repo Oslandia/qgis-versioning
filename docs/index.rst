@@ -12,7 +12,7 @@ QGIS Versioning plugin
 
 .. |spatialite-logo|_
 
-This is the temporary location of the |plugin|_ documentation.  Click this link for the `original documentation`_.
+This is the temporary location of the |plugin|_ documentation.  Click this link for the `original page`_.
 
 ----------
 
@@ -22,10 +22,12 @@ This is the temporary location of the |plugin|_ documentation.  Click this link 
 ----------
 
 .. toctree::
-   :maxdepth: 1
+   :maxdepth: 2
 
    introduction
    requirements
    functionality
    spatialfiltering
+   problem-handling
+   inner-workings
    contributors

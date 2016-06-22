@@ -1476,7 +1476,7 @@ def pg_checkout(pg_conn_info, pg_table_names, working_copy_schema):
             "BEGIN\n"
                 # insert if not already in diff
                 "INSERT INTO "+wcs+"."+table+"_diff "
-                    "SELECT "+cols+", "+hcols+" FROM epanet."+table+" "
+                    "SELECT "+cols+", "+hcols+" FROM "+schema+"."+table+" "
                     "WHERE "+pkey+" = OLD."+pkey+" "
                     "AND (SELECT COUNT(*) FROM "+wcs+"."+table+"_diff "
                     "WHERE "+pkey+" = OLD."+pkey+") = 0;\n"

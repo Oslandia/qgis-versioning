@@ -307,7 +307,7 @@ def checkout(pg_conn_info, pg_table_names, sqlite_filename, selected_feature_lis
                     '-preserve_fid',
                     '-f', 'SQLite',
                     '-dsco', 'SPATIALITE=yes',
-                    sqlite_filename,
+                    '"' + sqlite_filename + '"',
                     'PG:"'+pg_conn_info+'"', schema+'.'+table,
                     '-nln', table]
             if feature_list:
@@ -344,7 +344,7 @@ def checkout(pg_conn_info, pg_table_names, sqlite_filename, selected_feature_lis
                         '-preserve_fid',
                         '-f', 'SQLite',
                         '-update',
-                        sqlite_filename,
+                        '"' + sqlite_filename + '"',
                         'PG:"'+pg_conn_info+'"', schema+'.'+table,
                         '-nln', table]
             if feature_list:
@@ -565,7 +565,7 @@ def update(sqlite_filename, pg_conn_info):
                 '-preserve_fid',
                 '-f', 'SQLite',
                 '-update',
-                sqlite_filename,
+                '"' + sqlite_filename + '"',
                 'PG:"'+pg_conn_info+'"',
                 diff_schema+'.'+table+"_diff",
                 '-nln', table+"_diff"]
@@ -877,7 +877,8 @@ def commit(sqlite_filename, commit_msg, pg_conn_info,commit_pg_user = ''):
                 'PG:"'+pg_conn_info+'"',
                 '-lco',
                 'FID='+pkey,
-                sqlite_filename, table+"_diff",
+                '"' + sqlite_filename + '"',
+                table+"_diff",
                 '-nln', diff_schema+'.'+table+"_diff"]
         if pgeom:
             cmd.insert(5, '-lco')

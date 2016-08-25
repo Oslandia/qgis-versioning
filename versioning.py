@@ -736,7 +736,7 @@ class Versioning:
                     #TODO detect if there is a geometry column
                     geom = '(GEOMETRY)' #if uri.geometryColumn() else ''
                     self.iface.addVectorLayer(
-                            "dbname="+uri.database()+
+                            "dbname=\""+uri.database()+"\""+
                             " key=\"OGC_FID\" table=\""+table+"\" "+
                             geom,table,'spatialite')
         else: #postgres
@@ -935,7 +935,7 @@ class Versioning:
             display_name = layer.name()
             print "replacing ", display_name
             geom = '(GEOMETRY)' if uri.geometryColumn() else ''
-            new_layer = self.iface.addVectorLayer("dbname="+filename+
+            new_layer = self.iface.addVectorLayer("dbname=\""+filename+"\""+
                     " key=\"OGC_FID\" table=\""+table+"_view\" "
                     +geom,display_name, 'spatialite')
             self.iface.legendInterface().moveLayer( new_layer, grp_idx)

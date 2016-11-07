@@ -1840,7 +1840,7 @@ def pg_commit(pg_conn_info, working_copy_schema, commit_msg):
                 "AND src."+branch+"_rev_end = "+str(rev))
 
         # clears the diff
-        pcur.execute("DELETE FROM "+wcs+"."+table+"_diff")
+        pcur.execute("TRUNCATE TABLE "+wcs+"."+table+"_diff CASCADE")
         #pcur.execute("DELETE FROM "+wcs+"."+table+"_diff_pkey")
 
     if nb_of_updated_layer:

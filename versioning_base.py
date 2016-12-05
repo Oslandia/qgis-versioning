@@ -193,17 +193,12 @@ def get_username():
 
 def pg_pk( cur, schema_name, table_name ):
     """Fetch the primary key of the specified postgis table"""
-    cur.execute("SELECT c.column_name "
-        "FROM information_schema.table_constraints tc "
-        "JOIN information_schema.constraint_column_usage AS ccu "
-        "USING (constraint_schema, constraint_name) "
-        "JOIN information_schema.columns AS c "
-        "ON c.table_schema = tc.constraint_schema "
-        "AND tc.table_name = c.table_name "
-        "AND ccu.column_name = c.column_name "
-        "WHERE constraint_type = 'PRIMARY KEY' "
-        "AND tc.table_schema = '"+schema_name+"' "
-        "AND tc.table_name = '"+table_name+"'")
+    cur.execute("SELECT quote_ident(a.attname) as column_name "
+        "FROM pg_index i "
+        "JOIN pg_attribute a ON a.attrelid = i.indrelid "
+        "AND a.attnum = ANY(i.indkey) "
+        "WHERE i.indrelid = '\""+schema_name+'"."'+table_name+"\"'::regclass "
+        "AND i.indisprimary")
     if not cur.hasrow():
         raise RuntimeError("table "+schema_name+"."+table_name+
                 " does not have a primary key")

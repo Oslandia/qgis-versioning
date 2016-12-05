@@ -35,17 +35,17 @@ for resolution in ['theirs','mine']:
     print "checkout done"
 
     pcur.execute("UPDATE wc1.pipes_view SET length = 4 WHERE pid = 1")
-    pcur.commit()
     prtTab( pcur, "wc1.pipes_diff")
-    pcur.close()
+    pcur.commit()
+    #pcur.close()
     versioning_base.pg_commit("dbname=epanet_test_db","wc1","msg1")
 
-    pcur = versioning_base.Db(psycopg2.connect("dbname=epanet_test_db"))
+    #pcur = versioning_base.Db(psycopg2.connect("dbname=epanet_test_db"))
 
     print "commited"
     pcur.execute("UPDATE wc2.pipes_view SET length = 5 WHERE pid = 1")
-    pcur.commit()
     prtTab( pcur, "wc2.pipes_diff")
+    pcur.commit()
     versioning_base.pg_update("dbname=epanet_test_db","wc2")
     print "updated"
     prtTab( pcur, "wc2.pipes_diff")

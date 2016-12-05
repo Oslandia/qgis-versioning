@@ -59,8 +59,8 @@ pcur.execute("UPDATE epanet_working_copy.pipes_view SET length = 5 WHERE pid = 4
 prtTab(pcur, 'epanet_working_copy.pipes_diff')
 
 pcur.execute("DELETE FROM epanet_working_copy.pipes_view WHERE pid = 4")
-pcur.commit()
 prtTab(pcur, 'epanet_working_copy.pipes_diff')
+pcur.commit()
 
 versioning_base.pg_commit("dbname=epanet_test_db", "epanet_working_copy","test commit msg")
 prtTab(pcur, 'epanet.pipes')
@@ -89,8 +89,8 @@ assert( 2 == pcur.fetchone()[0] )
 
 
 pcur.execute("INSERT INTO epanet_working_copy_cflt.pipes_view(id, start_node, end_node, geom) VALUES ('3','1','2',ST_GeometryFromText('LINESTRING(1 -1,0 1)',2154))")
-pcur.commit()
 prtTab(pcur, 'epanet_working_copy_cflt.pipes_diff')
+pcur.commit()
 versioning_base.pg_update( "dbname=epanet_test_db", "epanet_working_copy_cflt" )
 prtTab(pcur, 'epanet_working_copy_cflt.pipes_diff')
 prtTab(pcur, 'epanet_working_copy_cflt.pipes_update_diff')
@@ -105,11 +105,11 @@ assert( 1 == pcur.fetchone()[0] )
 prtTab(pcur, 'epanet_working_copy_cflt.pipes_conflicts')
 
 pcur.execute("DELETE FROM epanet_working_copy_cflt.pipes_conflicts WHERE origin = 'theirs'")
-pcur.commit()
 pcur.execute("SELECT COUNT(*) FROM epanet_working_copy_cflt.pipes_conflicts")
 assert( 0 == pcur.fetchone()[0] )
 prtTab(pcur, 'epanet_working_copy_cflt.pipes_diff')
 prtTab(pcur, 'epanet_working_copy_cflt.pipes_conflicts')
+pcur.commit()
 
 versioning_base.pg_commit("dbname=epanet_test_db", "epanet_working_copy_cflt","second test commit msg")
 
@@ -122,9 +122,9 @@ prtHid(pcur, 'epanet_working_copy_cflt.pipes_view')
 prtTab(pcur, 'epanet_working_copy_cflt.pipes_diff')
 
 pcur.execute("UPDATE epanet_working_copy_cflt.pipes_view SET length = 8")
+prtTab(pcur, 'epanet_working_copy_cflt.pipes_diff')
 pcur.commit()
 
-prtTab(pcur, 'epanet_working_copy_cflt.pipes_diff')
 versioning_base.pg_commit("dbname=epanet_test_db", "epanet_working_copy_cflt","third test commit msg")
 
 

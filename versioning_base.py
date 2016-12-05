@@ -1847,9 +1847,11 @@ def pg_commit(pg_conn_info, working_copy_schema, commit_msg):
                 "WHERE dest."+pkey+" = src."+pkey+" "
                 "AND src."+branch+"_rev_end = "+str(rev))
 
+        print "truncate diff for ", table
         # clears the diff
         pcur.execute("TRUNCATE TABLE "+wcs+"."+table+"_diff CASCADE")
         #pcur.execute("DELETE FROM "+wcs+"."+table+"_diff_pkey")
+        print "diff truncated for ", table
 
     if nb_of_updated_layer:
         for [rev, branch, table_schema, table] in versioned_layers:

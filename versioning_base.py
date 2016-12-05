@@ -10,6 +10,7 @@ import psycopg2
 import codecs
 from itertools import izip_longest
 import platform, sys
+import traceback
 
 # Deactivate stdout (like output of print statements) because windows
 # causes occasional "IOError [Errno 9] File descriptor error"
@@ -149,7 +150,14 @@ class Db:
             print self.db_type, sql, ';'
         if self.log :
             self.log.write(sql+';\n')
-        self.cur.execute( sql )
+        try:
+            self.cur.execute( sql )
+        except Exception as e:
+            sys.stderr.write(traceback.format_exc())
+            sys.stderr.write("\n sql: {}\n\n".format(sql))
+            raise e
+
+            
 
     def fetchall(self):
         """Returns the result of the previous execute as a list of tuples"""

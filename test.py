@@ -18,7 +18,7 @@ except(KeyError):
     print __doc__
     exit()
 
-__currendir = os.path.dirname(__file__)
+__current_dir = os.path.dirname(__file__)
 
 tests = []
 test_directories = ["test"]

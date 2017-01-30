@@ -37,6 +37,8 @@ for i, test in enumerate(tests):
     out, err = child.communicate()
     if child.returncode:
         sys.stdout.write("failed\n")
+        if len(sys.argv) == 2 and sys.argv[1] == '-v':
+            sys.stdout.write(err)
         failed += 1
     else:
         sys.stdout.write("ok\n")

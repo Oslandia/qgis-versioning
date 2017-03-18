@@ -36,7 +36,7 @@ Click on the 'commit' icon.
 Documentation
 =======
 
-For more information on this new plugin, you can test and install the QGIS versioning plugin directly in QGIS (Menu: Plugins=Manage plugins: Versioning) or go on this documentation site: http://qgis-versioning.readthedocs.io/en/latest/. You can also contribute to the source code by sending pull request or open issues if you have any comments or bug to report.
+For more information on this plugin, you can test and install the QGIS versioning plugin directly in QGIS (Menu: Plugins=Manage plugins: Versioning) or go on this documentation site: http://qgis-versioning.readthedocs.io/en/latest/. You can also contribute to the source code by sending pull request or open issues if you have any comments or bug to report.
 
 This article described why the plugin has been built and how : GIS Open Source versioning tool for a multi-user Distributed Environment (http://www.gogeomatics.ca/magazine/gis-open-source-versioning-tool-part-1.htm)
 

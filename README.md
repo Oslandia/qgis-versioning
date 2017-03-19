@@ -21,7 +21,7 @@ If you have admin acces to a local postgres/postis server, you can run the regre
 Use the plugin in qgis
 ----------------------
 
-Check that the plugin 'qgis-versioning' is activated in the plugin manager or install the QGIS versioning plugin directly in QGIS (Menu : Plugins = Manage plugins : Versioning).
+Check that the plugin 'qgis-versioning' is activated in the plugin manager or install the versioning plugin directly in QGIS (Menu : Plugins = Manage plugins : Versioning).
 
 Load posgis layers from a scheme you want to version.
 

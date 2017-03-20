@@ -13,6 +13,7 @@ QGIS Versioning plugin
 .. |spatialite-logo|_
 
 This is the temporary location of the |plugin|_ documentation.  Click this link for the `original page`_.
+See also this article describing why the plugin has been built and how: `GIS Open Source versioning tool for a multi-user Distributed Environment <http://www.gogeomatics.ca/magazine/gis-open-source-versioning-tool-part-1.htm>`_. Cet article est aussi disponible `en français<http://www.gogeomatics.ca/magazine/outil-de-versionnement-a-code-source-ouvert-partie-1.htm>`_.
 
 ----------
 

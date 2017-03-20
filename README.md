@@ -21,7 +21,7 @@ If you have admin acces to a local postgres/postis server, you can run the regre
 Use the plugin in qgis
 ----------------------
 
-Check that the plugin 'qgis-versioning' is activated in the plugin manager.
+Check that the plugin 'qgis-versioning' is activated in the plugin manager or install the versioning plugin directly in QGIS (Menu : Plugins = Manage plugins : Versioning).
 
 Load posgis layers from a scheme you want to version.
 
@@ -33,17 +33,25 @@ Modify your layers.
 
 Click on the 'commit' icon.
 
+Documentation
+=======
+
+For more information on this plugin, you can go on its plugin documentation site: http://qgis-versioning.readthedocs.io/en/latest/. You can also contribute to the source code by sending pull request or open issues if you have any comments or bug to report.
+
+See also this article describing why the plugin has been built and how : [GIS Open Source versioning tool for a multi-user Distributed Environment](http://www.gogeomatics.ca/magazine/gis-open-source-versioning-tool-part-1.htm)
+Cet article est aussi disponible en français : http://www.gogeomatics.ca/magazine/outil-de-versionnement-a-code-source-ouvert-partie-1.htm
+
 Credits
 =======
 
-This plugin has been developed by Oslandia ( http://www.oslandia.com ).
+This plugin has been developed by Oslandia (http://www.oslandia.com).
 
 Oslandia provides support and assistance for QGIS and associated tools, including this plugin.
 
 This work has been funded by European funds.
 Thanks to the GIS Office of Apavil, Valcea County (Romania)
 
-Support for spatialite 4.x was contributed by eHealth Africa (http://ehealthafrica.org).
+This work has been also developed by eHealth Africa (http://ehealthafrica.org) for SpatiaLite 4.x support, filter selection for SpatiaLite file, diff mode and user identification improvements.
 
 License
 =======

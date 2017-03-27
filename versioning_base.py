@@ -1596,7 +1596,10 @@ def pg_update(pg_conn_info, working_copy_schema):
         # now bump the pks of inserted rows in working copy
         # parents will be updated thanks to the ON UPDATE CASCADE
         pcur.execute("UPDATE "+wcs+"."+table+"_diff "
-                "SET "+pkey+" = "+pkey+" + "+str(bump)+" "
+                "SET "+pkey+" = -"+pkey+" "
+                "WHERE "+branch+"_rev_begin = "+str(max_rev+1))
+        pcur.execute("UPDATE "+wcs+"."+table+"_diff "
+                "SET "+pkey+" = -"+pkey+" + "+str(bump)+" "
                 "WHERE "+branch+"_rev_begin = "+str(max_rev+1))
 
         # detect conflicts: conflict occur if two lines with the same pkey have

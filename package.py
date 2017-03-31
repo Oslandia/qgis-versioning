@@ -38,15 +38,14 @@ def install(install_dir, zip_filename):
     print "installed in", install_dir
 
 def zip_(zip_filename):
-    """the zip file doesn't include tests, demos or doc"""
-    qgis_versioning_dir = os.path.dirname(__file__)
+    """the zip file include tests"""
+    qgis_versioning_dir = os.path.abspath(os.path.dirname(__file__))
     with zipfile.ZipFile(zip_filename, 'w') as package:
         for root, dirs, files in os.walk(qgis_versioning_dir):
             if not re.match(r".*(test_data|doc|tmp).*", root):
                 for file_ in files:
-                    if re.match(r".*\.(py|txt|ui|svg|png|insat|sat|qml|sql)$", file_) \
-                            and not re.match(r".*(_test|_demo)\.py", file_) \
-                            and not re.match(r"(package.py|test.py)", file_):
+                    if re.match(r".*\.(py|txt|ui|svg|png|insat|sat|qml|sql|sqlite)$", file_) \
+                            and not re.match(r"(package.py)", file_):
                         fake_root = root.replace(qgis_versioning_dir, "qgis_versioning")
                         package.write(os.path.join(root, file_), 
                                       os.path.join(fake_root, file_))

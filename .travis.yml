@@ -1,9 +1,18 @@
+dist: trusty
+language: python
+
+install:
+  - pip install psycopg2
+  - pip install pyspatialite
 
 before_install:
-  - sudo apt-get install -y postgresql postgis gdal-bin qgis
+  - sudo apt-get install -y postgresql postgis gdal-bin qgis python-pyspatialite python-psycopg2 python-pip
+  - sudo pip install pyspatialite
+  - ls /usr/lib/python2.7/dist-packages/
+  - sudo python -m pip install pyspatialite
 
 before_script:
   - python package.py -i
 
 script:
-  - PYTHONPATH=~/.qgis2/python/plugins python -m qgis_versioning.test || PYTHONPATH=~/.qgis2/python/plugins python -m qgis_versioning.test -v
+- PYTHONPATH=~/.qgis2/python/plugins python -m qgis_versioning.test || PYTHONPATH=~/.qgis2/python/plugins python -m qgis_versioning.test -v

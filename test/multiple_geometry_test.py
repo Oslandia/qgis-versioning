@@ -8,7 +8,7 @@ import tempfile
 
 if __name__ == "__main__":
     test_data_dir = os.path.dirname(os.path.realpath(__file__))
-    tmp_dir = "/tmp"
+    tmp_dir = tempfile.gettempdir()
 
     # create the test database
 

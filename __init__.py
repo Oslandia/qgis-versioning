@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 
+from __future__ import absolute_import
+
 def classFactory(iface):
-    # load Canvas3D class from file Canvas3D
-    import versioning
-    return versioning.Versioning(iface)
+    from .plugin import Plugin
+    return Plugin(iface)

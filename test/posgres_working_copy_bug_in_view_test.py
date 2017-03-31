@@ -1,5 +1,5 @@
 #!/usr/bin/python
-import versioning_base
+from .. import versioning
 import psycopg2
 import os
 import shutil
@@ -17,23 +17,24 @@ def prtHid( cur, tab ):
     pcur.execute("SELECT pid FROM "+tab)
     for [r] in pcur.fetchall(): print r
 
-test_data_dir = os.path.dirname(os.path.realpath(__file__))
+if __name__ == "__main__":
+    test_data_dir = os.path.dirname(os.path.realpath(__file__))
 
-# create the test database
+    # create the test database
 
-os.system("dropdb epanet_test_db")
-os.system("createdb epanet_test_db")
-os.system("psql epanet_test_db -c 'CREATE EXTENSION postgis'")
-os.system("psql epanet_test_db -f "+test_data_dir+"/epanet_test_db.sql")
+    os.system("dropdb epanet_test_db")
+    os.system("createdb epanet_test_db")
+    os.system("psql epanet_test_db -c 'CREATE EXTENSION postgis'")
+    os.system("psql epanet_test_db -f "+test_data_dir+"/epanet_test_db.sql")
 
-# chechout
-versioning_base.pg_checkout("dbname=epanet_test_db",['epanet_trunk_rev_head.junctions','epanet_trunk_rev_head.pipes'], "epanet_working_copy")
+    # chechout
+    versioning.pg_checkout("dbname=epanet_test_db",['epanet_trunk_rev_head.junctions','epanet_trunk_rev_head.pipes'], "epanet_working_copy")
 
-pcur = versioning_base.Db(psycopg2.connect("dbname=epanet_test_db"))
+    pcur = versioning.Db(psycopg2.connect("dbname=epanet_test_db"))
 
-pcur.execute("UPDATE epanet_working_copy.pipes_view SET length = 4 WHERE pid = 1")
-prtTab(pcur, 'epanet_working_copy.pipes_diff')
+    pcur.execute("UPDATE epanet_working_copy.pipes_view SET length = 4 WHERE pid = 1")
+    prtTab(pcur, 'epanet_working_copy.pipes_diff')
 
-prtHid( pcur, 'epanet_working_copy.pipes_view')
-pcur.execute("SElECT COUNT(pid) FROM epanet_working_copy.pipes_view")
-assert( 1 == pcur.fetchone()[0] )
+    prtHid( pcur, 'epanet_working_copy.pipes_view')
+    pcur.execute("SElECT COUNT(pid) FROM epanet_working_copy.pipes_view")
+    assert( 1 == pcur.fetchone()[0] )

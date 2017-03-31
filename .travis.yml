@@ -1,25 +1,9 @@
-language: cpp
-
-# os:
-#  - linux
-#  - osx
-
-compiler:
-  - gcc
-  - clang
 
 before_install:
-  - if [ $TRAVIS_OS_NAME == linux ]; then sudo apt-get update -qq && sudo apt-get install -qq cmake spatialite-bin gdal-bin automake postgresql postgresql-server-dev-all; fi
-  - wget http://download.osgeo.org/postgis/source/postgis-2.1.8.tar.gz
-  - tar -xzf postgis-2.1.8.tar.gz
-  - cd postgis-2.1.8 && ./configure 
-  - cd postgis-2.1.8 && make -j3 && make install
-  - rm -Rf postgis-2.1.8.tar.gz postgis-2.1.8
+  - sudo apt-get install -y postgresql postgis gdal-bin qgis
 
 before_script:
-  - cmake
-
+  - python package.py -i
 
 script:
-  - make
-  - make test
+  - PYTHONPATH=~/.qgis2/python/plugins python -m qgis_versioning.test || PYTHONPATH=~/.qgis2/python/plugins python -m qgis_versioning.test -v

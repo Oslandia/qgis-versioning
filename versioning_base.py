@@ -313,21 +313,22 @@ def checkout(pg_conn_info, pg_table_names, sqlite_filename, selected_feature_lis
                     '"' + sqlite_filename + '"',
                     'PG:"'+pg_conn_info+'"', schema+'.'+table,
                     '-nln', table]
+            # We need to create a temp view because of windows commandline
+            # limitations, e.g. ogr2ogr with a very long where clause
+            # GDAL > 2.1 allows specifying a filename for where args, e.g.
+            #cmd += ['-where', '"'+pkey+' in ('+",".join([str(feature_list[i]) for i in range(0, len(feature_list))])+')"']
+            temp_view_name = schema+"."+table+"_checkout_temp_view"
+            temp_view_names.append(temp_view_name)
+            # Get column names because we cannot just call 'SELECT *'
+            pcur.execute("SELECT column_name FROM information_schema.columns WHERE table_schema = \'"+schema+"\' AND table_name   = \'"+table+"\'")
+            column_list = pcur.fetchall()
+            new_columns_str = preserve_fid( pkey, column_list)
+            view_str = "CREATE OR REPLACE VIEW "+temp_view_name+" AS SELECT "+new_columns_str+" FROM " +schema+"."+table
             if feature_list:
-                # We need to create a temp view because of windows commandline
-                # limitations, e.g. ogr2ogr with a very long where clause
-                # GDAL > 2.1 allows specifying a filename for where args, e.g.
-                #cmd += ['-where', '"'+pkey+' in ('+",".join([str(feature_list[i]) for i in range(0, len(feature_list))])+')"']
-                temp_view_name = schema+"."+table+"_checkout_temp_view"
-                temp_view_names.append(temp_view_name)
-                # Get column names because we cannot just call 'SELECT *'
-                pcur.execute("SELECT column_name FROM information_schema.columns WHERE table_schema = \'"+schema+"\' AND table_name   = \'"+table+"\'")
-                column_list = pcur.fetchall()
-                new_columns_str = preserve_fid( pkey, column_list)
                 view_str = "CREATE OR REPLACE VIEW "+temp_view_name+" AS SELECT "+new_columns_str+" FROM " +schema+"."+table+" WHERE "+pkey+' in ('+",".join([str(feature_list[i]) for i in range(0, len(feature_list))])+')'
-                pcur.execute(view_str)
-                pcur.commit()
-                cmd[8] = temp_view_name
+            pcur.execute(view_str)
+            pcur.commit()
+            cmd[8] = temp_view_name
 
             os.system(' '.join(cmd))
 
@@ -350,17 +351,18 @@ def checkout(pg_conn_info, pg_table_names, sqlite_filename, selected_feature_lis
                         '"' + sqlite_filename + '"',
                         'PG:"'+pg_conn_info+'"', schema+'.'+table,
                         '-nln', table]
+            # Same comments as in 'if feature_list' above
+            temp_view_name = schema+"."+table+"_checkout_temp_view"
+            temp_view_names.append(temp_view_name)
+            pcur.execute("SELECT column_name FROM information_schema.columns WHERE table_schema = \'"+schema+"\' AND table_name   = \'"+table+"\'")
+            column_list = pcur.fetchall()
+            new_columns_str = preserve_fid( pkey, column_list)
+            view_str = "CREATE OR REPLACE VIEW "+temp_view_name+" AS SELECT "+new_columns_str+" FROM " +schema+"."+table
             if feature_list:
-                # Same comments as in 'if feature_list' above
-                temp_view_name = schema+"."+table+"_checkout_temp_view"
-                temp_view_names.append(temp_view_name)
-                pcur.execute("SELECT column_name FROM information_schema.columns WHERE table_schema = \'"+schema+"\' AND table_name   = \'"+table+"\'")
-                column_list = pcur.fetchall()
-                new_columns_str = preserve_fid( pkey, column_list)
                 view_str = "CREATE OR REPLACE VIEW "+temp_view_name+" AS SELECT "+new_columns_str+" FROM " +schema+"."+table+" WHERE "+pkey+' in ('+",".join([str(feature_list[i]) for i in range(0, len(feature_list))])+')'
-                pcur.execute(view_str)
-                pcur.commit()
-                cmd[7] = temp_view_name
+            pcur.execute(view_str)
+            pcur.commit()
+            cmd[7] = temp_view_name
 
             os.system(' '.join(cmd))
 

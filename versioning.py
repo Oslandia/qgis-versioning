@@ -12,8 +12,11 @@ from pyspatialite import dbapi2
 import psycopg2
 import codecs
 from itertools import izip_longest
-import platform, sys
+import platform
+import sys
 import traceback
+
+DEBUG = False
 
 # Deactivate stdout (like output of print statements) because windows
 # causes occasional "IOError [Errno 9] File descriptor error"
@@ -131,7 +134,7 @@ class Db(object):
         else :
             self.log = None
         self.begun = False
-        self._verbose = True
+        self._verbose = False
 
     def hasrow(self):
         """Test if previous execute returned rows"""
@@ -265,7 +268,7 @@ def unresolved_conflicts(sqlite_filename):
     scur.execute("SELECT tbl_name FROM sqlite_master "
         "WHERE type='table' AND tbl_name LIKE '%_conflicts'")
     for table_conflicts in scur.fetchall():
-        print 'table_conflicts:', table_conflicts[0]
+        if DEBUG: print 'table_conflicts:', table_conflicts[0]
         scur.execute("SELECT * FROM "+table_conflicts[0])
         if scur.fetchone():
             found.append( table_conflicts[0][:-10] )
@@ -334,7 +337,7 @@ def checkout(pg_conn_info, pg_table_names, sqlite_filename, selected_feature_lis
             pcur.execute(view_str)
             pcur.commit()
 
-            print ' '.join(cmd)
+            if DEBUG: print ' '.join(cmd)
             os.system(' '.join(cmd))
 
             # save target revision in a table
@@ -365,7 +368,7 @@ def checkout(pg_conn_info, pg_table_names, sqlite_filename, selected_feature_lis
             pcur.execute(view_str)
             pcur.commit()
 
-            print ' '.join(cmd)
+            if DEBUG: print ' '.join(cmd)
             os.system(' '.join(cmd))
 
             # save target revision in a table if not in there
@@ -385,9 +388,7 @@ def checkout(pg_conn_info, pg_table_names, sqlite_filename, selected_feature_lis
         newcols = ""
         hcols = ['ogc_fid'] + sum([[brch+'_rev_begin', brch+'_rev_end',
                 brch+'_parent', brch+'_child'] for brch in pg_branches( pcur, schema ) ],[])
-        print "############################", table
         for res in scur.execute("PRAGMA table_info("+table+")").fetchall():
-            print "############################", res
             if res[1].lower() not in [c.lower() for c in hcols]:
                 cols += quote_ident(res[1]) + ", "
                 newcols += "new."+quote_ident(res[1])+", "
@@ -484,7 +485,7 @@ def checkout(pg_conn_info, pg_table_names, sqlite_filename, selected_feature_lis
 
 def update(sqlite_filename, pg_conn_info):
     """merge modifications since last update into working copy"""
-    print "update"
+    if DEBUG: print "update"
     if unresolved_conflicts(sqlite_filename):
         raise RuntimeError("There are unresolved conflicts in "
                 +sqlite_filename)
@@ -506,7 +507,7 @@ def update(sqlite_filename, pg_conn_info):
             "WHERE branch = '"+branch+"'")
         [max_rev] = pcur.fetchone()
         if max_rev == rev:
-            print ("Nothing new in branch "+branch+" in "+table_schema+"."
+            if DEBUG: print ("Nothing new in branch "+branch+" in "+table_schema+"."
                 +table+" since last update")
             pcur.close()
             continue
@@ -582,7 +583,7 @@ def update(sqlite_filename, pg_conn_info):
                 'PG:"'+pg_conn_info+'"',
                 diff_schema+'.'+table+"_diff",
                 '-nln', table+"_diff"]
-        print ' '.join(cmd)
+        if DEBUG: print ' '.join(cmd)
         os.system(' '.join(cmd))
 
         # cleanup in postgis
@@ -641,7 +642,7 @@ def update(sqlite_filename, pg_conn_info):
         scur.execute("SELECT conflict_deleted_fid "
             "FROM  "+table+"_conflicts_ogc_fid" )
         if scur.fetchone():
-            print "there are conflicts"
+            if DEBUG: print "there are conflicts"
             # add layer for conflicts
             scur.execute("DROP TABLE IF EXISTS "+table+"_conflicts ")
             scur.execute("CREATE TABLE "+table+"_conflicts AS "
@@ -862,7 +863,7 @@ def commit(sqlite_filename, commit_msg, pg_conn_info,commit_pg_user = ''):
                 "OR "+branch+"_rev_begin > "+str(rev))
         scur.execute( "SELECT ogc_fid FROM "+table+"_diff")
         there_is_something_to_commit = scur.fetchone()
-        print "there_is_something_to_commit ", there_is_something_to_commit
+        if DEBUG: print "there_is_something_to_commit ", there_is_something_to_commit
         scur.commit()
 
         # Better if we could have a QgsDataSourceURI.username()
@@ -899,11 +900,11 @@ def commit(sqlite_filename, commit_msg, pg_conn_info,commit_pg_user = ''):
             cmd.insert(5, '-lco')
             cmd.insert(6, 'GEOMETRY_NAME='+pgeom)
 
-        print ' '.join(cmd)
+        if DEBUG: print ' '.join(cmd)
         os.system(' '.join(cmd))
 
         for l in pcur.execute( "select * from geometry_columns").fetchall():
-            print l
+            if DEBUG: print l
 
         # remove dif table and geometry column
         scur.execute("DELETE FROM geometry_columns "
@@ -912,7 +913,7 @@ def commit(sqlite_filename, commit_msg, pg_conn_info,commit_pg_user = ''):
 
 
         if not there_is_something_to_commit:
-            print "nothing to commit for ", table
+            if DEBUG: print "nothing to commit for ", table
             pcur.close()
             continue
 
@@ -921,7 +922,7 @@ def commit(sqlite_filename, commit_msg, pg_conn_info,commit_pg_user = ''):
         pcur.execute("SELECT rev FROM "+table_schema+".revisions "
             "WHERE rev = "+str(rev+1))
         if not pcur.fetchone():
-            print "inserting rev ", str(rev+1)
+            if DEBUG: print "inserting rev ", str(rev+1)
             pcur.execute("INSERT INTO "+table_schema+".revisions "
                 "(rev, commit_msg, branch, author) "
                 "VALUES ("+str(rev+1)+", '"+escape_quote(commit_msg)+"', '"+branch+"',"
@@ -1039,7 +1040,7 @@ def add_branch( pg_conn_info, schema, branch, commit_msg,
     if base_rev != 'head' and (int(base_rev) > max_rev or int(base_rev) <= 0):
         pcur.close()
         raise RuntimeError("Revision "+str(base_rev)+" doesn't exist")
-    print 'max rev = ', max_rev
+    if DEBUG: print 'max rev = ', max_rev
 
     pcur.execute("INSERT INTO "+schema+".revisions(rev, branch, commit_msg ) "
         "VALUES ("+str(max_rev+1)+", '"+branch+"', '"+escape_quote(commit_msg)+"')")
@@ -1068,7 +1069,7 @@ def add_branch( pg_conn_info, schema, branch, commit_msg,
             pkey = pg_pk( pcur, schema, table )
         except:
             if 'VERSIONING_NO_PK' in os.environ and os.environ['VERSIONING_NO_PK'] == 'skip':
-                print schema+'.'+table+' has no primary key, skipping'
+                if DEBUG: print schema+'.'+table+' has no primary key, skipping'
             else:
                 raise RuntimeError(schema+'.'+table+' has no primary key')
 
@@ -1215,7 +1216,7 @@ def add_revision_view(pg_conn_info, schema, branch, rev):
     pcur.execute("SELECT schema_name FROM information_schema.schemata "
         "WHERE schema_name = '"+rev_schema+"'")
     if pcur.fetchone():
-        print rev_schema, ' already exists'
+        if DEBUG: print rev_schema, ' already exists'
         return
 
     security = ' WITH (security_barrier)'
@@ -1507,7 +1508,7 @@ def pg_checkout(pg_conn_info, pg_table_names, working_copy_schema):
 
 def pg_update(pg_conn_info, working_copy_schema):
     """merge modifications since last update into working copy"""
-    print "update"
+    if DEBUG: print "update"
     wcs = working_copy_schema
     if pg_unresolved_conflicts(pg_conn_info, wcs):
         raise RuntimeError("There are unresolved conflicts in "+wcs)
@@ -1528,7 +1529,7 @@ def pg_update(pg_conn_info, working_copy_schema):
             "WHERE branch = '"+branch+"'")
         [max_rev] = pcur.fetchone()
         if max_rev == rev:
-            print ("Nothing new in branch "+branch+" "
+            if DEBUG: print ("Nothing new in branch "+branch+" "
                 "in "+table_schema+"."+table+" since last update")
             continue
 
@@ -1611,7 +1612,7 @@ def pg_update(pg_conn_info, working_copy_schema):
             "FROM  "+wcs+"."+table+"_conflicts_pk" )
         geom = ', '+pgeom if pgeom else ''
         if pcur.fetchone():
-            print "there are conflicts"
+            if DEBUG: print "there are conflicts"
             # add layer for conflicts
             pcur.execute("DROP TABLE IF EXISTS "+wcs+"."+table+"_cflt ")
             pcur.execute("CREATE TABLE "+wcs+"."+table+"_cflt AS "
@@ -1809,14 +1810,14 @@ def pg_commit(pg_conn_info, working_copy_schema, commit_msg):
         there_is_something_to_commit = pcur.fetchone()
 
         if not there_is_something_to_commit:
-            print "nothing to commit for ", table
+            if DEBUG: print "nothing to commit for ", table
             continue
         nb_of_updated_layer += 1
 
         pcur.execute("SELECT rev FROM "+table_schema+".revisions "
             "WHERE rev = "+str(rev+1))
         if not pcur.fetchone():
-            print "inserting rev ", str(rev+1)
+            if DEBUG: print "inserting rev ", str(rev+1)
             pcur.execute("INSERT INTO "+table_schema+".revisions "
                 "(rev, commit_msg, branch, author) "
                 "VALUES ("+str(rev+1)+", '"+escape_quote(commit_msg)+"', '"+branch+"',"
@@ -1836,11 +1837,11 @@ def pg_commit(pg_conn_info, working_copy_schema, commit_msg):
                 "WHERE dest."+pkey+" = src."+pkey+" "
                 "AND src."+branch+"_rev_end = "+str(rev))
 
-        print "truncate diff for ", table
+        if DEBUG: print "truncate diff for ", table
         # clears the diff
         pcur.execute("TRUNCATE TABLE "+wcs+"."+table+"_diff CASCADE")
         #pcur.execute("DELETE FROM "+wcs+"."+table+"_diff_pkey")
-        print "diff truncated for ", table
+        if DEBUG: print "diff truncated for ", table
 
     if nb_of_updated_layer:
         for [rev, branch, table_schema, table] in versioned_layers:
@@ -1865,7 +1866,7 @@ def pg_unresolved_conflicts(pg_conn_info, working_copy_schema):
         "WHERE table_schema='"+working_copy_schema+"' "
         "AND table_name LIKE '%_cflt'")
     for table_conflicts in pcur.fetchall():
-        print 'table_conflicts:', table_conflicts[0]
+        if DEBUG: print 'table_conflicts:', table_conflicts[0]
         pcur.execute("SELECT * "
             "FROM "+working_copy_schema+"."+table_conflicts[0])
         if pcur.fetchone():

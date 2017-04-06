@@ -3,7 +3,11 @@
 import os
 import sys
 from subprocess import Popen, PIPE
+import platform
 
+iswin = any(platform.win32_ver())
+if iswin:
+    sys.stdout = open(os.devnull, 'w')
 
 def test():
     __current_dir = os.path.abspath(os.path.dirname(__file__))
@@ -29,7 +33,7 @@ def test():
 
     if failed:
         sys.stderr.write("%d/%d test failed\n"%(failed, len(tests)))
-        raise RuntimeError
+        raise RuntimeError("%d/%d test failed\n"%(failed, len(tests)))
     else:
         sys.stdout.write("%d/%d test passed (%d%%)\n"%(
             len(tests)-failed,

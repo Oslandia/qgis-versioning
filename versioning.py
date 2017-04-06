@@ -15,8 +15,6 @@ from itertools import izip_longest
 import platform, sys
 import traceback
 
-gdal_version = [int(v) for v in os.popen('ogr2ogr --version').read().split(',')[0].split()[1].split('.')]
-
 # Deactivate stdout (like output of print statements) because windows
 # causes occasional "IOError [Errno 9] File descriptor error"
 # Not needed when there is a way to run QGIS in console mode in Windows.
@@ -35,8 +33,6 @@ def os_info():
     else:
         os_info = "UnknownOS"
     return os_info
-
-
 
 def mem_field_names_types(pg_layer):
     '''String massaging to get field names and types in memory layer uri
@@ -87,10 +83,10 @@ def get_actual_pk(uri,pg_conn_info):
     pcur.close()
     return actual_pk
 
-def preserve_fid(pkid, fetchall_tuple):
+def preserve_fid( pkid, fetchall_tuple):
     # This is a hack because os.system does not scale in MS Windows.
     # We need to create a view, then emulate the "preserve_fid" behaviour of
-    # ogr2ogr.  A select * in the new view will generate random OGC_FID values
+    # ogr2ogr.  A select * in the new view will generate random ogc_fid values
     # which means we cannot commit modifications after a checkout.
     # pkid = name of pkid as a string
     # fetchall_tuple = a list of column names returned as tuples by fetchall()
@@ -99,11 +95,10 @@ def preserve_fid(pkid, fetchall_tuple):
     for i in fetchall_tuple:
         str_list.append(str(i[0]))
 
-    if gdal_version[0] >=2:
-        return ', '.join(str_list)
+    #return ', '.join(str_list)
 
     replaceText = pkid
-    replaceData = pkid + ' as OGC_FID'
+    replaceData = pkid + ' as ogc_fid'
     pos = str_list.index(replaceText)
     str_list[pos] = replaceData
     columns_str = ', '.join(str_list)
@@ -314,33 +309,32 @@ def checkout(pg_conn_info, pg_table_names, sqlite_filename, selected_feature_lis
         if not max_pg_pk :
             max_pg_pk = 0
 
+        temp_view_name = schema+"."+table+"_checkout_temp_view"
+        temp_view_names.append(temp_view_name)
         # use ogr2ogr to create spatialite db
         if first_table:
             first_table = False
             cmd = ['ogr2ogr',
-                    '-preserve_fid',
-                    '-lco', 'FID=OGC_FID',
                     '-f', 'SQLite',
                     '-dsco', 'SPATIALITE=yes',
                     '"' + sqlite_filename + '"',
-                    'PG:"'+pg_conn_info+'"', schema+'.'+table,
+                    'PG:"'+pg_conn_info+'"', temp_view_name,
                     '-nln', table]
+            # We need to create a temp view because of windows commandline
+            # limitations, e.g. ogr2ogr with a very long where clause
+            # GDAL > 2.1 allows specifying a filename for where args, e.g.
+            #cmd += ['-where', '"'+pkey+' in ('+",".join([str(feature_list[i]) for i in range(0, len(feature_list))])+')"']
+            # Get column names because we cannot just call 'SELECT *'
+            pcur.execute("SELECT column_name FROM information_schema.columns WHERE table_schema = \'"+schema+"\' AND table_name   = \'"+table+"\'")
+            column_list = pcur.fetchall()
+            new_columns_str = preserve_fid( pkey, column_list)
+            view_str = "CREATE OR REPLACE VIEW "+temp_view_name+" AS SELECT "+new_columns_str+" FROM " +schema+"."+table
             if feature_list:
-                # We need to create a temp view because of windows commandline
-                # limitations, e.g. ogr2ogr with a very long where clause
-                # GDAL > 2.1 allows specifying a filename for where args, e.g.
-                #cmd += ['-where', '"'+pkey+' in ('+",".join([str(feature_list[i]) for i in range(0, len(feature_list))])+')"']
-                temp_view_name = schema+"."+table+"_checkout_temp_view"
-                temp_view_names.append(temp_view_name)
-                # Get column names because we cannot just call 'SELECT *'
-                pcur.execute("SELECT column_name FROM information_schema.columns WHERE table_schema = \'"+schema+"\' AND table_name   = \'"+table+"\'")
-                column_list = pcur.fetchall()
-                new_columns_str = preserve_fid(pkey, column_list)
                 view_str = "CREATE OR REPLACE VIEW "+temp_view_name+" AS SELECT "+new_columns_str+" FROM " +schema+"."+table+" WHERE "+pkey+' in ('+",".join([str(feature_list[i]) for i in range(0, len(feature_list))])+')'
-                pcur.execute(view_str)
-                pcur.commit()
-                cmd[8] = temp_view_name
+            pcur.execute(view_str)
+            pcur.commit()
 
+            print ' '.join(cmd)
             os.system(' '.join(cmd))
 
             # save target revision in a table
@@ -356,25 +350,22 @@ def checkout(pg_conn_info, pg_table_names, sqlite_filename, selected_feature_lis
 
         else:
             cmd = ['ogr2ogr',
-                        '-preserve_fid',
-                        '-lco', 'FID=OGC_FID',
                         '-f', 'SQLite',
                         '-update',
                         '"' + sqlite_filename + '"',
-                        'PG:"'+pg_conn_info+'"', schema+'.'+table,
+                        'PG:"'+pg_conn_info+'"', temp_view_name,
                         '-nln', table]
+            # Same comments as in 'if feature_list' above
+            pcur.execute("SELECT column_name FROM information_schema.columns WHERE table_schema = \'"+schema+"\' AND table_name   = \'"+table+"\'")
+            column_list = pcur.fetchall()
+            new_columns_str = preserve_fid( pkey, column_list)
+            view_str = "CREATE OR REPLACE VIEW "+temp_view_name+" AS SELECT "+new_columns_str+" FROM " +schema+"."+table
             if feature_list:
-                # Same comments as in 'if feature_list' above
-                temp_view_name = schema+"."+table+"_checkout_temp_view"
-                temp_view_names.append(temp_view_name)
-                pcur.execute("SELECT column_name FROM information_schema.columns WHERE table_schema = \'"+schema+"\' AND table_name   = \'"+table+"\'")
-                column_list = pcur.fetchall()
-                new_columns_str = preserve_fid( pkey, column_list)
                 view_str = "CREATE OR REPLACE VIEW "+temp_view_name+" AS SELECT "+new_columns_str+" FROM " +schema+"."+table+" WHERE "+pkey+' in ('+",".join([str(feature_list[i]) for i in range(0, len(feature_list))])+')'
-                pcur.execute(view_str)
-                pcur.commit()
-                cmd[7] = temp_view_name
+            pcur.execute(view_str)
+            pcur.commit()
 
+            print ' '.join(cmd)
             os.system(' '.join(cmd))
 
             # save target revision in a table if not in there
@@ -389,12 +380,14 @@ def checkout(pg_conn_info, pg_table_names, sqlite_filename, selected_feature_lis
         scur = Db(dbapi2.connect(sqlite_filename))
 
         # create views and triggers in spatilite db
-        scur.execute("PRAGMA table_info("+table+")")
+        
         cols = ""
         newcols = ""
-        hcols = ['OGC_FID'] + sum([[brch+'_rev_begin', brch+'_rev_end',
+        hcols = ['ogc_fid'] + sum([[brch+'_rev_begin', brch+'_rev_end',
                 brch+'_parent', brch+'_child'] for brch in pg_branches( pcur, schema ) ],[])
-        for res in scur.fetchall():
+        print "############################", table
+        for res in scur.execute("PRAGMA table_info("+table+")").fetchall():
+            print "############################", res
             if res[1].lower() not in [c.lower() for c in hcols]:
                 cols += quote_ident(res[1]) + ", "
                 newcols += "new."+quote_ident(res[1])+", "
@@ -402,11 +395,11 @@ def checkout(pg_conn_info, pg_table_names, sqlite_filename, selected_feature_lis
         newcols = newcols[:-2] # remove last coma
 
         scur.execute( "CREATE VIEW "+table+"_view "+"AS "
-            "SELECT ROWID AS ROWID, OGC_FID, "+cols+" "
+            "SELECT ROWID AS ROWID, ogc_fid, "+cols+" "
             "FROM "+table+" WHERE "+branch+"_rev_end IS NULL "
             "AND "+branch+"_rev_begin IS NOT NULL")
 
-        max_fid_sub = ("( SELECT MAX(max_fid) FROM ( SELECT MAX(OGC_FID) AS "
+        max_fid_sub = ("( SELECT MAX(max_fid) FROM ( SELECT MAX(ogc_fid) AS "
             "max_fid FROM "+table+" UNION SELECT max_pk AS max_fid "
             "FROM initial_revision WHERE table_name = '"+table+"') )")
         current_rev_sub = ("(SELECT rev FROM initial_revision "
@@ -426,38 +419,38 @@ def checkout(pg_conn_info, pg_table_names, sqlite_filename, selected_feature_lis
         "CREATE TRIGGER update_old_"+table+" "
             "INSTEAD OF UPDATE ON "+table+"_view "
             "WHEN (SELECT COUNT(*) FROM "+table+" "
-            "WHERE OGC_FID = new.OGC_FID "
+            "WHERE ogc_fid = new.ogc_fid "
             "AND ("+branch+"_rev_begin <= "+current_rev_sub+" ) ) \n"
             "BEGIN\n"
             "INSERT INTO "+table+" "
-            "(OGC_FID, "+cols+", "+branch+"_rev_begin, "
+            "(ogc_fid, "+cols+", "+branch+"_rev_begin, "
              +branch+"_parent) "
             "VALUES "
             "("+max_fid_sub+"+1, "+newcols+", "+current_rev_sub+"+1, "
-              "old.OGC_FID);\n"
+              "old.ogc_fid);\n"
             "UPDATE "+table+" SET "+branch+"_rev_end = "+current_rev_sub+", "
-            +branch+"_child = "+max_fid_sub+" WHERE OGC_FID = old.OGC_FID;\n"
+            +branch+"_child = "+max_fid_sub+" WHERE ogc_fid = old.ogc_fid;\n"
             "END")
         # when we edit something new, we just update
         scur.execute("CREATE TRIGGER update_new_"+table+" "
         "INSTEAD OF UPDATE ON "+table+"_view "
               "WHEN (SELECT COUNT(*) FROM "+table+" "
-              "WHERE OGC_FID = new.OGC_FID AND ("+branch+"_rev_begin > "
+              "WHERE ogc_fid = new.ogc_fid AND ("+branch+"_rev_begin > "
               +current_rev_sub+" ) ) \n"
               "BEGIN\n"
                 "REPLACE INTO "+table+" "
-                "(OGC_FID, "+cols+", "+branch+"_rev_begin, "+branch+"_parent) "
+                "(ogc_fid, "+cols+", "+branch+"_rev_begin, "+branch+"_parent) "
                 "VALUES "
-                "(new.OGC_FID, "+newcols+", "+current_rev_sub+"+1, (SELECT "
+                "(new.ogc_fid, "+newcols+", "+current_rev_sub+"+1, (SELECT "
                 +branch+"_parent FROM "+table+
-                " WHERE OGC_FID = new.OGC_FID));\n"
+                " WHERE ogc_fid = new.ogc_fid));\n"
               "END")
 
         scur.execute("CREATE TRIGGER insert_"+table+" "
         "INSTEAD OF INSERT ON "+table+"_view\n"
             "BEGIN\n"
                 "INSERT INTO "+table+" "+
-                "(OGC_FID, "+cols+", "+branch+"_rev_begin) "
+                "(ogc_fid, "+cols+", "+branch+"_rev_begin) "
                 "VALUES "
                 "("+max_fid_sub+"+1, "+newcols+", "+current_rev_sub+"+1);\n"
             "END")
@@ -468,26 +461,25 @@ def checkout(pg_conn_info, pg_table_names, sqlite_filename, selected_feature_lis
               # update it if its old
                 "UPDATE "+table+" "
                     "SET "+branch+"_rev_end = "+current_rev_sub+" "
-                    "WHERE OGC_FID = old.OGC_FID "
+                    "WHERE ogc_fid = old.ogc_fid "
                     "AND "+branch+"_rev_begin < "+current_rev_sub+"+1;\n"
               # delete it if its new and remove it from child
                 "UPDATE "+table+" "
                     "SET "+branch+"_child = NULL "
-                    "WHERE "+branch+"_child = old.OGC_FID "
+                    "WHERE "+branch+"_child = old.ogc_fid "
                     "AND "+branch+"_rev_begin = "+current_rev_sub+"+1;\n"
                 "DELETE FROM "+table+" "
-                    "WHERE OGC_FID = old.OGC_FID "
+                    "WHERE ogc_fid = old.ogc_fid "
                     "AND "+branch+"_rev_begin = "+current_rev_sub+"+1;\n"
             "END")
 
         scur.commit()
         scur.close()
     # Remove temp views after sqlite file is written
-    if feature_list:
-        for i in temp_view_names:
-            del_view_str = "DROP VIEW IF EXISTS " + i
-            pcur.execute(del_view_str)
-            pcur.commit()
+    for i in temp_view_names:
+        del_view_str = "DROP VIEW IF EXISTS " + i
+        pcur.execute(del_view_str)
+        pcur.commit()
     pcur.close()
 
 def update(sqlite_filename, pg_conn_info):
@@ -547,37 +539,21 @@ def update(sqlite_filename, pg_conn_info):
                 "WHERE table_schema = '"+table_schema+"' "
                 "AND table_name = '"+table+"'")
         cols = ""
-        if gdal_version[0] < 2:
-            for col in pcur.fetchall():
-                if col[0] != pgeom and col[0] not in other_branches_columns:
-                    cols += quote_ident(col[0])+", "
-            cols = cols[:-2] # remove last coma and space
-
-            pcur.execute("SELECT srid, type "
-                "FROM geometry_columns "
-                "WHERE f_table_schema = '"+table_schema+
-                "' AND f_table_name ='"+table+"' AND f_geometry_column = '"+pgeom+"'")
-
-            srid_type = pcur.fetchone()
-            [srid, geom_type] = srid_type if srid_type else [None, None]
-            geom = (", "+pgeom+"::geometry('"+geom_type+"', "+str(srid)+") "
-                "AS "+pgeom) if pgeom else ''
-        else:
-            for col in pcur.fetchall():
-                if col[0] not in pgeoms and col[0] not in other_branches_columns:
-                    cols += quote_ident(col[0])+", "
-            cols = cols[:-2] # remove last coma and space
-            pcur.execute("""
-                SELECT f_geometry_column, srid, type
-                FROM geometry_columns
-                WHERE f_table_schema = '{table_schema}'
-                AND f_table_name = '{table}'
-                """.format(table_schema=table_schema, table=table))
-            geoms_name_srid_type = pcur.fetchall()
-            geom = ""
-            for geom_name, srid, geom_type in geoms_name_srid_type:
-                geom += ", {geom_name}::geometry('{geom_type}', {srid})".format(
-                        geom_name=geom_name, geom_type=geom_type, srid=srid) 
+        for col in pcur.fetchall():
+            if col[0] not in pgeoms and col[0] not in other_branches_columns:
+                cols += quote_ident(col[0])+", "
+        cols = cols[:-2] # remove last coma and space
+        pcur.execute("""
+            SELECT f_geometry_column, srid, type
+            FROM geometry_columns
+            WHERE f_table_schema = '{table_schema}'
+            AND f_table_name = '{table}'
+            """.format(table_schema=table_schema, table=table))
+        geoms_name_srid_type = pcur.fetchall()
+        geom = ""
+        for geom_name, srid, geom_type in geoms_name_srid_type:
+            geom += ", {geom_name}::geometry('{geom_type}', {srid})".format(
+                    geom_name=geom_name, geom_type=geom_type, srid=srid) 
 
         pcur.execute( "DROP TABLE IF EXISTS "+diff_schema+"."+table+"_diff")
         pcur.execute( "CREATE TABLE "+diff_schema+"."+table+"_diff AS "
@@ -599,7 +575,7 @@ def update(sqlite_filename, pg_conn_info):
         # import the diff to spatialite
         cmd = ['ogr2ogr',
                 '-preserve_fid',
-                '-lco', 'FID=OGC_FID',
+                '-lco', 'FID=ogc_fid',
                 '-f', 'SQLite',
                 '-update',
                 '"' + sqlite_filename + '"',
@@ -642,10 +618,10 @@ def update(sqlite_filename, pg_conn_info):
         # the UPDATE is not implemented correctly according to:
         # http://stackoverflow.com/questions/19381350/simulate-order-by-in-sqlite-update-to-handle-uniqueness-constraint
         scur.execute("UPDATE "+table+" "
-                "SET OGC_FID = -OGC_FID  "
+                "SET ogc_fid = -ogc_fid  "
                 "WHERE "+branch+"_rev_begin = "+str(max_rev+1))
         scur.execute("UPDATE "+table+" "
-            "SET OGC_FID = "+str(bump)+"-OGC_FID WHERE OGC_FID < 0")
+            "SET ogc_fid = "+str(bump)+"-ogc_fid WHERE ogc_fid < 0")
         # and bump the pkey in the child field
         # not that we don't care for nulls since adding something
         # to null is null
@@ -658,9 +634,9 @@ def update(sqlite_filename, pg_conn_info):
         # and the other modified
         scur.execute("DROP VIEW  IF EXISTS "+table+"_conflicts_ogc_fid")
         scur.execute("CREATE VIEW "+table+"_conflicts_ogc_fid AS "
-            "SELECT DISTINCT sl.OGC_FID as conflict_deleted_fid "
+            "SELECT DISTINCT sl.ogc_fid as conflict_deleted_fid "
             "FROM "+table+" AS sl, "+table+"_diff AS pg "
-            "WHERE sl.OGC_FID = pg.OGC_FID "
+            "WHERE sl.ogc_fid = pg.ogc_fid "
                 "AND sl."+branch+"_child != pg."+branch+"_child")
         scur.execute("SELECT conflict_deleted_fid "
             "FROM  "+table+"_conflicts_ogc_fid" )
@@ -673,38 +649,38 @@ def update(sqlite_filename, pg_conn_info):
                 "SELECT "+branch+"_parent AS conflict_id, 'mine' AS origin, "
                 "'modified' AS action, "+cols+" "
                 "FROM "+table+", "+table+"_conflicts_ogc_fid AS cflt "
-                "WHERE OGC_FID = (SELECT "+branch+"_child FROM "+table+" "
-                                     "WHERE OGC_FID = conflict_deleted_fid) "
+                "WHERE ogc_fid = (SELECT "+branch+"_child FROM "+table+" "
+                                     "WHERE ogc_fid = conflict_deleted_fid) "
                 "UNION ALL "
                 # insert new features from theirs
                 "SELECT "+branch+"_parent AS conflict_id, 'theirs' AS origin, "
                 "'modified' AS action, "+cols+" "
                 "FROM "+table+"_diff "+", "+table+"_conflicts_ogc_fid AS cflt "
-                "WHERE OGC_FID = (SELECT "+branch+"_child FROM "+table+"_diff "
-                                     "WHERE OGC_FID = conflict_deleted_fid) "
+                "WHERE ogc_fid = (SELECT "+branch+"_child FROM "+table+"_diff "
+                                     "WHERE ogc_fid = conflict_deleted_fid) "
                  # insert deleted features from mine
                 "UNION ALL "
                 "SELECT "+branch+"_parent AS conflict_id, 'mine' AS origin, "
                 "'deleted' AS action, "+cols+" "
                 "FROM "+table+", "+table+"_conflicts_ogc_fid AS cflt "
-                "WHERE OGC_FID = conflict_deleted_fid "
+                "WHERE ogc_fid = conflict_deleted_fid "
                 "AND "+branch+"_child IS NULL "
                  # insert deleted features from theirs
                 "UNION ALL "
                 "SELECT "+branch+"_parent AS conflict_id, 'theirs' AS origin, "
                 "'deleted' AS action, "+cols+" "
                 "FROM "+table+"_diff, "+table+"_conflicts_ogc_fid AS cflt "
-                "WHERE OGC_FID = conflict_deleted_fid "
+                "WHERE ogc_fid = conflict_deleted_fid "
                 "AND "+branch+"_child IS NULL" )
 
             # identify conflicts for deleted
             scur.execute("UPDATE "+table+"_conflicts "
-                "SET conflict_id = OGC_FID "+ "WHERE action = 'deleted'")
+                "SET conflict_id = ogc_fid "+ "WHERE action = 'deleted'")
 
             # now follow child if any for 'theirs' 'modified' since several
             # edition could be made we want the very last child
             while True:
-                scur.execute("SELECT conflict_id, OGC_FID, "+branch+"_child "
+                scur.execute("SELECT conflict_id, ogc_fid, "+branch+"_child "
                     "FROM "+table+"_conflicts WHERE origin='theirs' "
                     "AND action='modified' AND "+branch+"_child IS NOT NULL")
                 res = scur.fetchall()
@@ -713,41 +689,32 @@ def update(sqlite_filename, pg_conn_info):
                 # replaces each entries by it's child
                 for [cflt_id, fid, child] in res:
                     scur.execute("DELETE FROM "+table+"_conflicts "
-                        "WHERE OGC_FID = "+str(fid))
+                        "WHERE ogc_fid = "+str(fid))
                     scur.execute("INSERT INTO "+table+"_conflicts "
                         "SELECT "+str(cflt_id)+" AS conflict_id, "
                         "'theirs' AS origin, 'modified' AS action, "+cols+" "
                         "FROM "+table+"_diff "
-                        "WHERE OGC_FID = "+str(child)+" "
+                        "WHERE ogc_fid = "+str(child)+" "
                         "AND "+branch+"_rev_end IS NULL" )
                     scur.execute("INSERT INTO "+table+"_conflicts "
                         "SELECT "+str(cflt_id)+" AS conflict_id, "
                         "'theirs' AS origin, 'deleted' AS action, "+cols+" "
                         "FROM "+table+"_diff "
-                        "WHERE OGC_FID = "+str(child)+" "
+                        "WHERE ogc_fid = "+str(child)+" "
                         "AND "+branch+"_rev_end IS NOT NULL" )
 
             scur.execute("DELETE FROM geometry_columns "
                 "WHERE f_table_name = '"+table+"_conflicts'")
-            if gdal_version[0] < 2:
-                if geom:
-                    scur.execute("SELECT RecoverGeometryColumn("
-                    "'"+table+"_conflicts', 'GEOMETRY', "
-                    "(SELECT srid FROM geometry_columns "
-                    "WHERE f_table_name='"+table+"'), "
-                    "(SELECT GeometryType(geometry) FROM "+table+" LIMIT 1), "
-                    "'XY')")
-            else:
-                for geom_name, srid, geom_type in geoms_name_srid_type: 
-                    scur.execute(
-                        """SELECT RecoverGeometryColumn(
-                        '{table}_conflicts', '{geom_name}', 
-                        {srid}, '{geom_type}', 'XY')
-                        """.format(table=table, srid=srid, geom_type=geom_type, geom_name=geom_name))
+            for geom_name, srid, geom_type in geoms_name_srid_type: 
+                scur.execute(
+                    """SELECT RecoverGeometryColumn(
+                    '{table}_conflicts', '{geom_name}', 
+                    {srid}, '{geom_type}', 'XY')
+                    """.format(table=table, srid=srid, geom_type=geom_type, geom_name=geom_name))
 
 
             scur.execute("CREATE UNIQUE INDEX IF NOT EXISTS "
-                +table+"_conflicts_idx ON "+table+"_conflicts(OGC_FID)")
+                +table+"_conflicts_idx ON "+table+"_conflicts(ogc_fid)")
 
             # create trigers such that on delete the conflict is resolved
             # if we delete 'theirs', we set their child to our fid and
@@ -758,19 +725,19 @@ def update(sqlite_filename, pg_conn_info):
             "AFTER DELETE ON "+table+"_conflicts\n"
                 "BEGIN\n"
                     "DELETE FROM "+table+" "
-                    "WHERE OGC_FID = old.OGC_FID AND old.origin = 'mine';\n"
+                    "WHERE ogc_fid = old.ogc_fid AND old.origin = 'mine';\n"
 
                     "UPDATE "+table+" "
-                    "SET "+branch+"_child = (SELECT OGC_FID "
+                    "SET "+branch+"_child = (SELECT ogc_fid "
                     "FROM "+table+"_conflicts "
                     "WHERE origin = 'mine' "
                     "AND conflict_id = old.conflict_id), "
                     +branch+"_rev_end = "+str(max_rev)+" "
-                    "WHERE OGC_FID = old.OGC_FID AND old.origin = 'theirs';\n"
+                    "WHERE ogc_fid = old.ogc_fid AND old.origin = 'theirs';\n"
 
                     "UPDATE "+table+" "
-                    "SET "+branch+"_parent = old.OGC_FID "
-                    "WHERE OGC_FID = (SELECT OGC_FID "
+                    "SET "+branch+"_parent = old.ogc_fid "
+                    "WHERE ogc_fid = (SELECT ogc_fid "
                     "FROM "+table+"_conflicts WHERE origin = 'mine' "
                     "AND conflict_id = old.conflict_id) "
                     "AND old.origin = 'theirs';\n"
@@ -782,7 +749,7 @@ def update(sqlite_filename, pg_conn_info):
             scur.commit()
 
         scur.execute("CREATE UNIQUE INDEX IF NOT EXISTS "
-            +table+"_diff_idx ON "+table+"_diff(OGC_FID)")
+            +table+"_diff_idx ON "+table+"_diff(ogc_fid)")
         # insert and replace all in diff
         scur.execute("INSERT OR REPLACE INTO "+table+" ("+cols+") "
             "SELECT "+cols+" FROM "+table+"_diff")
@@ -882,25 +849,18 @@ def commit(sqlite_filename, commit_msg, pg_conn_info,commit_pg_user = ''):
         geom = (sql.find('GEOMETRY') != -1)
         scur.execute("DELETE FROM geometry_columns "
             "WHERE f_table_name = '"+table+"_diff'")
-        if gdal_version[0] < 2:
-            if geom:
-                scur.execute("INSERT INTO geometry_columns "
-                    "SELECT '"+table+"_diff', 'geometry', geometry_type, "
-                    "coord_dimension, srid, spatial_index_enabled "
-                    "FROM geometry_columns WHERE f_table_name = '"+table+"'")
-        else:
-            scur.execute("""
-                INSERT INTO geometry_columns
-                SELECT '{table}_diff', f_geometry_column, geometry_type,
-                coord_dimension, srid, spatial_index_enabled
-                FROM geometry_columns WHERE f_table_name = '{table}'
-                """.format(table=table))
+        scur.execute("""
+            INSERT INTO geometry_columns
+            SELECT '{table}_diff', f_geometry_column, geometry_type,
+            coord_dimension, srid, spatial_index_enabled
+            FROM geometry_columns WHERE f_table_name = '{table}'
+            """.format(table=table))
         scur.execute( "INSERT INTO "+table+"_diff "
                 "SELECT * "
                 "FROM "+table+" "
                 "WHERE "+branch+"_rev_end = "+str(rev)+" "
                 "OR "+branch+"_rev_begin > "+str(rev))
-        scur.execute( "SELECT OGC_FID FROM "+table+"_diff")
+        scur.execute( "SELECT ogc_fid FROM "+table+"_diff")
         there_is_something_to_commit = scur.fetchone()
         print "there_is_something_to_commit ", there_is_something_to_commit
         scur.commit()
@@ -935,7 +895,7 @@ def commit(sqlite_filename, commit_msg, pg_conn_info,commit_pg_user = ''):
                 table+"_diff",
                 '-nln', diff_schema+'.'+table+"_diff"]
         geoms = pg_geoms( pcur, table_schema, table )
-        if gdal_version[0] < 2 or len(pg_geoms( pcur, table_schema, table ))==1:
+        if len(pg_geoms( pcur, table_schema, table ))==1:
             cmd.insert(5, '-lco')
             cmd.insert(6, 'GEOMETRY_NAME='+pgeom)
 
@@ -966,29 +926,6 @@ def commit(sqlite_filename, commit_msg, pg_conn_info,commit_pg_user = ''):
                 "(rev, commit_msg, branch, author) "
                 "VALUES ("+str(rev+1)+", '"+escape_quote(commit_msg)+"', '"+branch+"',"
                 "'"+os_info()+":"+get_username()+"."+pg_username+"."+commit_pg_user+"')")
-
-        # TODO remove when ogr2ogr will be able to convert multiple geom column
-        # from postgis to spatialite
-        if len(geoms) > 1 and gdal_version[0] < 2: # TODO validate the precise version of gdal
-            dest_geom = ''
-            src_geom = ''
-            for geo in geoms:
-                if geo != pgeom:
-                    dest_geom += geo+', '
-                    src_geom += 'src.'+geo+', '
-            dest_geom = dest_geom[:-2]
-            src_geom = src_geom[:-2]
-            pgeom = pg_geom( pcur, table_schema, table )
-            pcur.execute("SELECT AddGeometryColumn('"+diff_schema+"', '"+table+"_diff', "
-                "'"+geo+"', srid, type, coord_dimension) FROM geometry_columns "
-                "WHERE f_table_name = '"+table+"' "
-                "AND f_table_schema = '"+table_schema+"' "
-                "AND f_geometry_column != '"+pgeom+"'")
-            pcur.execute("UPDATE "+diff_schema+"."+table+"_diff AS dest "
-                "SET ("+dest_geom+") =  ("+src_geom+") "
-                "FROM "+table_schema+"."+table+" AS src "
-                "WHERE dest."+branch+"_rev_begin = "+str(rev+1)+" "
-                "AND src."+pkey+" = dest."+branch+"_parent")
 
         other_branches = pg_branches( pcur, table_schema ).remove(branch)
         other_branches = other_branches if other_branches else []

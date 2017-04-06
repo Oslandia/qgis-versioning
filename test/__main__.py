@@ -2,7 +2,7 @@
 '''
 To run the test:
 
-  python -m qgis_versioning.test [-v]
+  python -m qgis_versioning.test
 
 All files must be in the 'test' directory and end with the string '_test.py'
 '''

@@ -1,18 +1,19 @@
 dist: trusty
-language: python
-
-install:
-  - pip install psycopg2
-  - pip install pyspatialite
 
 before_install:
-  - sudo apt-get install -y postgresql postgis gdal-bin qgis python-pyspatialite python-psycopg2 python-pip
-  - sudo pip install pyspatialite
-  - ls /usr/lib/python2.7/dist-packages/
-  - sudo python -m pip install pyspatialite
+  - sudo apt search gdal
+  - sudo service postgresql stop
+  - sudo apt-get install -y gdal-bin python-pyspatialite python-psycopg2 python-pip postgresql-9.5-postgis-2.3 g++ 
+  - sudo service postgresql restart
+  - wget http://download.osgeo.org/gdal/2.1.3/gdal-2.1.3.tar.gz
+  - tar -xvzf gdal-2.1.3.tar.gz
+  - cd gdal-2.1.3
+  - ./configure && make && sudo make install
 
 before_script:
   - python package.py -i
 
 script:
-- PYTHONPATH=~/.qgis2/python/plugins python -m qgis_versioning.test || PYTHONPATH=~/.qgis2/python/plugins python -m qgis_versioning.test -v
+  - python --version
+  - PYTHONPATH=/usr/lib/python2.7/dist-packages python -c 'from pyspatialite import dbapi2'
+  - PYTHONPATH=~/.qgis2/python/plugins:/usr/lib/python2.7/dist-packages python -m qgis_versioning.test || PYTHONPATH=~/.qgis2/python/plugins:/usr/lib/python2.7/dist-packages  python -m qgis_versioning.test -v

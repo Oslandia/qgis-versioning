@@ -5,11 +5,7 @@ import sys
 from subprocess import Popen, PIPE
 import platform
 
-iswin = any(platform.win32_ver())
-if iswin:
-    sys.stdout = open(os.devnull, 'w')
-
-def test():
+def test(verbose=True):
     __current_dir = os.path.abspath(os.path.dirname(__file__))
 
     tests = ["qgis_versioning.test."+file_[:-3]
@@ -25,7 +21,7 @@ def test():
         out, err = child.communicate()
         if child.returncode:
             sys.stdout.write("failed\n")
-            if len(sys.argv) == 2 and sys.argv[1] == '-v':
+            if verbose:
                 sys.stdout.write(err)
             failed += 1
         else:

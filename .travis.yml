@@ -3,12 +3,8 @@ dist: trusty
 before_install:
   - sudo apt search gdal
   - sudo service postgresql stop
-  - sudo apt-get install -y gdal-bin python-pyspatialite python-psycopg2 python-pip postgresql-9.5-postgis-2.3 g++ 
+  - sudo apt-get install -y gdal-bin python-pyspatialite python-psycopg2 python-pip postgresql-9.5-postgis-2.3
   - sudo service postgresql restart
-  - wget http://download.osgeo.org/gdal/2.1.3/gdal-2.1.3.tar.gz
-  - tar -xvzf gdal-2.1.3.tar.gz
-  - cd gdal-2.1.3
-  - ./configure && make && sudo make install
 
 before_script:
   - python package.py -i

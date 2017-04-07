@@ -18,7 +18,8 @@ if __name__ == "__main__":
     os.system("dropdb epanet_test_db")
     os.system("createdb epanet_test_db")
     os.system("psql epanet_test_db -c 'CREATE EXTENSION postgis'")
-    os.system("psql epanet_test_db -f "+test_data_dir+"/epanet_test_db.sql")
+    os.system("psql epanet_test_db -f "+test_data_dir+"/epanet_test_db_unversioned.sql")
+    
 
     pcon = psycopg2.connect("dbname=epanet_test_db")
     pcur = pcon.cursor()
@@ -36,6 +37,7 @@ if __name__ == "__main__":
                 ))
     pcon.commit()
     pcon.close()
+    versioning.historize('dbname=epanet_test_db', 'epanet')
 
     versioning.checkout("dbname=epanet_test_db",["epanet_trunk_rev_head.junctions","epanet_trunk_rev_head.pipes"], sqlite_test_filename)
     assert( os.path.isfile(sqlite_test_filename) and "sqlite file must exist at this point" )

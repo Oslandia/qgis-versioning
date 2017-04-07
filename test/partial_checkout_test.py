@@ -10,7 +10,7 @@ if __name__ == "__main__":
     tmp_dir = tempfile.gettempdir()
     test_data_dir = os.path.dirname(os.path.realpath(__file__))
 
-    sqlite_test_filename = tmp_dir+"/versioning_base_test1.sqlite"
+    sqlite_test_filename = tmp_dir+"/partial_checkout_test.sqlite"
     if os.path.isfile(sqlite_test_filename):
         os.remove(sqlite_test_filename)
 

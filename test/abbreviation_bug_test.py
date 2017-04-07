@@ -10,7 +10,7 @@ if __name__ == "__main__":
     tmp_dir = tempfile.gettempdir()
     test_data_dir = os.path.dirname(os.path.realpath(__file__))
 
-    sqlite_test_filename = tmp_dir+"/versioning_base_test1.sqlite"
+    sqlite_test_filename = tmp_dir+"/abbreviation_test.sqlite"
     if os.path.isfile(sqlite_test_filename):
         os.remove(sqlite_test_filename)
 
@@ -36,7 +36,6 @@ if __name__ == "__main__":
                 y=float(i+1)
                 ))
     pcon.commit()
-    pcon.close()
     versioning.historize('dbname=epanet_test_db', 'epanet')
 
     versioning.checkout("dbname=epanet_test_db",["epanet_trunk_rev_head.junctions","epanet_trunk_rev_head.pipes"], sqlite_test_filename)
@@ -48,3 +47,15 @@ if __name__ == "__main__":
     for rec in scur:
         if rec[0] > 2:
             assert rec[1].find('_this_is_a_very_long_name_that should_be_trunctated_if_buggy') != -1
+
+    scur.execute("update junctions_view set id=id||'_this_is_another_edited_very_long_name_that should_be_trunctated_if_buggy' where ogc_fid > 3")
+    scon.commit()
+
+    versioning.commit(sqlite_test_filename, 'a commit msg', "dbname=epanet_test_db")
+
+    pcur.execute("select jid, id from epanet_trunk_rev_head.junctions")
+    for row in pcur:
+        if row[0] > 3:
+            assert row[1].find('_this_is_another_edited_very_long_name_that should_be_trunctated_if_buggy') != -1
+
+

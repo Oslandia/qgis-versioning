@@ -938,17 +938,24 @@ def commit(sqlite_filename, commit_msg, pg_conn_info,commit_pg_user = ''):
             [brch+'_rev_begin', brch+'_rev_end',
             brch+'_parent', brch+'_child']
             for brch in other_branches], [])
-        pcur.execute("SELECT column_name, data_type "
-                "FROM information_schema.columns "
-                "WHERE table_schema = '"+table_schema+"' "
-                "AND table_name = '"+table+"'")
+        pcur.execute("""
+            SELECT column_name, data_type, character_maximum_length
+            FROM information_schema.columns
+            WHERE table_schema = '{table_schema}'
+            AND table_name = '{table}'
+            """.format(table_schema=table_schema, table=table))
         cols = ""
         cols_cast = ""
         for col in pcur.fetchall():
             if col[0] not in other_branches_columns:
                 cols += quote_ident(col[0])+", "
                 if col[1] != 'ARRAY':
-                    cast = "::"+col[1] if col[1] != 'USER-DEFINED' else ""
+                    if col[1] == 'USER-DEFINED':
+                        cast = ""
+                    elif col[1] == 'character' and col[2]:
+                        cast = "::varchar"
+                    else:
+                        cast = "::"+col[1] 
                     cols_cast += quote_ident(col[0])+cast+", "
                 else :
                     cols_cast += ("regexp_replace(regexp_replace("
@@ -1010,12 +1017,14 @@ def historize( pg_conn_info, schema ):
         raise RuntimeError("no schema specified")
     pcur = Db(psycopg2.connect(pg_conn_info))
 
-    pcur.execute("CREATE TABLE "+schema+".revisions ("
-        "rev serial PRIMARY KEY, "
-        "commit_msg varchar, "
-        "branch varchar DEFAULT 'trunk', "
-        "date timestamp DEFAULT current_timestamp, "
-        "author varchar)")
+    pcur.execute("""
+        CREATE TABLE {schema}.revisions (
+            rev serial PRIMARY KEY,
+            commit_msg varchar,
+            branch varchar DEFAULT 'trunk',
+            date timestamp DEFAULT current_timestamp,
+            author varchar)
+            """.format(schema=schema))
     pcur.commit()
     pcur.close()
     add_branch( pg_conn_info, schema, 'trunk', 'initial commit' )

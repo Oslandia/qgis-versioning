@@ -25,6 +25,10 @@ iswin = any(platform.win32_ver())
 if iswin:
     sys.stdout = open(os.devnull, 'w')
 
+gdal_mac_path = "/Library/Frameworks/GDAL.framework/Programs"
+if any(platform.mac_ver()) and gdal_mac_path not in os.environ["PATH"]:
+    os.environ["PATH"] += ":"+gdal_mac_path
+    
 def os_info():
     os_type = platform.system()
     if os_type == "Linux":

@@ -48,14 +48,18 @@ if __name__ == "__main__":
         if rec[0] > 2:
             assert rec[1].find('_this_is_a_very_long_name_that should_be_trunctated_if_buggy') != -1
 
-    scur.execute("update junctions_view set id=id||'_this_is_another_edited_very_long_name_that should_be_trunctated_if_buggy' where ogc_fid > 3")
+    scur.execute("update junctions_view set id='this_is_another_edited_very_long_name_that should_be_trunctated_if_buggy' where ogc_fid > 8")
+
+    scur.execute("insert into junctions_view(id, elevation, geometry) select 'newly inserted with long name', elevation, geometry from junctions_view where ogc_fid=4")
     scon.commit()
 
     versioning.commit(sqlite_test_filename, 'a commit msg', "dbname=epanet_test_db")
 
     pcur.execute("select jid, id from epanet_trunk_rev_head.junctions")
     for row in pcur:
-        if row[0] > 3:
-            assert row[1].find('_this_is_another_edited_very_long_name_that should_be_trunctated_if_buggy') != -1
+        print row
+        if row[0] > 8:
+            assert row[1].find('this_is_another_edited_very_long_name_that should_be_trunctated_if_buggy') != -1\
+                or row[1].find('newly inserted with long name') != -1
 
 

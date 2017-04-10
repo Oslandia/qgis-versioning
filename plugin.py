@@ -888,7 +888,7 @@ class Plugin(QObject):
             actual_table_pk = versioning.get_actual_pk( uri,self.pg_conn_info() )
             #print "Actual table pk = " + actual_table_pk
 
-            layer_selected_features_ids = layer.selectedFeaturesIds()
+            layer_selected_features_ids = [f[actual_table_pk] for f in layer.selectedFeatures()]
 
             # Check if PK from view [uri.keyColumn()] matches actual PK. If not,
             # throw error.  We need the right PK from the view in order to use

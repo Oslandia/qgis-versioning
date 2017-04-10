@@ -6,18 +6,18 @@ import shutil
 
 def prtTab( cur, tab ):
     print "--- ",tab," ---"
-    pcur.execute("SELECT pid, trunk_rev_begin, trunk_rev_end, trunk_parent, trunk_child, length FROM "+tab)
-    for r in pcur.fetchall():
+    cur.execute("SELECT pid, trunk_rev_begin, trunk_rev_end, trunk_parent, trunk_child, length FROM "+tab)
+    for r in cur.fetchall():
         t = []
         for i in r: t.append(str(i))
         print '\t| '.join(t)
 
 def prtHid( cur, tab ):
     print "--- ",tab," ---"
-    pcur.execute("SELECT pid FROM "+tab)
-    for [r] in pcur.fetchall(): print r
+    cur.execute("SELECT pid FROM "+tab)
+    for [r] in cur.fetchall(): print r
 
-if __name__ == "__main__":
+def test():
     test_data_dir = os.path.dirname(os.path.realpath(__file__))
 
     # create the test database
@@ -65,3 +65,5 @@ if __name__ == "__main__":
         pcur.close()
 
 
+if __name__ == "__main__":
+    test()

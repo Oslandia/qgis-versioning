@@ -6,7 +6,7 @@ import psycopg2
 import os
 import tempfile
 
-if __name__ == "__main__":
+def test():
     tmp_dir = tempfile.gettempdir()
     test_data_dir = os.path.dirname(os.path.realpath(__file__))
 
@@ -146,3 +146,6 @@ if __name__ == "__main__":
     #('i', 3, '1', 8.0, None, None, '01010000206A0800000000000000000000000000000000F03F', 2, 2, 2, 4),
     #('a', 5, '10', 100.0, None, None, '01010000206A08000000000000000000400000000000000000', 4, None, None, None),
     #('d', 1, '0', 0.0, None, None, '01010000206A080000000000000000F03F0000000000000000', 1, 4, None, None)]
+
+if __name__ == "__main__":
+    test()

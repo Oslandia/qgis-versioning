@@ -7,7 +7,7 @@ import os
 import shutil
 import tempfile
 
-if __name__ == "__main__":
+def test():
     test_data_dir = os.path.dirname(os.path.realpath(__file__))
     tmp_dir = tempfile.gettempdir()
 
@@ -104,3 +104,6 @@ if __name__ == "__main__":
     assert( len(pcur.fetchall()) == 1 )
 
     pcur.close()
+
+if __name__ == "__main__":
+    test()

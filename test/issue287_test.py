@@ -5,8 +5,7 @@ import os
 import shutil
 import tempfile
 
-if __name__ == "__main__":
-
+def test():
     test_data_dir = os.path.dirname(os.path.realpath(__file__))
     tmp_dir = tempfile.gettempdir()
 
@@ -21,3 +20,7 @@ if __name__ == "__main__":
     shutil.copyfile(test_data_dir+"/issue287_wc.sqlite", tmp_dir+"/issue287_wc.sqlite")
     versioning.update(tmp_dir+"/issue287_wc.sqlite", "dbname=epanet_test_db")
     versioning.commit(tmp_dir+"/issue287_wc.sqlite", "test message", "dbname=epanet_test_db")
+
+if __name__ == "__main__":
+    test()
+

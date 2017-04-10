@@ -6,7 +6,7 @@ import os
 import shutil
 import tempfile
 
-if __name__ == "__main__":
+def test():
     test_data_dir = os.path.dirname(os.path.realpath(__file__))
     tmp_dir = tempfile.gettempdir()
 
@@ -32,3 +32,6 @@ if __name__ == "__main__":
     scur.execute("UPDATE pipes_view SET length = 2 WHERE OGC_FID = 2")
     scur.execute("SELECT * FROM pipes")
     assert( len(scur.fetchall()) == 2 )
+
+if __name__ == "__main__":
+    test()

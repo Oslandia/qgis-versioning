@@ -6,7 +6,7 @@ import os
 import shutil
 import tempfile
 
-if __name__ == "__main__":
+def test():
 
     test_data_dir = os.path.dirname(os.path.realpath(__file__))
     tmp_dir = tempfile.gettempdir()
@@ -94,3 +94,5 @@ if __name__ == "__main__":
     for r in scur[1].fetchall():
         print r
 
+if __name__ == "__main__":
+    test()

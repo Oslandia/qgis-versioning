@@ -6,7 +6,7 @@ import os
 import shutil
 import tempfile
 
-if __name__ == "__main__":
+def test():
     test_data_dir = os.path.dirname(os.path.realpath(__file__))
     tmp_dir = tempfile.gettempdir()
 
@@ -132,3 +132,6 @@ if __name__ == "__main__":
     assert( res[0][0] == 'POINT(3 3)' )
     assert( res[1][1] == 'POLYGON((0 0,2 0,2 2,0 2,0 0))' )
     pcur.close()
+
+if __name__ == "__main__":
+    test()

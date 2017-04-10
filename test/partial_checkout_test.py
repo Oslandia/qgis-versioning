@@ -6,7 +6,7 @@ import psycopg2
 import os
 import tempfile
 
-if __name__ == "__main__":
+def test():
     tmp_dir = tempfile.gettempdir()
     test_data_dir = os.path.dirname(os.path.realpath(__file__))
 
@@ -46,3 +46,6 @@ if __name__ == "__main__":
     scur = scon.cursor()
     scur.execute("SELECT * from junctions")
     assert len(scur.fetchall()) ==  3
+
+if __name__ == "__main__":
+    test()

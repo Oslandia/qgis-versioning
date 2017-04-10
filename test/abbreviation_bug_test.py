@@ -6,7 +6,7 @@ import psycopg2
 import os
 import tempfile
 
-if __name__ == "__main__":
+def test():
     tmp_dir = tempfile.gettempdir()
     test_data_dir = os.path.dirname(os.path.realpath(__file__))
 
@@ -62,4 +62,6 @@ if __name__ == "__main__":
             assert row[1].find('this_is_another_edited_very_long_name_that should_be_trunctated_if_buggy') != -1\
                 or row[1].find('newly inserted with long name') != -1
 
+if __name__ == "__main__":
+    test()
 

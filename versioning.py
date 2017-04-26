@@ -1286,7 +1286,7 @@ def revisions(pg_conn_info, schema):
 # we need the initial_revision table all the same
 # for each table we need a diff and a view and triggers
 
-def pg_checkout(pg_conn_info, pg_table_names, working_copy_schema):
+def pg_checkout(pg_conn_info, pg_table_names, working_copy_schema, selected_feature_lists = []):
     """create postgres working copy from versioned database tables
     pg_table_names must be complete schema.table names
     the schema name must end with _branch_rev_head
@@ -1310,7 +1310,7 @@ def pg_checkout(pg_conn_info, pg_table_names, working_copy_schema):
     pcur.execute("CREATE SCHEMA "+wcs)
 
     first_table = True
-    for pg_table_name in pg_table_names:
+    for pg_table_name, feature_list in list(izip_longest(pg_table_names, selected_feature_lists)):
         [schema, table] = pg_table_name.split('.')
         [schema, sep, branch] = schema[:-9].rpartition('_')
         del sep
@@ -1371,26 +1371,44 @@ def pg_checkout(pg_conn_info, pg_table_names, working_copy_schema):
             "REFERENCES "+wcs+"."+table+"_diff("+pkey+") "
             "ON UPDATE CASCADE ON DELETE CASCADE")
 
+        if feature_list:
+            additional_filter = "AND t.{pkey} IN ({features})".format(
+                    pkey=pkey,
+                    features = ','.join(str(f) for f in feature_list)
+                    )
+        else:
+            additional_filter = ""
 
         current_rev_sub = "(SELECT MAX(rev) FROM "+wcs+".initial_revision)"
-        pcur.execute("CREATE VIEW "+wcs+"."+table+"_view AS "
-                "SELECT "+pkey+", "+cols+" "
-                "FROM (SELECT "+cols+", "+hcols+" FROM "+wcs+"."+table+"_diff "
-                        "WHERE ("+branch+"_rev_end IS NULL "
-                        "OR "+branch+"_rev_end >= "+current_rev_sub+"+1 ) "
-                        "AND "+branch+"_rev_begin IS NOT NULL "
-                        "UNION "
-                        "(SELECT DISTINCT ON ("+pkey+") "+cols+", t."+hcols+" "
-                        "FROM "+schema+"."+table+" AS t "
-                        "LEFT JOIN (SELECT "+pkey+" FROM "+wcs+"."+table+"_diff) "
-                        "AS d "
-                        "ON t."+pkey+" = d."+pkey+" "
-                        "WHERE d."+pkey+" IS NULL "
-                        "AND t."+branch+"_rev_begin <= "+current_rev_sub+" "
-                        "AND ((t."+branch+"_rev_end IS NULL "
-                            "OR t."+branch+"_rev_end >= "+current_rev_sub+") "
-                            "AND t."+branch+"_rev_begin IS NOT NULL ))"
-                        ") AS src ")
+        pcur.execute("""
+            CREATE VIEW {wcs}.{table}_view AS 
+            SELECT {pkey}, {cols} 
+            FROM (
+                SELECT {cols}, {hcols}
+                FROM {wcs}.{table}_diff 
+                WHERE ({branch}_rev_end IS NULL OR {branch}_rev_end >= {current_rev_sub}+1 ) 
+                AND {branch}_rev_begin IS NOT NULL 
+                UNION 
+                SELECT DISTINCT ON ({pkey}) {cols}, t.{hcols} 
+                FROM {schema}.{table} AS t 
+                LEFT JOIN (SELECT {pkey} FROM {wcs}.{table}_diff) AS d ON t.{pkey} = d.{pkey} 
+                WHERE d.{pkey} IS NULL 
+                AND t.{branch}_rev_begin <= {current_rev_sub} 
+                AND ((t.{branch}_rev_end IS NULL 
+                    OR t.{branch}_rev_end >= {current_rev_sub}) 
+                    AND t.{branch}_rev_begin IS NOT NULL)
+                {additional_filter}
+            ) AS src """.format(
+                wcs=wcs,
+                schema=schema,
+                table=table,
+                pkey=pkey,
+                cols=cols,
+                hcols=hcols,
+                branch=branch,
+                current_rev_sub=current_rev_sub,
+                additional_filter=additional_filter
+            ))
 
         max_fid_sub = ("( SELECT MAX(max_fid) FROM ( SELECT MAX("+pkey+") "
             "AS max_fid FROM "+wcs+"."+table+"_diff "

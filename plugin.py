@@ -909,6 +909,7 @@ class Plugin(QObject):
                     user_selected_features.append(layer_selected_features_ids)
             else:
                 user_selected_features.append([])
+                
             if not conn_info:
                 conn_info = uri.connectionInfo()
             else:
@@ -952,11 +953,39 @@ class Plugin(QObject):
         database layers"""
         # for each connection, we need the list of tables
         tables_for_conninfo = []
+        user_selected_features = []
         uri = None
         conn_info = ''
         for layer_id in self.current_layers:
             layer = QgsMapLayerRegistry.instance().mapLayer( layer_id )
             uri = QgsDataSourceURI(layer.source())
+
+            # Get actual PK fror corresponding table
+            actual_table_pk = versioning.get_actual_pk( uri,self.pg_conn_info() )
+            #print "Actual table pk = " + actual_table_pk
+
+            layer_selected_features_ids = [f[actual_table_pk] for f in layer.selectedFeatures()]
+
+            # Check if PK from view [uri.keyColumn()] matches actual PK. If not,
+            # throw error.  We need the right PK from the view in order to use
+            # the efficient selectedFeaturesIds().  selectedFeatures() or other
+            # ways that lead to a list of QGSFeature objects do not scale well.
+            if layer_selected_features_ids:
+                if uri.keyColumn()!= actual_table_pk:
+                    QMessageBox.warning(None,"Warning","Layer  \""+layer.name()+
+                    " \" does not have the right primary key.\n\nCheckout will "
+                    "proceed without the selected features subset.")
+                    user_selected_features.append([])
+                else:
+                    QMessageBox.warning(None,"Warning","You will be checking out "
+                    "the subset of "+str(len(layer_selected_features_ids))+" features "
+                    "you selected in layer \""+layer.name()+"\".\n\nIf you want "
+                    "the whole data set for that layer, abort checkout in the pop "
+                    "up asking for a filename, unselect features and start over.")
+                    user_selected_features.append(layer_selected_features_ids)
+            else:
+                user_selected_features.append([])
+                
             if not conn_info:
                 conn_info = uri.connectionInfo()
             else:
@@ -1003,7 +1032,7 @@ class Plugin(QObject):
             return
         print "checking out ", tables_for_conninfo, " from ", uri.connectionInfo()
         versioning.pg_checkout( self.pg_conn_info(),
-                tables_for_conninfo, working_copy_schema )
+                tables_for_conninfo, working_copy_schema, user_selected_features )
 
         # add layers from offline version
         grp_idx = self.iface.legendInterface().addGroup( working_copy_schema )

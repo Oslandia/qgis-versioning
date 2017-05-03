@@ -39,6 +39,8 @@ def test():
     pcon.close()
 
     versioning.historize('dbname=epanet_test_db', 'epanet')
+
+    # spatialite working copy
     versioning.checkout("dbname=epanet_test_db",["epanet_trunk_rev_head.junctions","epanet_trunk_rev_head.pipes"], sqlite_test_filename, [[1, 2, 3], []])
     assert( os.path.isfile(sqlite_test_filename) and "sqlite file must exist at this point" )
 
@@ -46,6 +48,15 @@ def test():
     scur = scon.cursor()
     scur.execute("SELECT * from junctions")
     assert len(scur.fetchall()) ==  3
+
+    # postgres working copy
+    versioning.pg_checkout("dbname=epanet_test_db",["epanet_trunk_rev_head.junctions","epanet_trunk_rev_head.pipes"], 'my_working_copy', [[1, 2, 3], []])
+
+    pcon = psycopg2.connect("dbname=epanet_test_db")
+    pcur = pcon.cursor()
+    pcur.execute("SELECT * from my_working_copy.junctions_view")
+    assert len(pcur.fetchall()) ==  3
+
 
 if __name__ == "__main__":
     test()

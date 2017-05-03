@@ -6,7 +6,7 @@
 name=versioning
 qgisMinimumVersion=2.8
 description=postgis database versioning
-version=0.7
+version=0.8
 author=Oslandia
 email=infos@oslandia.com
 about=A tool to manage data history, branches, and to work offline with your PostGIS-stored data and QGIS.

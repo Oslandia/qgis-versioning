@@ -16,7 +16,7 @@ import platform
 import sys
 import traceback
 
-DEBUG = False
+DEBUG = True
 
 # Deactivate stdout (like output of print statements) because windows
 # causes occasional "IOError [Errno 9] File descriptor error"
@@ -959,7 +959,7 @@ def commit(sqlite_filename, commit_msg, pg_conn_info,commit_pg_user = ''):
                     cols_cast += quote_ident(col[0])+cast+", "
                 else :
                     cols_cast += ("regexp_replace(regexp_replace("
-                            +col[0]+",'^\(.*:','{'),'\)$','}')::"
+                            +col[0]+"::varchar,'^\(.*:','{'),'\)$','}')::"
                             +pg_array_elem_type(pcur,
                                 table_schema, table, col[0])+"[], ")
         cols = cols[:-2] # remove last coma and space

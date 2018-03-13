@@ -16,7 +16,7 @@ import platform
 import sys
 import traceback
 
-DEBUG = True
+DEBUG = False
 
 # Deactivate stdout (like output of print statements) because windows
 # causes occasional "IOError [Errno 9] File descriptor error"
@@ -468,6 +468,10 @@ def checkout(pg_conn_info, pg_table_names, sqlite_filename, selected_feature_lis
                     "SET "+branch+"_rev_end = "+current_rev_sub+" "
                     "WHERE ogc_fid = old.ogc_fid "
                     "AND "+branch+"_rev_begin < "+current_rev_sub+"+1;\n"
+              # update its parent if its modified
+                "UPDATE "+table+" "
+                    "SET "+branch+"_rev_end = "+current_rev_sub+", "+branch+"_child = NULL "
+                    "WHERE "+branch+"_child = old.ogc_fid;\n"
               # delete it if its new and remove it from child
                 "UPDATE "+table+" "
                     "SET "+branch+"_child = NULL "

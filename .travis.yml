@@ -3,7 +3,7 @@ dist: trusty
 before_install:
   - sudo apt search gdal
   - sudo service postgresql stop
-  - sudo apt-get install -y gdal-bin python-pyspatialite python-psycopg2 python-pip postgresql-9.5-postgis-2.3
+  - sudo apt-get install -y gdal-bin python-pyspatialite python-psycopg2 python-pip postgresql-9.5-postgis-2.3 postgresql-9.5-postgis-scripts
   - sudo service postgresql restart
 
 before_script:

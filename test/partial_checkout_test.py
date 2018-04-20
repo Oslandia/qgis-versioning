@@ -1,7 +1,5 @@
 #!/usr/bin/python
 from .. import versioning
-
-from pyspatialite import dbapi2
 import psycopg2
 import os
 import tempfile
@@ -44,7 +42,7 @@ def test():
     versioning.checkout("dbname=epanet_test_db",["epanet_trunk_rev_head.junctions","epanet_trunk_rev_head.pipes"], sqlite_test_filename, [[1, 2, 3], []])
     assert( os.path.isfile(sqlite_test_filename) and "sqlite file must exist at this point" )
 
-    scon = dbapi2.connect(sqlite_test_filename)
+    scon = versioning.spatialite_connect(sqlite_test_filename)
     scur = scon.cursor()
     scur.execute("SELECT * from junctions")
     assert len(scur.fetchall()) ==  3

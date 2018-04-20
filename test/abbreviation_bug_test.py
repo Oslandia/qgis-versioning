@@ -1,7 +1,5 @@
 #!/usr/bin/python
 from .. import versioning
-
-from pyspatialite import dbapi2
 import psycopg2
 import os
 import tempfile
@@ -41,7 +39,7 @@ def test():
     versioning.checkout("dbname=epanet_test_db",["epanet_trunk_rev_head.junctions","epanet_trunk_rev_head.pipes"], sqlite_test_filename)
     assert( os.path.isfile(sqlite_test_filename) and "sqlite file must exist at this point" )
 
-    scon = dbapi2.connect(sqlite_test_filename)
+    scon = versioning.spatialite_connect(sqlite_test_filename)
     scur = scon.cursor()
     scur.execute("SELECT * from junctions")
     for rec in scur:
@@ -57,7 +55,7 @@ def test():
 
     pcur.execute("select jid, id from epanet_trunk_rev_head.junctions")
     for row in pcur:
-        print row
+        print(row)
         if row[0] > 8:
             assert row[1].find('this_is_another_edited_very_long_name_that should_be_trunctated_if_buggy') != -1\
                 or row[1].find('newly inserted with long name') != -1

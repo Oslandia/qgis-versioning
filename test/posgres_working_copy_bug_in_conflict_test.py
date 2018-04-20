@@ -5,17 +5,17 @@ import os
 import shutil
 
 def prtTab( cur, tab ):
-    print "--- ",tab," ---"
+    print("--- ",tab," ---")
     cur.execute("SELECT pid, trunk_rev_begin, trunk_rev_end, trunk_parent, trunk_child, length FROM "+tab)
     for r in cur.fetchall():
         t = []
         for i in r: t.append(str(i))
-        print '\t| '.join(t)
+        print('\t| '.join(t))
 
 def prtHid( cur, tab ):
-    print "--- ",tab," ---"
+    print("--- ",tab," ---")
     cur.execute("SELECT pid FROM "+tab)
-    for [r] in cur.fetchall(): print r
+    for [r] in cur.fetchall(): print(r)
 
 def test():
     test_data_dir = os.path.dirname(os.path.realpath(__file__))
@@ -33,7 +33,7 @@ def test():
         tables = ['epanet_trunk_rev_head.junctions', 'epanet_trunk_rev_head.pipes']
         versioning.pg_checkout("dbname=epanet_test_db",tables, "wc1")
         versioning.pg_checkout("dbname=epanet_test_db",tables, "wc2")
-        print "checkout done"
+        print("checkout done")
 
         pcur.execute("UPDATE wc1.pipes_view SET length = 4 WHERE pid = 1")
         prtTab( pcur, "wc1.pipes_diff")
@@ -43,12 +43,12 @@ def test():
 
         #pcur = versioning.Db(psycopg2.connect("dbname=epanet_test_db"))
 
-        print "commited"
+        print("commited")
         pcur.execute("UPDATE wc2.pipes_view SET length = 5 WHERE pid = 1")
         prtTab( pcur, "wc2.pipes_diff")
         pcur.commit()
         versioning.pg_update("dbname=epanet_test_db","wc2")
-        print "updated"
+        print("updated")
         prtTab( pcur, "wc2.pipes_diff")
         prtTab( pcur, "wc2.pipes_conflicts")
 

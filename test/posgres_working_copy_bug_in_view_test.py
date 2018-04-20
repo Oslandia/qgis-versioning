@@ -5,17 +5,17 @@ import os
 import shutil
 
 def prtTab( cur, tab ):
-    print "--- ",tab," ---"
+    print("--- ",tab," ---")
     cur.execute("SELECT pid, trunk_rev_begin, trunk_rev_end, trunk_parent, trunk_child, length FROM "+tab)
     for r in cur.fetchall():
         t = []
         for i in r: t.append(str(i))
-        print '\t| '.join(t)
+        print('\t| '.join(t))
 
 def prtHid( cur, tab ):
-    print "--- ",tab," ---"
+    print("--- ",tab," ---")
     cur.execute("SELECT pid FROM "+tab)
-    for [r] in cur.fetchall(): print r
+    for [r] in cur.fetchall(): print(r)
 
 def test():
     test_data_dir = os.path.dirname(os.path.realpath(__file__))

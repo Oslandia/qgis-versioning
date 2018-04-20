@@ -1,6 +1,5 @@
 #!/usr/bin/python
 from .. import versioning
-from pyspatialite import dbapi2
 import psycopg2
 import os
 import shutil
@@ -83,18 +82,18 @@ def test():
     versioning.checkout( pg_conn_info, ['epanet_trunk_rev_head.pipes','epanet_trunk_rev_head.junctions'], wc )
 
 
-    scur = versioning.Db( dbapi2.connect(wc) )
+    scur = versioning.Db( versioning.spatialite_connect(wc) )
     scur.execute("UPDATE junctions_view SET GEOMETRY = GeometryFromText('POINT(3 3)',2154) WHERE OGC_FID = 1")
     scur.commit()
     scur.execute("SELECT * from junctions_view")
-    print "--------------"
-    for res in scur.fetchall(): print res
+    print("--------------")
+    for res in scur.fetchall(): print(res)
     scur.close()
     versioning.commit( wc, 'moved a junction', 'dbname=epanet_test_db' )
 
     pcur.execute("SELECT ST_AsText(geometry), ST_AsText(geometry_schematic), printmap FROM epanet_trunk_rev_head.junctions ORDER BY hid DESC")
     res = pcur.fetchall()
-    for r in res: print r
+    for r in res: print(r)
     assert( res[0][0] == 'POINT(3 3)' )
     assert( res[0][1] == 'POLYGON((-1 -1,1 -1,1 1,-1 1,-1 -1))' )
     assert( res[0][2] == [1, 2, 3] )

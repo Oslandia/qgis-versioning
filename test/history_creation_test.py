@@ -1,7 +1,6 @@
 #!/usr/bin/python
 
 from .. import versioning
-from pyspatialite import dbapi2
 import psycopg2
 import os
 import shutil

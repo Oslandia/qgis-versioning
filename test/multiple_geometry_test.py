@@ -1,6 +1,5 @@
 # coding = utf-8
 from .. import versioning
-from pyspatialite import dbapi2
 import psycopg2
 import os
 import shutil
@@ -99,11 +98,11 @@ def test():
     ##assert( len(pcur.fetchall()) == 1 )
 
     select_and_where_str =  versioning.rev_view_str( pg_conn_info, 'epanet', 'junctions','mybranch', 2)
-    #print select_and_where_str[0] + " WHERE " + select_and_where_str[1]
+    #print(select_and_where_str[0] + " WHERE " + select_and_where_str[1])
     pcur.execute(select_and_where_str[0] + " WHERE " + select_and_where_str[1])
     assert( len(pcur.fetchall()) == 2 )
     select_and_where_str =  versioning.rev_view_str( pg_conn_info, 'epanet', 'pipes','mybranch', 2)
-    #print select_and_where_str[0] + " WHERE " + select_and_where_str[1]
+    #print(select_and_where_str[0] + " WHERE " + select_and_where_str[1])
     pcur.execute(select_and_where_str[0] + " WHERE " + select_and_where_str[1])
     assert( len(pcur.fetchall()) == 1 )
 
@@ -119,7 +118,7 @@ def test():
     versioning.checkout( pg_conn_info, ['epanet_trunk_rev_head.pipes','epanet_trunk_rev_head.junctions'], wc )
 
 
-    scur = versioning.Db( dbapi2.connect(wc) )
+    scur = versioning.Db( versioning.spatialite_connect(wc) )
     scur.execute("UPDATE junctions_view SET GEOMETRY = GeometryFromText('POINT(3 3)',2154)")
     scur.commit()
     scur.close()
@@ -128,7 +127,7 @@ def test():
 
     pcur.execute("SELECT ST_AsText(geometry), ST_AsText(geometry_schematic) FROM epanet_trunk_rev_head.junctions")
     res = pcur.fetchall()
-    for r in res: print r
+    for r in res: print(r)
     assert( res[0][0] == 'POINT(3 3)' )
     assert( res[1][1] == 'POLYGON((0 0,2 0,2 2,0 2,0 0))' )
     pcur.close()

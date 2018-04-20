@@ -1,6 +1,5 @@
 #!/usr/bin/python
 from .. import versioning
-from pyspatialite import dbapi2
 import psycopg2
 import os
 import shutil
@@ -99,11 +98,11 @@ def test():
     ##assert( len(pcur.fetchall()) == 1 )
 
     select_and_where_str =  versioning.rev_view_str( pg_conn_info, 'epanet', 'junctions','mybranch', 2)
-    print select_and_where_str[0] + " WHERE " + select_and_where_str[1]
+    print(select_and_where_str[0] + " WHERE " + select_and_where_str[1])
     pcur.execute(select_and_where_str[0] + " WHERE " + select_and_where_str[1])
     assert( len(pcur.fetchall()) == 2 )
     select_and_where_str =  versioning.rev_view_str( pg_conn_info, 'epanet', 'pipes','mybranch', 2)
-    print select_and_where_str[0] + " WHERE " + select_and_where_str[1]
+    print(select_and_where_str[0] + " WHERE " + select_and_where_str[1])
     pcur.execute(select_and_where_str[0] + " WHERE " + select_and_where_str[1])
     assert( len(pcur.fetchall()) == 1 )
 
@@ -119,7 +118,7 @@ def test():
     versioning.checkout( pg_conn_info, ['epanet_trunk_rev_head.pipes','epanet_trunk_rev_head.junctions'], wc )
 
 
-    scur = versioning.Db( dbapi2.connect(wc) )
+    scur = versioning.Db( versioning.spatialite_connect(wc) )
     scur.execute("UPDATE junctions_view SET GEOMETRY = GeometryFromText('POINT(3 3)',2154) WHERE OGC_FID = 1")
     scur.commit()
     scur.close()
@@ -127,7 +126,7 @@ def test():
 
     pcur.execute("SELECT ST_AsText(geometry), ST_AsText(geometry_schematic) FROM epanet_trunk_rev_head.junctions ORDER BY hid DESC")
     res = pcur.fetchall()
-    for r in res: print r
+    for r in res: print(r)
     assert( res[0][0] == 'POINT(3 3)' )
     assert( res[0][1] == 'POLYGON((-1 -1,1 -1,1 1,-1 1,-1 -1))' )
 
@@ -138,27 +137,27 @@ def test():
 
     pcur = versioning.Db(psycopg2.connect(pg_conn_info))
     pcur.execute("SELECT hid, trunk_rev_begin, trunk_rev_end, b1_rev_begin, b1_rev_end FROM epanet.junctions ORDER BY hid")
-    for r in pcur.fetchall(): print r
+    for r in pcur.fetchall(): print(r)
     pcur.close()
 
     # edit a little with a new wc
     os.remove(wc)
     versioning.checkout( pg_conn_info, ['epanet_b1_rev_head.junctions'], wc )
 
-    scur = versioning.Db( dbapi2.connect(wc) )
+    scur = versioning.Db( versioning.spatialite_connect(wc) )
     scur.execute("UPDATE junctions_view SET GEOMETRY = GeometryFromText('POINT(4 4)',2154) WHERE OGC_FID = 3")
     scur.commit()
     scur.execute("PRAGMA table_info(junctions_view)")
-    print "-----------------"
-    for r in scur.fetchall(): print r
+    print("-----------------")
+    for r in scur.fetchall(): print(r)
     scur.close()
 
     versioning.commit( wc, 'moved a junction', 'dbname=epanet_test_db' )
 
     pcur = versioning.Db(psycopg2.connect(pg_conn_info))
     pcur.execute("SELECT hid, trunk_rev_begin, trunk_rev_end, b1_rev_begin, b1_rev_end FROM epanet.junctions ORDER BY hid")
-    print "-----------------"
-    for r in pcur.fetchall(): print r
+    print("-----------------")
+    for r in pcur.fetchall(): print(r)
     pcur.close()
 
 if __name__ == "__main__":

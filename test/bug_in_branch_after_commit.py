@@ -1,6 +1,10 @@
 #!/usr/bin/python
 from .. import versioning
-from pyspatialite import dbapi2
+import sys
+if sys.version_info[0] == 3:
+    from sqlite3 import dbapi2
+else:
+    from pyspatialite import dbapi2
 import psycopg2
 import os
 import shutil
@@ -24,7 +28,7 @@ if __name__ == "__main__":
     if os.path.isfile(wc): os.remove(wc) 
     versioning.checkout("dbname=epanet_test_db", ['epanet_trunk_rev_head.junctions', 'epanet_trunk_rev_head.pipes'], wc)
 
-    scur = versioning.Db( dbapi2.connect( wc ) )
+    scur = versioning.Db( versioning.spatialite_connect( wc ) )
 
     scur.execute("SELECT * FROM pipes")
     scur.execute("UPDATE pipes_view SET length = 1 WHERE OGC_FID = 1")

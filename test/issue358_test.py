@@ -1,6 +1,5 @@
 #!/usr/bin/python
 from .. import versioning
-from pyspatialite import dbapi2
 import psycopg2
 import os
 import shutil
@@ -22,7 +21,7 @@ def test():
     if os.path.isfile(wc): os.remove(wc) 
     versioning.checkout("dbname=epanet_test_db", ['epanet_trunk_rev_head.junctions', 'epanet_trunk_rev_head.pipes'], wc)
 
-    scur = versioning.Db( dbapi2.connect( wc ) )
+    scur = versioning.Db( versioning.spatialite_connect( wc ) )
 
     scur.execute("SELECT * FROM pipes")
     assert( len(scur.fetchall()) == 1 )

@@ -17,7 +17,7 @@ def test(verbose=True):
         sys.stdout.write("% 4d/%d %s %s"%(
             i+1, len(tests), test, "."*max(0, (80-len(test)))))
         sys.stdout.flush()
-        child = Popen(["python", "-m", test], stdout=PIPE, stderr=PIPE)
+        child = Popen([sys.executable, "-m", test], stdout=PIPE, stderr=PIPE)
         out, err = child.communicate()
         if child.returncode:
             sys.stdout.write("failed\n")

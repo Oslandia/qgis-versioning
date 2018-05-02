@@ -1420,14 +1420,12 @@ def pg_checkout(pg_conn_info, pg_table_names, working_copy_schema, selected_feat
         current_rev_sub = "(SELECT MAX(rev) FROM "+wcs+".initial_revision)"
         pcur.execute("""
             CREATE VIEW {wcs}.{table}_view AS 
-            SELECT {pkey}, {cols} 
-            FROM (
-                SELECT {cols}, {hcols}
+                SELECT {pkey}, {cols}
                 FROM {wcs}.{table}_diff 
                 WHERE ({branch}_rev_end IS NULL OR {branch}_rev_end >= {current_rev_sub}+1 ) 
                 AND {branch}_rev_begin IS NOT NULL 
-                UNION 
-                SELECT DISTINCT ON ({pkey}) {cols}, t.{hcols} 
+                UNION ALL
+                SELECT /*DISTINCT ON ({pkey})*/ t.{pkey}, {cols}
                 FROM {schema}.{table} AS t 
                 LEFT JOIN (SELECT {pkey} FROM {wcs}.{table}_diff) AS d ON t.{pkey} = d.{pkey} 
                 WHERE d.{pkey} IS NULL 
@@ -1436,7 +1434,7 @@ def pg_checkout(pg_conn_info, pg_table_names, working_copy_schema, selected_feat
                     OR t.{branch}_rev_end >= {current_rev_sub}) 
                     AND t.{branch}_rev_begin IS NOT NULL)
                 {additional_filter}
-            ) AS src """.format(
+            """.format(
                 wcs=wcs,
                 schema=schema,
                 table=table,

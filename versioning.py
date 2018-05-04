@@ -1477,7 +1477,7 @@ def pg_checkout(pg_conn_info, pg_table_names, working_copy_schema, selected_feat
                     "AND "+branch+"_rev_begin <= "+current_rev_sub+" "
                     "AND ("+branch+"_rev_end IS NULL "
                         "OR "+branch+"_rev_end >= "+current_rev_sub+")) = 1;\n"
-                "RETURN NULL;\n"
+                "RETURN NEW;\n"
             "END;\n"
         "$$ LANGUAGE plpgsql;")
 
@@ -1492,7 +1492,7 @@ def pg_checkout(pg_conn_info, pg_table_names, working_copy_schema, selected_feat
                     "("+pkey+", "+cols+", "+branch+"_rev_begin) "
                     "VALUES "
                     "("+max_fid_sub+"+1, "+newcols+", "+current_rev_sub+"+1);\n"
-                "RETURN NULL;\n"
+                "RETURN NEW;\n"
             "END;\n"
         "$$ LANGUAGE plpgsql;")
 
@@ -1528,7 +1528,7 @@ def pg_checkout(pg_conn_info, pg_table_names, working_copy_schema, selected_feat
                     "WHERE "+pkey+" = OLD."+pkey+" "
                     "AND (SELECT COUNT(*) FROM  "+schema+"."+table+" "
                     "WHERE "+pkey+" = OLD."+pkey+") = 0;\n"
-                "RETURN NULL;\n"
+                "RETURN OLD;\n"
             "END;\n"
         "$$ LANGUAGE plpgsql;")
 

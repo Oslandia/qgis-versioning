@@ -1099,6 +1099,11 @@ def add_branch( pg_conn_info, schema, branch, commit_msg,
             "REFERENCES "+schema+"."+table+"("+pkey+"),"
             "ADD COLUMN "+branch+"_child     integer "
             "REFERENCES "+schema+"."+table+"("+pkey+")")
+        for ext in ["_rev_begin", "_rev_end", "_parent", "_child"]:
+            query = "CREATE INDEX idx_rev_%s%s ON %s.%s (%s%s)"
+            data = (table, ext, schema, table, branch, ext)
+            pcur.execute(query % data)
+
         if branch == 'trunk': # initial versioning
             pcur.execute("UPDATE "+schema+"."+table+" "
                 "SET "+branch+"_rev_begin = (SELECT MAX(rev) "

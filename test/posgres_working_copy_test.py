@@ -1,8 +1,17 @@
-#!/usr/bin/python
-from .. import versioning
+#!/usr/bin/env python2
+from __future__ import absolute_import
+import sys
+sys.path.insert(0, '..')
+
+from versioningDB.pg_versioning import pgVersioning
+from versioningDB.utils import Db
 import psycopg2
 import os
 import shutil
+
+PGUSER = 'postgres'
+HOST = '127.0.0.1'
+pg_conn_info="dbname=epanet_test_db host="+HOST+" user="+PGUSER
 
 def prtTab( cur, tab ):
     print "--- ",tab," ---"
@@ -20,21 +29,22 @@ def prtHid( cur, tab ):
 def test():
     test_data_dir = os.path.dirname(os.path.realpath(__file__))
 
+    versioning = pgVersioning()
     # create the test database
 
-    os.system("dropdb epanet_test_db")
-    os.system("createdb epanet_test_db")
-    os.system("psql epanet_test_db -c 'CREATE EXTENSION postgis'")
-    os.system("psql epanet_test_db -f "+test_data_dir+"/epanet_test_db.sql")
+    os.system("dropdb --if-exists -h " + HOST + " -U "+PGUSER+" epanet_test_db")
+    os.system("createdb -h " + HOST + " -U "+PGUSER+" epanet_test_db")
+    os.system("psql -h " + HOST + " -U "+PGUSER+" epanet_test_db -c 'CREATE EXTENSION postgis'")
+    os.system("psql -h " + HOST + " -U "+PGUSER+" epanet_test_db -f "+test_data_dir+"/epanet_test_db.sql")
 
     # chechout
     #tables = ['epanet_trunk_rev_head.junctions','epanet_trunk_rev_head.pipes']
     tables = ['epanet_trunk_rev_head.junctions', 'epanet_trunk_rev_head.pipes']
-    versioning.pg_checkout("dbname=epanet_test_db",tables, "epanet_working_copy")
+    versioning.checkout(pg_conn_info,tables, "epanet_working_copy")
 
-    versioning.pg_checkout("dbname=epanet_test_db",tables, "epanet_working_copy_cflt")
+    versioning.checkout(pg_conn_info,tables, "epanet_working_copy_cflt")
 
-    pcur = versioning.Db(psycopg2.connect("dbname=epanet_test_db"))
+    pcur = Db(psycopg2.connect(pg_conn_info))
 
 
     pcur.execute("INSERT INTO epanet_working_copy.pipes_view(id, start_node, end_node, geom) VALUES ('2','1','2',ST_GeometryFromText('LINESTRING(1 1,0 1)',2154))")
@@ -63,7 +73,7 @@ def test():
     prtTab(pcur, 'epanet_working_copy.pipes_diff')
     pcur.commit()
 
-    versioning.pg_commit("dbname=epanet_test_db", "epanet_working_copy","test commit msg")
+    versioning.commit([pg_conn_info, "epanet_working_copy"],"test commit msg")
     prtTab(pcur, 'epanet.pipes')
 
     pcur.execute("SELECT trunk_rev_end FROM epanet.pipes WHERE pid = 1")
@@ -92,7 +102,7 @@ def test():
     pcur.execute("INSERT INTO epanet_working_copy_cflt.pipes_view(id, start_node, end_node, geom) VALUES ('3','1','2',ST_GeometryFromText('LINESTRING(1 -1,0 1)',2154))")
     prtTab(pcur, 'epanet_working_copy_cflt.pipes_diff')
     pcur.commit()
-    versioning.pg_update( "dbname=epanet_test_db", "epanet_working_copy_cflt" )
+    versioning.update( [pg_conn_info, "epanet_working_copy_cflt"] )
     prtTab(pcur, 'epanet_working_copy_cflt.pipes_diff')
     prtTab(pcur, 'epanet_working_copy_cflt.pipes_update_diff')
 
@@ -112,7 +122,7 @@ def test():
     prtTab(pcur, 'epanet_working_copy_cflt.pipes_conflicts')
     pcur.commit()
 
-    versioning.pg_commit("dbname=epanet_test_db", "epanet_working_copy_cflt","second test commit msg")
+    versioning.commit([pg_conn_info, "epanet_working_copy_cflt"],"second test commit msg")
 
 
     pcur.execute("SELECT * FROM epanet_working_copy_cflt.initial_revision")
@@ -126,7 +136,7 @@ def test():
     prtTab(pcur, 'epanet_working_copy_cflt.pipes_diff')
     pcur.commit()
 
-    versioning.pg_commit("dbname=epanet_test_db", "epanet_working_copy_cflt","third test commit msg")
+    versioning.commit([pg_conn_info, "epanet_working_copy_cflt"],"third test commit msg")
 
 
     prtTab(pcur, 'epanet_working_copy_cflt.pipes_diff')

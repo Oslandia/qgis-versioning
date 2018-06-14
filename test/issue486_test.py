@@ -1,23 +1,33 @@
-#!/usr/bin/python
-from .. import versioning
+#!/usr/bin/env python2
+import sys
+sys.path.insert(0, '..')
+
+from versioningDB.versioning import historize
 from pyspatialite import dbapi2
+from versioningDB.sp_versioning import spVersioning
+from versioningDB.utils import Db
 import psycopg2
 import os
 import shutil
 import tempfile
 
+PGUSER = 'postgres'
+HOST = '127.0.0.1'
+
+pg_conn_info = "dbname=epanet_test_db host="+HOST+" user="+PGUSER
+
 def test():
+    spversioning = spVersioning()
+    
     test_data_dir = os.path.dirname(os.path.realpath(__file__))
     tmp_dir = tempfile.gettempdir()
 
     # create the test database
+    os.system("dropdb --if-exists -h " + HOST + " -U "+PGUSER+" epanet_test_db")
+    os.system("createdb -h " + HOST + " -U "+PGUSER+" epanet_test_db")
+    os.system("psql -h " + HOST + " -U "+PGUSER+" epanet_test_db -c 'CREATE EXTENSION postgis'")
 
-    os.system("dropdb epanet_test_db")
-    os.system("createdb epanet_test_db")
-    os.system("psql epanet_test_db -c 'CREATE EXTENSION postgis'")
-
-    pg_conn_info = "dbname=epanet_test_db"
-    pcur = versioning.Db(psycopg2.connect(pg_conn_info))
+    pcur = Db(psycopg2.connect(pg_conn_info))
     pcur.execute("CREATE SCHEMA epanet")
     pcur.execute("""
         CREATE TABLE epanet.junctions (
@@ -68,9 +78,9 @@ def test():
     pcur.commit()
     pcur.close()
 
-    versioning.historize( pg_conn_info, 'epanet' )
+    historize( pg_conn_info, 'epanet' )
 
-    pcur = versioning.Db(psycopg2.connect(pg_conn_info))
+    pcur = Db(psycopg2.connect(pg_conn_info))
 
     pcur.execute("SELECT ST_AsText(geometry), ST_AsText(geometry_schematic) FROM epanet_trunk_rev_head.junctions")
     res = pcur.fetchall()
@@ -80,17 +90,17 @@ def test():
 
     wc = tmp_dir+'/wc_multiple_geometry_test.sqlite'
     if os.path.isfile(wc): os.remove(wc) 
-    versioning.checkout( pg_conn_info, ['epanet_trunk_rev_head.pipes','epanet_trunk_rev_head.junctions'], wc )
+    spversioning.checkout( pg_conn_info, ['epanet_trunk_rev_head.pipes','epanet_trunk_rev_head.junctions'], wc )
 
 
-    scur = versioning.Db( dbapi2.connect(wc) )
+    scur = Db( dbapi2.connect(wc) )
     scur.execute("UPDATE junctions_view SET GEOMETRY = GeometryFromText('POINT(3 3)',2154) WHERE OGC_FID = 1")
     scur.commit()
     scur.execute("SELECT * from junctions_view")
     print "--------------"
     for res in scur.fetchall(): print res
     scur.close()
-    versioning.commit( wc, 'moved a junction', 'dbname=epanet_test_db' )
+    spversioning.commit( [wc, pg_conn_info], 'moved a junction' )
 
     pcur.execute("SELECT ST_AsText(geometry), ST_AsText(geometry_schematic), printmap FROM epanet_trunk_rev_head.junctions ORDER BY hid DESC")
     res = pcur.fetchall()

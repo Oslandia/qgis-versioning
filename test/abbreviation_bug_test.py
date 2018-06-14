@@ -1,12 +1,24 @@
-#!/usr/bin/python
-from .. import versioning
+#!/usr/bin/env python2
+from __future__ import absolute_import
+import sys
+sys.path.insert(0, '..')
 
+from versioningDB import versioning
 from pyspatialite import dbapi2
+from versioningDB.sp_versioning import spVersioning
+from versioningDB.utils import Db
 import psycopg2
 import os
+import shutil
 import tempfile
 
+PGUSER = 'postgres'
+HOST = '127.0.0.1'
+
+pg_conn_info = "dbname=epanet_test_db host="+HOST+" user="+PGUSER
+
 def test():
+    spversioning = spVersioning()
     tmp_dir = tempfile.gettempdir()
     test_data_dir = os.path.dirname(os.path.realpath(__file__))
 
@@ -15,13 +27,13 @@ def test():
         os.remove(sqlite_test_filename)
 
     # create the test database
-    os.system("dropdb epanet_test_db")
-    os.system("createdb epanet_test_db")
-    os.system("psql epanet_test_db -c 'CREATE EXTENSION postgis'")
-    os.system("psql epanet_test_db -f "+test_data_dir+"/epanet_test_db_unversioned.sql")
+    os.system("dropdb --if-exists -h " + HOST + " -U "+PGUSER+" epanet_test_db")
+    os.system("createdb -h " + HOST + " -U "+PGUSER+" epanet_test_db")
+    os.system("psql -h " + HOST + " -U "+PGUSER+" epanet_test_db -c 'CREATE EXTENSION postgis'")
+    os.system("psql -h " + HOST + " -U "+PGUSER+" epanet_test_db -f "+test_data_dir+"/epanet_test_db.sql")
     
 
-    pcon = psycopg2.connect("dbname=epanet_test_db")
+    pcon = psycopg2.connect(pg_conn_info)
     pcur = pcon.cursor()
     for i in range(10):
         pcur.execute("""
@@ -36,9 +48,9 @@ def test():
                 y=float(i+1)
                 ))
     pcon.commit()
-    versioning.historize('dbname=epanet_test_db', 'epanet')
+    versioning.historize(pg_conn_info, 'epanet')
 
-    versioning.checkout("dbname=epanet_test_db",["epanet_trunk_rev_head.junctions","epanet_trunk_rev_head.pipes"], sqlite_test_filename)
+    spversioning.checkout(pg_conn_info,["epanet_trunk_rev_head.junctions","epanet_trunk_rev_head.pipes"], sqlite_test_filename)
     assert( os.path.isfile(sqlite_test_filename) and "sqlite file must exist at this point" )
 
     scon = dbapi2.connect(sqlite_test_filename)
@@ -53,7 +65,7 @@ def test():
     scur.execute("insert into junctions_view(id, elevation, geometry) select 'newly inserted with long name', elevation, geometry from junctions_view where ogc_fid=4")
     scon.commit()
 
-    versioning.commit(sqlite_test_filename, 'a commit msg', "dbname=epanet_test_db")
+    spversioning.commit([sqlite_test_filename, pg_conn_info], 'a commit msg')
 
     pcur.execute("select jid, id from epanet_trunk_rev_head.junctions")
     for row in pcur:

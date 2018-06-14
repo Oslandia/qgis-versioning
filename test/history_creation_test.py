@@ -1,24 +1,29 @@
-#!/usr/bin/python
+#!/usr/bin/env python2
+from __future__ import absolute_import
+import sys
+sys.path.insert(0, '..')
 
-from .. import versioning
-from pyspatialite import dbapi2
+from versioningDB import versioning
+from versioningDB.utils import Db
 import psycopg2
 import os
-import shutil
 import tempfile
+
+PGUSER = 'postgres'
+HOST = '127.0.0.1'
+
+pg_conn_info = "dbname=epanet_test_db host="+HOST+" user="+PGUSER
 
 def test():
     test_data_dir = os.path.dirname(os.path.realpath(__file__))
     tmp_dir = tempfile.gettempdir()
 
     # create the test database
+    os.system("dropdb --if-exists -h " + HOST + " -U "+PGUSER+" epanet_test_db")
+    os.system("createdb -h " + HOST + " -U "+PGUSER+" epanet_test_db")
+    os.system("psql -h " + HOST + " -U "+PGUSER+" epanet_test_db -c 'CREATE EXTENSION postgis'")
 
-    os.system("dropdb epanet_test_db")
-    os.system("createdb epanet_test_db")
-    os.system("psql epanet_test_db -c 'CREATE EXTENSION postgis'")
-
-    pg_conn_info = "dbname=epanet_test_db"
-    pcur = versioning.Db(psycopg2.connect(pg_conn_info))
+    pcur = Db(psycopg2.connect(pg_conn_info))
     pcur.execute("CREATE SCHEMA epanet")
     pcur.execute("""
         CREATE TABLE epanet.junctions (
@@ -84,7 +89,7 @@ def test():
     versioning.add_branch( pg_conn_info, 'epanet', 'mybranch', 'test msg' )
 
 
-    pcur = versioning.Db(psycopg2.connect(pg_conn_info))
+    pcur = Db(psycopg2.connect(pg_conn_info))
     pcur.execute("SELECT * FROM epanet_mybranch_rev_head.junctions")
     assert( len(pcur.fetchall()) == 2 )
     pcur.execute("SELECT * FROM epanet_mybranch_rev_head.pipes")

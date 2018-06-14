@@ -1,4 +1,5 @@
 # Extensions
 *.zip
 *.pyc
+.spyproject
 

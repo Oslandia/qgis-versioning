@@ -23,7 +23,7 @@ def test():
     os.system("dropdb --if-exists -h " + HOST + " -U "+PGUSER+" epanet_test_db")
     os.system("createdb -h " + HOST + " -U "+PGUSER+" epanet_test_db")
     os.system("psql -h " + HOST + " -U "+PGUSER+" epanet_test_db -c 'CREATE EXTENSION postgis'")
-    os.system("psql -h " + HOST + " -U "+PGUSER+" epanet_test_db -f "+test_data_dir+"/epanet_test_db.sql")
+    os.system("psql -h " + HOST + " -U "+PGUSER+" epanet_test_db -f "+test_data_dir+"/issue287_pg_dump.sql")
 
     # try the update
     shutil.copyfile(test_data_dir+"/issue287_wc.sqlite", tmp_dir+"/issue287_wc.sqlite")

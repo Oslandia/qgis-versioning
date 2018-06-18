@@ -25,7 +25,7 @@ if __name__ == "__main__":
     os.system("dropdb --if-exists -h " + HOST + " -U "+PGUSER+" epanet_test_db")
     os.system("createdb -h " + HOST + " -U "+PGUSER+" epanet_test_db")
     os.system("psql -h " + HOST + " -U "+PGUSER+" epanet_test_db -c 'CREATE EXTENSION postgis'")
-    os.system("psql -h " + HOST + " -U "+PGUSER+" epanet_test_db -f "+test_data_dir+"/epanet_test_db.sql")
+    os.system("psql -h " + HOST + " -U "+PGUSER+" epanet_test_db -f "+test_data_dir+"/epanet_test_db_unversioned.sql")
 
     versioning.historize(pg_conn_info,"epanet")
 

@@ -4,7 +4,7 @@ sys.path.insert(0, '..')
 
 from versioningDB.versioning import historize
 from pyspatialite import dbapi2
-from versioningDB.sp_versioning import spVersioning
+from versioningDB.spatialite import spVersioning
 from versioningDB.utils import Db
 import psycopg2
 import os

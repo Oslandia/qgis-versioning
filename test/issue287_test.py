@@ -3,7 +3,7 @@ from __future__ import absolute_import
 import sys
 sys.path.insert(0, '..')
 
-from versioningDB.sp_versioning import spVersioning
+from versioningDB.spatialite import spVersioning
 import os
 import shutil
 import tempfile

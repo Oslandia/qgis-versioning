@@ -5,7 +5,7 @@ sys.path.insert(0, '..')
 
 from versioningDB import versioning
 from pyspatialite import dbapi2
-from versioningDB.sp_versioning import spVersioning
+from versioningDB.spatialite import spVersioning
 from versioningDB.utils import Db
 import os
 import tempfile

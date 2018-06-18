@@ -3,7 +3,7 @@ from __future__ import absolute_import
 import sys
 sys.path.insert(0, '..')
 
-from versioningDB.pg_versioning import pgVersioning
+from versioningDB.postgresqlLocal import pgVersioning
 from versioningDB.utils import Db
 import psycopg2
 import os

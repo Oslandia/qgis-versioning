@@ -2,8 +2,8 @@
 import sys
 sys.path.insert(0, '..')
 
-from versioningDB.pg_versioning import pgVersioning
-from versioningDB.sp_versioning import spVersioning 
+from versioningDB.postgresqlLocal import pgVersioning
+from versioningDB.spatialite import spVersioning 
 from versioningDB.versioning import historize
 
 from pyspatialite import dbapi2

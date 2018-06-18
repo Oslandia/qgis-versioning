@@ -42,8 +42,8 @@ from qgis.core import QgsCredentials, QgsDataSourceURI, QgsMapLayerRegistry, \
     QgsRuleBasedRendererV2
 from PyQt4.QtCore import *
 
-from .versioningDB.sp_versioning import spVersioning
-from .versioningDB.pg_versioning import pgVersioning
+from .versioningDB.spatialite import spVersioning
+from .versioningDB.postgresqlLocal import pgVersioning
 from .versioningDB import versioning
 
 

@@ -12,6 +12,22 @@ import psycopg2
 import platform
 from . import utils
 
+
+Db = utils.Db
+os_info = utils.os_info
+pg_pk = utils.pg_pk
+pg_geoms = utils.pg_geoms
+pg_geom = utils.pg_geom
+pg_branches = utils.pg_branches
+pg_array_elem_type = utils.pg_array_elem_type
+mem_field_names_types = utils.mem_field_names_types
+get_pg_users_list = utils.get_pg_users_list
+get_actual_pk = utils.get_actual_pk
+preserve_fid = utils.preserve_fid
+escape_quote = utils.escape_quote
+quote_ident = utils.quote_ident
+get_username = utils.get_username
+
 DEBUG = False
 
 

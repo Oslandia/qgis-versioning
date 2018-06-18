@@ -42,7 +42,6 @@ from qgis.core import QgsCredentials, QgsDataSourceURI, QgsMapLayerRegistry, \
     QgsRuleBasedRendererV2
 from PyQt4.QtCore import *
 
-from .versioningDB.utils import Db, mem_field_names_types, get_actual_pk, get_pg_users_list
 from .versioningDB.sp_versioning import spVersioning
 from .versioningDB.pg_versioning import pgVersioning
 from .versioningDB import versioning
@@ -171,22 +170,22 @@ class Plugin(QObject):
         srid = str(QgsDataSourceURI(pg_layer.source()).srid())
         if pg_layer.wkbType() == QGis.WKBPoint:
             #print "Layer \"" + pg_layer.name()+ "\" is a point layer"
-            mem_uri = "Point?crs=epsg:" + srid +"&" + mem_field_names_types(pg_layer) + "&index=yes"
+            mem_uri = "Point?crs=epsg:" + srid +"&" + versioning.mem_field_names_types(pg_layer) + "&index=yes"
         if pg_layer.wkbType()==QGis.WKBLineString:
             #print "Layer \"" + pg_layer.name()+ "\" is a linestring layer"
-            mem_uri = "LineString?crs=epsg:" + srid +"&" + mem_field_names_types(pg_layer) + "&index=yes"
+            mem_uri = "LineString?crs=epsg:" + srid +"&" + versioning.mem_field_names_types(pg_layer) + "&index=yes"
         if pg_layer.wkbType() == QGis.WKBPolygon:
             #print "Layer \"" + pg_layer.name()+ "\" is a polygon layer"
-            mem_uri = "Polygon?crs=epsg:" + srid +"&" + mem_field_names_types(pg_layer) + "&index=yes"
+            mem_uri = "Polygon?crs=epsg:" + srid +"&" + versioning.mem_field_names_types(pg_layer) + "&index=yes"
         if pg_layer.wkbType() == QGis.WKBMultiPoint:
             #print "Layer \"" + pg_layer.name()+ "\" is a multi-point layer"
-            mem_uri = "MultiPoint?crs=epsg:" + srid +"&" + mem_field_names_types(pg_layer) + "&index=yes"
+            mem_uri = "MultiPoint?crs=epsg:" + srid +"&" + versioning.mem_field_names_types(pg_layer) + "&index=yes"
         if pg_layer.wkbType()==QGis.WKBMultiLineString:
             #print "Layer \"" + pg_layer.name()+ "\" is a multi-linestring layer"
-            mem_uri = "MultiLineString?crs=epsg:" + srid +"&" + mem_field_names_types(pg_layer) + "&index=yes"
+            mem_uri = "MultiLineString?crs=epsg:" + srid +"&" + versioning.mem_field_names_types(pg_layer) + "&index=yes"
         if pg_layer.wkbType()==QGis.WKBMultiPolygon:
             #print "Layer \"" + pg_layer.name()+ "\" is a multi-polygon layer"
-            mem_uri = "MultiPolygon?crs=epsg:" + srid +"&" + mem_field_names_types(pg_layer) + "&index=yes"
+            mem_uri = "MultiPolygon?crs=epsg:" + srid +"&" + versioning.mem_field_names_types(pg_layer) + "&index=yes"
         return mem_uri
 
     def pg_conn_info(self):
@@ -228,7 +227,7 @@ class Plugin(QObject):
 
     def get_pg_users_list(self):
         #get list of pg users to populate combobox used in commit msg dialog
-        pg_users_list = get_pg_users_list(self.pg_conn_info())
+        pg_users_list = versioning.get_pg_users_list(self.pg_conn_info())
         #print "pg_users_list = " + str(pg_users_list)
         self.q_commit_msg_dlg.pg_users_combobox.addItems (pg_users_list)
 
@@ -475,7 +474,7 @@ class Plugin(QObject):
             print 'aborted'
             return
 
-        pcur = Db( psycopg2.connect(self.pg_conn_info()) )
+        pcur = versioning.Db( psycopg2.connect(self.pg_conn_info()) )
         pcur.execute("SELECT * FROM "+schema+".revisions "
             "WHERE branch = '"+branch+"'")
         if pcur.fetchone():
@@ -539,7 +538,7 @@ class Plugin(QObject):
         self.q_view_dlg.diffmode_chk.setCheckState(Qt.Unchecked)
         self.q_view_dlg.diffmode_chk.setEnabled(False)
 
-        pcur = Db( psycopg2.connect(self.pg_conn_info()) )
+        pcur = versioning.Db( psycopg2.connect(self.pg_conn_info()) )
         pcur.execute("SELECT rev, author, date::timestamp(0), branch, commit_msg "
             "FROM "+schema+".revisions ORDER BY rev ASC")
         revs = pcur.fetchall()
@@ -892,7 +891,7 @@ class Plugin(QObject):
             uri = QgsDataSourceURI(layer.source())
 
             # Get actual PK fror corresponding table
-            actual_table_pk = get_actual_pk( uri,self.pg_conn_info() )
+            actual_table_pk = versioning.get_actual_pk( uri,self.pg_conn_info() )
             #print "Actual table pk = " + actual_table_pk
 
             layer_selected_features_ids = [f[actual_table_pk] for f in layer.selectedFeatures()]
@@ -968,7 +967,7 @@ class Plugin(QObject):
             uri = QgsDataSourceURI(layer.source())
 
             # Get actual PK fror corresponding table
-            actual_table_pk = get_actual_pk( uri,self.pg_conn_info() )
+            actual_table_pk = versioning.get_actual_pk( uri,self.pg_conn_info() )
             #print "Actual table pk = " + actual_table_pk
 
             layer_selected_features_ids = [f[actual_table_pk] for f in layer.selectedFeatures()]

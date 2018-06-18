@@ -9,10 +9,6 @@ import psycopg2
 import os
 import shutil
 
-PGUSER = 'postgres'
-HOST = '127.0.0.1'
-
-pg_conn_info = "dbname=epanet_test_db host="+HOST+" user="+PGUSER
 
 def prtTab( cur, tab ):
     print "--- ",tab," ---"
@@ -27,16 +23,17 @@ def prtHid( cur, tab ):
     cur.execute("SELECT pid FROM "+tab)
     for [r] in cur.fetchall(): print r
 
-def test():
+def test(host, pguser):
+    pg_conn_info = "dbname=epanet_test_db host=" + host + " user=" + pguser
     test_data_dir = os.path.dirname(os.path.realpath(__file__))
 
     pgversioning = pgVersioning()
     # create the test database
 
-    os.system("dropdb --if-exists -h " + HOST + " -U "+PGUSER+" epanet_test_db")
-    os.system("createdb -h " + HOST + " -U "+PGUSER+" epanet_test_db")
-    os.system("psql -h " + HOST + " -U "+PGUSER+" epanet_test_db -c 'CREATE EXTENSION postgis'")
-    os.system("psql -h " + HOST + " -U "+PGUSER+" epanet_test_db -f "+test_data_dir+"/epanet_test_db.sql")
+    os.system("dropdb --if-exists -h " + host + " -U "+pguser+" epanet_test_db")
+    os.system("createdb -h " + host + " -U "+pguser+" epanet_test_db")
+    os.system("psql -h " + host + " -U "+pguser+" epanet_test_db -c 'CREATE EXTENSION postgis'")
+    os.system("psql -h " + host + " -U "+pguser+" epanet_test_db -f "+test_data_dir+"/epanet_test_db.sql")
 
     # chechout
     pgversioning.checkout(pg_conn_info,['epanet_trunk_rev_head.junctions','epanet_trunk_rev_head.pipes'], "epanet_working_copy")
@@ -51,4 +48,7 @@ def test():
     assert( 1 == pcur.fetchone()[0] )
 
 if __name__ == "__main__":
-    test()
+    if len(sys.argv) != 3:
+        print("Usage: python2 versioning_base_test.py host pguser")
+    else:
+        test(*sys.argv[1:])

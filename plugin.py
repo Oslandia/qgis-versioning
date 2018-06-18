@@ -42,7 +42,10 @@ from qgis.core import QgsCredentials, QgsDataSourceURI, QgsMapLayerRegistry, \
     QgsRuleBasedRendererV2
 from PyQt4.QtCore import *
 
-from . import versioning
+from .versioningDB.spatialite import spVersioning
+from .versioningDB.postgresqlLocal import pgVersioning
+from .versioningDB import versioning
+
 
 # Deactivate stdout (like output of print statements) because windows
 # causes occasional "IOError [Errno 9] File descriptor error"
@@ -101,6 +104,9 @@ class Plugin(QObject):
             self.legend = self.iface.mainWindow().findChild( QTreeView, 'theLayerTreeView')
             self.legend.clicked.connect(self.on_legend_click)
 
+        self.spversioning = spVersioning()
+        self.pgversioning = pgVersioning()
+        
     def enable_diffmode(self):
         '''This function enables the diffmode checkbox iif the number of checked
         revision == 2.  The reason is that we want to apply diff styles to
@@ -304,7 +310,7 @@ class Plugin(QObject):
         if layer.providerType() == "spatialite":
             rev = 0
             try:
-                rev = versioning.revision( uri.database() )
+                rev = self.spversioning.revision( uri.database() )
             except:
                 self.current_layers = []
                 self.info.setText("Versioning : the selected group is not a working copy")
@@ -326,8 +332,8 @@ class Plugin(QObject):
                 # check if it's a working copy
                 rev = 0
                 try:
-                    rev = versioning.pg_revision( self.pg_conn_info(),
-                                                       uri.schema() )
+                    rev = self.pgversioning.revision( [self.pg_conn_info(),
+                                                       uri.schema()] )
                     selection_type = 'working copy'
                     self.info.setText( uri.database()+' '+uri.schema()
                             +' <b>working rev</b>='+str(rev) )
@@ -735,7 +741,7 @@ class Plugin(QObject):
         uri = QgsDataSourceURI(layer.source())
 
         if layer.providerType() == "spatialite":
-            unresolved = versioning.unresolved_conflicts( uri.database() )
+            unresolved = self.spversioning.unresolved_conflicts( [uri.database()] )
             for cflt in unresolved:
                 table = cflt+"_conflicts"
                 if not QgsMapLayerRegistry.instance().mapLayersByName(table):
@@ -746,8 +752,8 @@ class Plugin(QObject):
                             " key=\"OGC_FID\" table=\""+table+"\" "+
                             geom,table,'spatialite')
         else: #postgres
-            unresolved = versioning.pg_unresolved_conflicts(
-                    uri.connectionInfo(), uri.schema() )
+            unresolved = self.pgversioning.unresolved_conflicts(
+                    [uri.connectionInfo(), uri.schema()] )
             for cflt in unresolved:
                 table = cflt+"_conflicts"
                 if not QgsMapLayerRegistry.instance().mapLayersByName(table):
@@ -787,19 +793,19 @@ class Plugin(QObject):
         late_by = 0
 
         if layer.providerType() == "spatialite":
-            late_by = versioning.late(
-                    uri.database(), self.pg_conn_info() )
+            late_by = self.spversioning.late(
+                    [uri.database(), self.pg_conn_info()] )
         else: # postgres
-            late_by = versioning.pg_late(
-                    self.pg_conn_info(), uri.schema() )
+            late_by = self.pgversioning.late(
+                    [self.pg_conn_info(), uri.schema()] )
         if late_by:
             if layer.providerType() == "spatialite":
-                versioning.update( uri.database(), self.pg_conn_info() )
-                rev = versioning.revision( uri.database() )
+                self.spversioning.update( [uri.database(), self.pg_conn_info()] )
+                rev = self.spversioning.revision( uri.database() )
             else: # postgres
-                versioning.pg_update( uri.connectionInfo(), uri.schema() )
-                rev = versioning.pg_revision(
-                        uri.connectionInfo(), uri.schema() )
+                self.pgversioning.update( [uri.connectionInfo(), uri.schema()] )
+                rev = self.pgversioning.revision(
+                        [uri.connectionInfo(), uri.schema()] )
 
             # Force refresh of map
             if self.iface.mapCanvas().isCachingEnabled():
@@ -820,10 +826,10 @@ class Plugin(QObject):
                 "Now up to date with remote revision "+str(rev-1)+".")
         else:
             if layer.providerType() == "spatialite":
-                rev = versioning.revision( uri.database() )
+                rev = self.spversioning.revision( uri.database() )
             else: # postgres
-                rev = versioning.pg_revision(
-                        uri.connectionInfo(), uri.schema() )
+                rev = self.pgversioning.revision(
+                        [uri.connectionInfo(), uri.schema()] )
             QMessageBox.information( self.iface.mainWindow(), "Info","Working "
             "copy already up to date with remote revision "+str(rev-1)+".")
 
@@ -927,7 +933,7 @@ class Plugin(QObject):
             os.remove(filename)
 
         print "checking out ", tables_for_conninfo, " from ",uri.connectionInfo()
-        versioning.checkout( self.pg_conn_info(),
+        self.spversioning.checkout( self.pg_conn_info(),
                 tables_for_conninfo, filename, user_selected_features )
 
         # add layers from offline version
@@ -1031,7 +1037,7 @@ class Plugin(QObject):
             "<b>lowercase</b> letters, underscore or digits.", duration=10)
             return
         print "checking out ", tables_for_conninfo, " from ", uri.connectionInfo()
-        versioning.pg_checkout( self.pg_conn_info(),
+        self.pgversioning.checkout( self.pg_conn_info(),
                 tables_for_conninfo, working_copy_schema, user_selected_features )
 
         # add layers from offline version
@@ -1062,11 +1068,11 @@ class Plugin(QObject):
 
         late_by = 0
         if layer.providerType() == "spatialite":
-            late_by = versioning.late(
-                    uri.database(), self.pg_conn_info() )
+            late_by = self.spversioning.late(
+                    [uri.database(), self.pg_conn_info()] )
         else:#postgres
-            late_by = versioning.pg_late(
-                    self.pg_conn_info(), uri.schema() )
+            late_by = self.pgversioning.late(
+                    [self.pg_conn_info(), uri.schema()] )
 
         if late_by:
             QMessageBox.warning(self.iface.mainWindow(), "Warning",
@@ -1110,14 +1116,14 @@ class Plugin(QObject):
         nb_of_updated_layer = 0
         rev = 0
         if layer.providerType() == "spatialite":
-            nb_of_updated_layer = versioning.commit( uri.database(),
-                    commit_msg, self.pg_conn_info(),commit_pg_user )
-            rev = versioning.revision(uri.database())
+            nb_of_updated_layer = self.spversioning.commit( [uri.database(), self.pg_conn_info()], 
+                    commit_msg, commit_pg_user )
+            rev = self.spversioning.revision(uri.database())
         else: # postgres
-            nb_of_updated_layer = versioning.pg_commit(
-                    uri.connectionInfo(), uri.schema(), commit_msg )
-            rev = versioning.pg_revision(
-                    uri.connectionInfo(), uri.schema())
+            nb_of_updated_layer = self.pgversioning.commit(
+                    [uri.connectionInfo(), uri.schema()], commit_msg )
+            rev = self.pgversioning.revision(
+                    [uri.connectionInfo(), uri.schema()])
 
         if nb_of_updated_layer:
             #self.iface.messageBar().pushMessage("Info",

@@ -10,21 +10,17 @@ import os
 import shutil
 import tempfile
 
-PGUSER = 'postgres'
-HOST = '127.0.0.1'
-
-pg_conn_info = "dbname=epanet_test_db host="+HOST+" user="+PGUSER
-
-def test():
+def test(host, pguser):
+    pg_conn_info = "dbname=epanet_test_db host=" + host + " user=" + pguser
     spversioning = spVersioning()
     
     test_data_dir = os.path.dirname(os.path.realpath(__file__))
     tmp_dir = tempfile.gettempdir()
 
     # create the test database
-    os.system("dropdb --if-exists -h " + HOST + " -U "+PGUSER+" epanet_test_db")
-    os.system("createdb -h " + HOST + " -U "+PGUSER+" epanet_test_db")
-    os.system("psql -h " + HOST + " -U "+PGUSER+" epanet_test_db -c 'CREATE EXTENSION postgis'")
+    os.system("dropdb --if-exists -h " + host + " -U "+pguser+" epanet_test_db")
+    os.system("createdb -h " + host + " -U "+pguser+" epanet_test_db")
+    os.system("psql -h " + host + " -U "+pguser+" epanet_test_db -c 'CREATE EXTENSION postgis'")
 
     pcur = versioning.Db(psycopg2.connect(pg_conn_info))
     pcur.execute("CREATE SCHEMA epanet")
@@ -111,4 +107,7 @@ def test():
     pcur.close()
 
 if __name__ == "__main__":
-    test()
+    if len(sys.argv) != 3:
+        print("Usage: python2 versioning_base_test.py host pguser")
+    else:
+        test(*sys.argv[1:])

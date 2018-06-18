@@ -2,9 +2,9 @@
 import sys
 sys.path.insert(0, '..')
 
+from versioningDB import versioning
 from versioningDB.postgresqlLocal import pgVersioning
-from versioningDB.spatialite import spVersioning 
-from versioningDB.versioning import historize
+from versioningDB.spatialite import spVersioning
 
 from pyspatialite import dbapi2
 import psycopg2
@@ -52,7 +52,7 @@ def test():
     pcon.commit()
     pcon.close()
 
-    historize(pg_conn_info, 'epanet')
+    versioning.historize(pg_conn_info, 'epanet')
 
     # spatialite working copy
     spversioning.checkout(pg_conn_info,["epanet_trunk_rev_head.junctions","epanet_trunk_rev_head.pipes"], sqlite_test_filename, [[1, 2, 3], []])

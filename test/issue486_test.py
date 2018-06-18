@@ -2,10 +2,9 @@
 import sys
 sys.path.insert(0, '..')
 
-from versioningDB.versioning import historize
+from versioningDB import versioning
 from pyspatialite import dbapi2
 from versioningDB.spatialite import spVersioning
-from versioningDB.utils import Db
 import psycopg2
 import os
 import shutil
@@ -27,7 +26,7 @@ def test():
     os.system("createdb -h " + HOST + " -U "+PGUSER+" epanet_test_db")
     os.system("psql -h " + HOST + " -U "+PGUSER+" epanet_test_db -c 'CREATE EXTENSION postgis'")
 
-    pcur = Db(psycopg2.connect(pg_conn_info))
+    pcur = versioning.Db(psycopg2.connect(pg_conn_info))
     pcur.execute("CREATE SCHEMA epanet")
     pcur.execute("""
         CREATE TABLE epanet.junctions (
@@ -78,9 +77,9 @@ def test():
     pcur.commit()
     pcur.close()
 
-    historize( pg_conn_info, 'epanet' )
+    versioning.historize( pg_conn_info, 'epanet' )
 
-    pcur = Db(psycopg2.connect(pg_conn_info))
+    pcur = versioning.Db(psycopg2.connect(pg_conn_info))
 
     pcur.execute("SELECT ST_AsText(geometry), ST_AsText(geometry_schematic) FROM epanet_trunk_rev_head.junctions")
     res = pcur.fetchall()
@@ -93,7 +92,7 @@ def test():
     spversioning.checkout( pg_conn_info, ['epanet_trunk_rev_head.pipes','epanet_trunk_rev_head.junctions'], wc )
 
 
-    scur = Db( dbapi2.connect(wc) )
+    scur = versioning.Db( dbapi2.connect(wc) )
     scur.execute("UPDATE junctions_view SET GEOMETRY = GeometryFromText('POINT(3 3)',2154) WHERE OGC_FID = 1")
     scur.commit()
     scur.execute("SELECT * from junctions_view")

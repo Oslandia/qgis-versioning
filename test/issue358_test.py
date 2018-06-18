@@ -3,9 +3,9 @@ from __future__ import absolute_import
 import sys
 sys.path.insert(0, '..')
 
+from versioningDB import versioning
 from pyspatialite import dbapi2
 from versioningDB.spatialite import spVersioning
-from versioningDB.utils import Db
 import os
 import tempfile
 
@@ -30,7 +30,7 @@ def test():
     if os.path.isfile(wc): os.remove(wc) 
     spversioning.checkout(pg_conn_info, ['epanet_trunk_rev_head.junctions', 'epanet_trunk_rev_head.pipes'], wc)
 
-    scur = Db( dbapi2.connect( wc ) )
+    scur = versioning.Db( dbapi2.connect( wc ) )
 
     scur.execute("SELECT * FROM pipes")
     assert( len(scur.fetchall()) == 1 )

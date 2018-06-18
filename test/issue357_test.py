@@ -4,8 +4,8 @@ import sys
 sys.path.insert(0, '..')
 
 from pyspatialite import dbapi2
+from versioningDB import versioning
 from versioningDB.spatialite import spVersioning
-from versioningDB.utils import Db
 import psycopg2
 import os
 import shutil
@@ -34,7 +34,7 @@ def test():
         spversioning.checkout(pg_conn_info, ['epanet_trunk_rev_head.junctions', 'epanet_trunk_rev_head.pipes'], f)
 
     scur = []
-    for f in wc: scur.append(Db( dbapi2.connect( f ) ))
+    for f in wc: scur.append(versioning.Db( dbapi2.connect( f ) ))
 
     scur[0].execute("INSERT INTO pipes_view(id, start_node, end_node, GEOMETRY) VALUES ('2','1','2',GeomFromText('LINESTRING(1 1,0 1)',2154))")
     scur[0].execute("INSERT INTO pipes_view(id, start_node, end_node, GEOMETRY) VALUES ('3','1','2',GeomFromText('LINESTRING(1 -1,0 1)',2154))")

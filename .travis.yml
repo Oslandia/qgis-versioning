@@ -1,15 +1,19 @@
 dist: trusty
 
+services:
+  - postgresql
+
+addons:
+  postgresql: "9.6"
+  apt:
+    packages:
+      - postgresql-9.6-postgis-2.3
+
 before_install:
   - sudo apt search gdal
-  - sudo service postgresql stop
-  - sudo apt-get install -y gdal-bin python-pyspatialite python-psycopg2 python-pip postgis
-  - sudo service postgresql restart
-
-before_script:
-  - python package.py -i
+  - sudo apt-get install -y gdal-bin python-pyspatialite python-psycopg2 python-pip
 
 script:
   - python --version
-  - PYTHONPATH=/usr/lib/python2.7/dist-packages python -c 'from pyspatialite import dbapi2'
-  - PYTHONPATH=~/.qgis2/python/plugins:/usr/lib/python2.7/dist-packages python -m qgis_versioning.test || PYTHONPATH=~/.qgis2/python/plugins:/usr/lib/python2.7/dist-packages  python -m qgis_versioning.test -v
+  - cd test
+  - python ./tests.py 127.0.0.1 postgres -v

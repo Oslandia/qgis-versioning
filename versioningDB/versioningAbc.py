@@ -33,7 +33,7 @@ class versioningAbc(object):
         self.ver.update(self.connection)
     
     def checkout(self, pg_table_names, selected_feature_lists = []):
-        self.ver.checkout(self.connection, pg_table_names, selected_feature_lists = [])
+        self.ver.checkout(self.connection, pg_table_names, selected_feature_lists)
     
     def unresolved_conflicts(self):
         return self.ver.unresolved_conflicts(self.connection)

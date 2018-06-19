@@ -4,7 +4,7 @@ import sys
 sys.path.insert(0, '..')
 
 from versioningDB import versioning 
-from versioningDB.postgresqlLocal import pgVersioning
+from versioningDB.versioningAbc import versioningAbc
 import psycopg2
 import os
 import shutil
@@ -27,7 +27,6 @@ def test(host, pguser):
     pg_conn_info = "dbname=epanet_test_db host=" + host + " user=" + pguser
     test_data_dir = os.path.dirname(os.path.realpath(__file__))
 
-    pgversioning = pgVersioning()
     # create the test database
 
     os.system("dropdb --if-exists -h " + host + " -U "+pguser+" epanet_test_db")
@@ -36,7 +35,8 @@ def test(host, pguser):
     os.system("psql -h " + host + " -U "+pguser+" epanet_test_db -f "+test_data_dir+"/epanet_test_db.sql")
 
     # chechout
-    pgversioning.checkout(pg_conn_info,['epanet_trunk_rev_head.junctions','epanet_trunk_rev_head.pipes'], "epanet_working_copy")
+    pgversioning = versioningAbc([pg_conn_info, 'epanet_working_copy'], 'postgres')
+    pgversioning.checkout(['epanet_trunk_rev_head.junctions','epanet_trunk_rev_head.pipes'])
 
     pcur = versioning.Db(psycopg2.connect(pg_conn_info))
 

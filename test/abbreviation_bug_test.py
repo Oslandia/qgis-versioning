@@ -5,7 +5,7 @@ sys.path.insert(0, '..')
 
 from versioningDB import versioning
 from pyspatialite import dbapi2
-from versioningDB.spatialite import spVersioning
+from versioningDB.versioningAbc import versioningAbc
 import psycopg2
 import os
 import shutil
@@ -13,7 +13,6 @@ import tempfile
 
 def test(host, pguser):
     pg_conn_info = "dbname=epanet_test_db host=" + host + " user=" + pguser
-    spversioning = spVersioning()
     tmp_dir = tempfile.gettempdir()
     test_data_dir = os.path.dirname(os.path.realpath(__file__))
 
@@ -21,6 +20,7 @@ def test(host, pguser):
     if os.path.isfile(sqlite_test_filename):
         os.remove(sqlite_test_filename)
 
+    spversioning = versioningAbc([sqlite_test_filename, pg_conn_info], 'spatialite')
     # create the test database
     os.system("dropdb --if-exists -h " + host + " -U "+pguser+" epanet_test_db")
     os.system("createdb -h " + host + " -U "+pguser+" epanet_test_db")
@@ -45,7 +45,7 @@ def test(host, pguser):
     pcon.commit()
     versioning.historize(pg_conn_info, 'epanet')
 
-    spversioning.checkout(pg_conn_info,["epanet_trunk_rev_head.junctions","epanet_trunk_rev_head.pipes"], sqlite_test_filename)
+    spversioning.checkout(["epanet_trunk_rev_head.junctions","epanet_trunk_rev_head.pipes"])
     assert( os.path.isfile(sqlite_test_filename) and "sqlite file must exist at this point" )
 
     scon = dbapi2.connect(sqlite_test_filename)
@@ -60,7 +60,7 @@ def test(host, pguser):
     scur.execute("insert into junctions_view(id, elevation, geometry) select 'newly inserted with long name', elevation, geometry from junctions_view where ogc_fid=4")
     scon.commit()
 
-    spversioning.commit([sqlite_test_filename, pg_conn_info], 'a commit msg')
+    spversioning.commit('a commit msg')
 
     pcur.execute("select jid, id from epanet_trunk_rev_head.junctions")
     for row in pcur:

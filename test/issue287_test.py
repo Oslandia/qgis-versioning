@@ -3,14 +3,13 @@ from __future__ import absolute_import
 import sys
 sys.path.insert(0, '..')
 
-from versioningDB.spatialite import spVersioning
+from versioningDB.versioningAbc import versioningAbc
 import os
 import shutil
 import tempfile
 
 def test(host, pguser):
     pg_conn_info = "dbname=epanet_test_db host=" + host + " user=" + pguser
-    spversioning = spVersioning()
     
     test_data_dir = os.path.dirname(os.path.realpath(__file__))
     tmp_dir = tempfile.gettempdir()
@@ -22,9 +21,11 @@ def test(host, pguser):
     os.system("psql -h " + host + " -U "+pguser+" epanet_test_db -f "+test_data_dir+"/issue287_pg_dump.sql")
 
     # try the update
-    shutil.copyfile(test_data_dir+"/issue287_wc.sqlite", tmp_dir+"/issue287_wc.sqlite")
-    spversioning.update([ tmp_dir+"/issue287_wc.sqlite", pg_conn_info] )
-    spversioning.commit([tmp_dir+"/issue287_wc.sqlite", pg_conn_info], "test message")
+    sqlite_test_filename = os.path.join(tmp_dir, "issue287_wc.sqlite")
+    shutil.copyfile(os.path.join(test_data_dir, "issue287_wc.sqlite"), sqlite_test_filename)
+    spversioning = versioningAbc([sqlite_test_filename, pg_conn_info], 'spatialite')
+    spversioning.update()
+    spversioning.commit("test message")
 
 if __name__ == "__main__":
     if len(sys.argv) != 3:

@@ -3,7 +3,7 @@ from __future__ import absolute_import
 import sys
 sys.path.insert(0, '..')
 
-from versioningDB.spatialite import spVersioning
+from versioningDB.versioningAbc import versioningAbc
 from versioningDB.versioning import diff_rev_view_str
 from pyspatialite import dbapi2
 import psycopg2
@@ -15,11 +15,11 @@ def test(host, pguser):
     tmp_dir = tempfile.gettempdir()
     test_data_dir = os.path.dirname(os.path.realpath(__file__))
 
-    sqlite_test_filename1 = tmp_dir+"/versioning_base_test1.sqlite"
-    sqlite_test_filename2 = tmp_dir+"/versioning_base_test2.sqlite"
-    sqlite_test_filename3 = tmp_dir+"/versioning_base_test3.sqlite"
-    sqlite_test_filename4 = tmp_dir+"/versioning_base_test4.sqlite"
-    sqlite_test_filename5 = tmp_dir+"/versioning_base_test5.sqlite"
+    sqlite_test_filename1 = os.path.join(tmp_dir, "versioning_base_test1.sqlite")
+    sqlite_test_filename2 = os.path.join(tmp_dir, "versioning_base_test2.sqlite")
+    sqlite_test_filename3 = os.path.join(tmp_dir, "versioning_base_test3.sqlite")
+    sqlite_test_filename4 = os.path.join(tmp_dir, "versioning_base_test4.sqlite")
+    sqlite_test_filename5 = os.path.join(tmp_dir, "versioning_base_test5.sqlite")
     if os.path.isfile(sqlite_test_filename1): os.remove(sqlite_test_filename1)
     if os.path.isfile(sqlite_test_filename2): os.remove(sqlite_test_filename2)
     if os.path.isfile(sqlite_test_filename3): os.remove(sqlite_test_filename3)
@@ -33,21 +33,25 @@ def test(host, pguser):
     os.system("psql -h " + host + " -U "+pguser+" epanet_test_db -c 'CREATE EXTENSION postgis'")
     os.system("psql -h " + host + " -U "+pguser+" epanet_test_db -f "+test_data_dir+"/epanet_test_db.sql")
 
-    spversioning = spVersioning()
+    spversioning1 = versioningAbc([sqlite_test_filename1, pg_conn_info], 'spatialite')
+    spversioning2 = versioningAbc([sqlite_test_filename2, pg_conn_info], 'spatialite')
+    spversioning3 = versioningAbc([sqlite_test_filename3, pg_conn_info], 'spatialite')
+    spversioning4 = versioningAbc([sqlite_test_filename4, pg_conn_info], 'spatialite')
+    spversioning5 = versioningAbc([sqlite_test_filename5, pg_conn_info], 'spatialite')
     # chechout two tables
 
     try:
-        spversioning.checkout(pg_conn_info,["epanet_trunk_rev_head.junctions","epanet.pipes"], sqlite_test_filename1)
+        spversioning1.checkout(["epanet_trunk_rev_head.junctions","epanet.pipes"])
         assert(False and "checkout from schema withouti suffix _branch_rev_head should not be successfull")
     except RuntimeError:
         pass
 
     assert( not os.path.isfile(sqlite_test_filename1) and "sqlite file must not exist at this point" )
-    spversioning.checkout(pg_conn_info,["epanet_trunk_rev_head.junctions","epanet_trunk_rev_head.pipes"], sqlite_test_filename1)
+    spversioning1.checkout(["epanet_trunk_rev_head.junctions","epanet_trunk_rev_head.pipes"])
     assert( os.path.isfile(sqlite_test_filename1) and "sqlite file must exist at this point" )
 
     try:
-        spversioning.checkout(pg_conn_info,["epanet_trunk_rev_head.junctions","epanet_trunk_rev_head.pipes"], sqlite_test_filename1)
+        spversioning1.checkout(["epanet_trunk_rev_head.junctions","epanet_trunk_rev_head.pipes"])
         assert(False and "trying to checkout on an existing file must fail")
     except RuntimeError:
         pass
@@ -61,7 +65,7 @@ def test(host, pguser):
     scur.execute("SELECT COUNT(*) FROM junctions")
     assert( scur.fetchone()[0] == 3 )
     scon.close()
-    spversioning.commit([sqlite_test_filename1, pg_conn_info], 'first edit commit')
+    spversioning1.commit('first edit commit')
     pcon = psycopg2.connect(pg_conn_info)
     pcur = pcon.cursor()
     pcur.execute("SELECT COUNT(*) FROM epanet.junctions")
@@ -71,7 +75,7 @@ def test(host, pguser):
 
     # add revision : edit one table and commit changes; rev = 3
 
-    spversioning.checkout(pg_conn_info,["epanet_trunk_rev_head.junctions"], sqlite_test_filename2)
+    spversioning2.checkout(["epanet_trunk_rev_head.junctions"])
 
     scon = dbapi2.connect(sqlite_test_filename2)
     scur = scon.cursor()
@@ -80,11 +84,11 @@ def test(host, pguser):
     #scur.execute("SELECT COUNT(*) FROM junctions")
     #assert( scur.fetchone()[0] == 3 )
     scon.close()
-    spversioning.commit([sqlite_test_filename2, pg_conn_info], 'second edit commit')
+    spversioning2.commit('second edit commit')
 
     # add revision : insert one junction and commit changes; rev = 4
 
-    spversioning.checkout(pg_conn_info,["epanet_trunk_rev_head.junctions"], sqlite_test_filename3)
+    spversioning3.checkout(["epanet_trunk_rev_head.junctions"])
 
     scon = dbapi2.connect(sqlite_test_filename3)
     scur = scon.cursor()
@@ -93,11 +97,11 @@ def test(host, pguser):
     #scur.execute("SELECT COUNT(*) FROM junctions")
     #assert( scur.fetchone()[0] == 3 )
     scon.close()
-    spversioning.commit([sqlite_test_filename3, pg_conn_info], 'insert commit')
+    spversioning3.commit('insert commit')
 
     # add revision : delete one junction and commit changes; rev = 5
 
-    spversioning.checkout(pg_conn_info,["epanet_trunk_rev_head.junctions"], sqlite_test_filename4)
+    spversioning4.checkout(["epanet_trunk_rev_head.junctions"])
 
     scon = dbapi2.connect(sqlite_test_filename4)
     scur = scon.cursor()
@@ -106,7 +110,7 @@ def test(host, pguser):
     #scur.execute("SELECT COUNT(*) FROM junctions")
     #assert( scur.fetchone()[0] == 3 )
     scon.close()
-    spversioning.commit([sqlite_test_filename4, pg_conn_info], 'delete id=0 commit')
+    spversioning4.commit('delete id=0 commit')
 
     select_str = diff_rev_view_str(pg_conn_info, 'epanet', 'junctions','trunk', 1,2)
     pcur.execute(select_str)
@@ -156,7 +160,7 @@ def test(host, pguser):
 
     # add revision : edit one table then delete and commit changes; rev = 6
 
-    spversioning.checkout(pg_conn_info,["epanet_trunk_rev_head.junctions"], sqlite_test_filename5)
+    spversioning5.checkout(["epanet_trunk_rev_head.junctions"])
 
     scon = dbapi2.connect(sqlite_test_filename5)
     scur = scon.cursor()
@@ -166,7 +170,7 @@ def test(host, pguser):
     #scur.execute("SELECT COUNT(*) FROM junctions")
     #assert( scur.fetchone()[0] == 3 )
     scon.close()
-    spversioning.commit([sqlite_test_filename5, pg_conn_info], 'update and delete commit')
+    spversioning5.commit('update and delete commit')
 
 
 if __name__ == "__main__":

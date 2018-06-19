@@ -5,7 +5,7 @@ sys.path.insert(0, '..')
 
 from versioningDB import versioning 
 from pyspatialite import dbapi2
-from versioningDB.spatialite import spVersioning
+from versioningDB.versioningAbc import versioningAbc
 import psycopg2
 import os
 import shutil
@@ -13,7 +13,6 @@ import tempfile
 
 def test(host, pguser):
     pg_conn_info = "dbname=epanet_test_db host=" + host + " user=" + pguser
-    spversioning = spVersioning()
     
     test_data_dir = os.path.dirname(os.path.realpath(__file__))
     tmp_dir = tempfile.gettempdir()
@@ -122,14 +121,15 @@ def test(host, pguser):
 
     wc = tmp_dir+'/wc_multiple_geometry_test.sqlite'
     if os.path.isfile(wc): os.remove(wc)
-    spversioning.checkout( pg_conn_info, ['epanet_trunk_rev_head.pipes','epanet_trunk_rev_head.junctions'], wc )
+    spversioning = versioningAbc([wc, pg_conn_info], 'spatialite')
+    spversioning.checkout( ['epanet_trunk_rev_head.pipes','epanet_trunk_rev_head.junctions'] )
 
 
     scur = versioning.Db( dbapi2.connect(wc) )
     scur.execute("UPDATE junctions_view SET GEOMETRY = GeometryFromText('POINT(3 3)',2154) WHERE OGC_FID = 1")
     scur.commit()
     scur.close()
-    spversioning.commit( [wc, pg_conn_info], 'moved a junction' )
+    spversioning.commit(  'moved a junction' )
 
     pcur.execute("SELECT ST_AsText(geometry), ST_AsText(geometry_schematic) FROM epanet_trunk_rev_head.junctions ORDER BY hid DESC")
     res = pcur.fetchall()
@@ -149,7 +149,7 @@ def test(host, pguser):
 
     # edit a little with a new wc
     os.remove(wc)
-    spversioning.checkout( pg_conn_info, ['epanet_b1_rev_head.junctions'], wc )
+    spversioning.checkout( ['epanet_b1_rev_head.junctions'] )
 
     scur = versioning.Db( dbapi2.connect(wc) )
     scur.execute("UPDATE junctions_view SET GEOMETRY = GeometryFromText('POINT(4 4)',2154) WHERE OGC_FID = 3")
@@ -159,7 +159,7 @@ def test(host, pguser):
     for r in scur.fetchall(): print r
     scur.close()
 
-    spversioning.commit( [wc, pg_conn_info], 'moved a junction')
+    spversioning.commit( 'moved a junction')
 
     pcur = versioning.Db(psycopg2.connect(pg_conn_info))
     pcur.execute("SELECT hid, trunk_rev_begin, trunk_rev_end, b1_rev_begin, b1_rev_end FROM epanet.junctions ORDER BY hid")

@@ -4,7 +4,7 @@ import sys
 sys.path.insert(0, '..')
 
 from versioningDB import versioning 
-from versioningDB.postgresqlLocal import pgVersioning
+from versioningDB.versioningAbc import versioningAbc
 import psycopg2
 import os
 import shutil
@@ -29,7 +29,6 @@ def test(host, pguser):
 
     # create the test database
 
-    pgversioning = pgVersioning()
     for resolution in ['theirs','mine']:
         os.system("dropdb --if-exists -h " + host + " -U "+pguser+" epanet_test_db")
         os.system("createdb -h " + host + " -U "+pguser+" epanet_test_db")
@@ -39,15 +38,17 @@ def test(host, pguser):
         pcur = versioning.Db(psycopg2.connect(pg_conn_info))
 
         tables = ['epanet_trunk_rev_head.junctions', 'epanet_trunk_rev_head.pipes']
-        pgversioning.checkout(pg_conn_info,tables, "wc1")
-        pgversioning.checkout(pg_conn_info,tables, "wc2")
+        pgversioning1 = versioningAbc([pg_conn_info, 'wc1'], 'postgres')
+        pgversioning2 = versioningAbc([pg_conn_info, 'wc2'], 'postgres')
+        pgversioning1.checkout(tables)
+        pgversioning2.checkout(tables)
         print "checkout done"
 
         pcur.execute("UPDATE wc1.pipes_view SET length = 4 WHERE pid = 1")
         prtTab( pcur, "wc1.pipes_diff")
         pcur.commit()
         #pcur.close()
-        pgversioning.commit([pg_conn_info,"wc1"],"msg1")
+        pgversioning1.commit("msg1")
 
         #pcur = versioning.Db(psycopg2.connect(pg_conn_info))
 
@@ -55,7 +56,7 @@ def test(host, pguser):
         pcur.execute("UPDATE wc2.pipes_view SET length = 5 WHERE pid = 1")
         prtTab( pcur, "wc2.pipes_diff")
         pcur.commit()
-        pgversioning.update([pg_conn_info,"wc2"])
+        pgversioning2.update()
         print "updated"
         prtTab( pcur, "wc2.pipes_diff")
         prtTab( pcur, "wc2.pipes_conflicts")

@@ -5,7 +5,7 @@ sys.path.insert(0, '..')
 
 from versioningDB import versioning 
 from pyspatialite import dbapi2
-from versioningDB.spatialite import spVersioning
+from versioningDB.versioningAbc import versioningAbc
 import psycopg2
 import os
 import shutil
@@ -13,7 +13,6 @@ import tempfile
 
 def test(host, pguser):
     pg_conn_info = "dbname=epanet_test_db host=" + host + " user=" + pguser
-    spversioning = spVersioning()
 
     test_data_dir = os.path.dirname(os.path.realpath(__file__))
     tmp_dir = tempfile.gettempdir()
@@ -25,10 +24,13 @@ def test(host, pguser):
     os.system("psql -h " + host + " -U "+pguser+" epanet_test_db -f "+test_data_dir+"/epanet_test_db.sql")
 
     # try the update
-    wc = [tmp_dir+"/issue437_wc0.sqlite", tmp_dir+"/issue437_wc1.sqlite"]
-    for f in wc:
+    wc = [os.path.join(tmp_dir,"issue437_wc0.sqlite"), os.path.join(tmp_dir,"issue437_wc1.sqlite")]
+    spversioning0 = versioningAbc([wc[0], pg_conn_info], 'spatialite')
+    spversioning1 = versioningAbc([wc[1], pg_conn_info], 'spatialite')
+    for i, f in enumerate(wc):
         if os.path.isfile(f): os.remove(f) 
-        spversioning.checkout(pg_conn_info, ['epanet_trunk_rev_head.junctions', 'epanet_trunk_rev_head.pipes'], f)
+        sp = spversioning0 if i == 0 else spversioning1
+        sp.checkout(['epanet_trunk_rev_head.junctions', 'epanet_trunk_rev_head.pipes'])
 
     scur = []
     for f in wc: scur.append(versioning.Db( dbapi2.connect( f ) ))
@@ -38,8 +40,8 @@ def test(host, pguser):
     scur[0].commit()
 
 
-    spversioning.commit( [wc[0], pg_conn_info], 'commit 1 wc0')
-    spversioning.update( [wc[1], pg_conn_info] )
+    spversioning0.commit( 'commit 1 wc0')
+    spversioning1.update(  )
 
     scur[0].execute("UPDATE pipes_view SET length = 1")
     scur[0].commit()
@@ -47,7 +49,7 @@ def test(host, pguser):
     scur[1].execute("UPDATE pipes_view SET length = 3")
     scur[1].commit()
 
-    spversioning.commit( [wc[0], pg_conn_info ], "commit 2 wc0" )
+    spversioning0.commit( "commit 2 wc0" )
     scur[0].execute("SELECT OGC_FID,length,trunk_rev_begin,trunk_rev_end,trunk_parent,trunk_child FROM pipes")
     print '################'
     for r in scur[0].fetchall():
@@ -56,14 +58,14 @@ def test(host, pguser):
     scur[0].execute("UPDATE pipes_view SET length = 2")
     scur[0].execute("DELETE FROM pipes_view WHERE OGC_FID = 6")
     scur[0].commit()
-    spversioning.commit( [wc[0], pg_conn_info ], "commit 3 wc0" )
+    spversioning0.commit( "commit 3 wc0" )
 
     scur[0].execute("SELECT OGC_FID,length,trunk_rev_begin,trunk_rev_end,trunk_parent,trunk_child FROM pipes")
     print '################'
     for r in scur[0].fetchall():
         print r
 
-    spversioning.update( [wc[1], pg_conn_info] )
+    spversioning1.update(  )
 
     scur[1].execute("SELECT OGC_FID,length,trunk_rev_begin,trunk_rev_end,trunk_parent,trunk_child FROM pipes_diff")
     print '################ diff'

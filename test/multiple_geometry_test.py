@@ -4,7 +4,7 @@ import sys
 sys.path.insert(0, '..')
 
 from versioningDB import versioning 
-from versioningDB.spatialite import spVersioning
+from versioningDB.versioningAbc import versioningAbc
 from pyspatialite import dbapi2
 import psycopg2
 import os
@@ -119,11 +119,11 @@ def test(host, pguser):
     assert( res[0][0] == 'POINT(0 0)' )
     assert( res[1][1] == 'POLYGON((0 0,2 0,2 2,0 2,0 0))' )
 
-    spversioning = spVersioning()
 
-    wc = tmp_dir+'/wc_multiple_geometry_test.sqlite'
+    wc = os.path.join(tmp_dir, 'wc_multiple_geometry_test.sqlite')
+    spversioning = versioningAbc([wc, pg_conn_info], 'spatialite')
     if os.path.isfile(wc): os.remove(wc)
-    spversioning.checkout( pg_conn_info, ['epanet_trunk_rev_head.pipes','epanet_trunk_rev_head.junctions'], wc )
+    spversioning.checkout( ['epanet_trunk_rev_head.pipes','epanet_trunk_rev_head.junctions'] )
 
 
     scur = versioning.Db( dbapi2.connect(wc) )
@@ -131,7 +131,7 @@ def test(host, pguser):
     scur.commit()
     scur.close()
 
-    spversioning.commit( [wc, pg_conn_info], 'a commit msg' )
+    spversioning.commit( 'a commit msg' )
 
     pcur.execute("SELECT ST_AsText(geometry), ST_AsText(geometry_schematic) FROM epanet_trunk_rev_head.junctions")
     res = pcur.fetchall()

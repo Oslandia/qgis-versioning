@@ -790,7 +790,6 @@ class Plugin(QObject):
                 self.current_layers[0] )
         uri = QgsDataSourceURI(layer.source())
 
-        late_by = 0       
         late_by = self.versioning.late()
 
         if late_by:
@@ -1052,7 +1051,6 @@ class Plugin(QObject):
                 self.current_layers[0] )
         uri = QgsDataSourceURI(layer.source())
 
-        late_by = 0
         late_by = self.versioning.late()
 
         if late_by:

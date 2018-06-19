@@ -3,7 +3,7 @@ from __future__ import absolute_import
 import sys
 sys.path.insert(0, '..')
 
-from versioningDB.versioningAbc import versioningAbc
+from versioningDB import versioning
 import os
 import shutil
 import tempfile
@@ -23,7 +23,7 @@ def test(host, pguser):
     # try the update
     sqlite_test_filename = os.path.join(tmp_dir, "issue287_wc.sqlite")
     shutil.copyfile(os.path.join(test_data_dir, "issue287_wc.sqlite"), sqlite_test_filename)
-    spversioning = versioningAbc([sqlite_test_filename, pg_conn_info], 'spatialite')
+    spversioning = versioning.versioningDb([sqlite_test_filename, pg_conn_info], 'spatialite')
     spversioning.update()
     spversioning.commit("test message")
 

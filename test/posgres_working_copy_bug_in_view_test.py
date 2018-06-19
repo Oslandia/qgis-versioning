@@ -3,8 +3,7 @@ from __future__ import absolute_import
 import sys
 sys.path.insert(0, '..')
 
-from versioningDB import versioning 
-from versioningDB.versioningAbc import versioningAbc
+from versioningDB import versioning
 import psycopg2
 import os
 import shutil
@@ -35,7 +34,7 @@ def test(host, pguser):
     os.system("psql -h " + host + " -U "+pguser+" epanet_test_db -f "+test_data_dir+"/epanet_test_db.sql")
 
     # chechout
-    pgversioning = versioningAbc([pg_conn_info, 'epanet_working_copy'], 'postgres')
+    pgversioning = versioning.versioningDb([pg_conn_info, 'epanet_working_copy'], 'postgres')
     pgversioning.checkout(['epanet_trunk_rev_head.junctions','epanet_trunk_rev_head.pipes'])
 
     pcur = versioning.Db(psycopg2.connect(pg_conn_info))

@@ -3,8 +3,7 @@ from __future__ import absolute_import
 import sys
 sys.path.insert(0, '..')
 
-from versioningDB import versioning 
-from versioningDB.versioningAbc import versioningAbc
+from versioningDB import versioning
 import psycopg2
 import os
 import shutil
@@ -38,8 +37,8 @@ def test(host, pguser):
         pcur = versioning.Db(psycopg2.connect(pg_conn_info))
 
         tables = ['epanet_trunk_rev_head.junctions', 'epanet_trunk_rev_head.pipes']
-        pgversioning1 = versioningAbc([pg_conn_info, 'wc1'], 'postgres')
-        pgversioning2 = versioningAbc([pg_conn_info, 'wc2'], 'postgres')
+        pgversioning1 = versioning.versioningDb([pg_conn_info, 'wc1'], 'postgres')
+        pgversioning2 = versioning.versioningDb([pg_conn_info, 'wc2'], 'postgres')
         pgversioning1.checkout(tables)
         pgversioning2.checkout(tables)
         print "checkout done"

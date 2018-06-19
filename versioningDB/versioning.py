@@ -11,8 +11,9 @@ from pyspatialite import dbapi2
 import psycopg2
 import platform
 from . import utils
+from .versioningAbc import versioningAbc
 
-
+versioningDb = versioningAbc
 Db = utils.Db
 os_info = utils.os_info
 pg_pk = utils.pg_pk

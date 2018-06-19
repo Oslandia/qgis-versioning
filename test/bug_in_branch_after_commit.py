@@ -5,7 +5,6 @@ sys.path.insert(0, '..')
 
 from versioningDB import versioning
 from pyspatialite import dbapi2
-from versioningDB.versioningAbc import versioningAbc
 import os
 import tempfile
 
@@ -27,7 +26,7 @@ def test(host, pguser):
     wc = tmp_dir+"/bug_in_branch_after_commit_wc.sqlite"
     if os.path.isfile(wc): os.remove(wc) 
     
-    spversioning = versioningAbc([wc, pg_conn_info], 'spatialite')
+    spversioning = versioning.versioningDb([wc, pg_conn_info], 'spatialite')
     spversioning.checkout(['epanet_trunk_rev_head.junctions', 'epanet_trunk_rev_head.pipes'])
 
     scur = versioning.Db( dbapi2.connect( wc ) )

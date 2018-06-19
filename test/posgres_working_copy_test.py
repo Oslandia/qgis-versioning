@@ -4,7 +4,6 @@ import sys
 sys.path.insert(0, '..')
 
 from versioningDB import versioning 
-from versioningDB.versioningAbc import versioningAbc
 import psycopg2
 import os
 import shutil
@@ -37,8 +36,8 @@ def test(host, pguser):
     # chechout
     #tables = ['epanet_trunk_rev_head.junctions','epanet_trunk_rev_head.pipes']
     tables = ['epanet_trunk_rev_head.junctions', 'epanet_trunk_rev_head.pipes']
-    pgversioning1 = versioningAbc([pg_conn_info, 'epanet_working_copy'], 'postgres')
-    pgversioning2 = versioningAbc([pg_conn_info, 'epanet_working_copy_cflt'], 'postgres')
+    pgversioning1 = versioning.versioningDb([pg_conn_info, 'epanet_working_copy'], 'postgres')
+    pgversioning2 = versioning.versioningDb([pg_conn_info, 'epanet_working_copy_cflt'], 'postgres')
     pgversioning1.checkout(tables)
 
     pgversioning2.checkout(tables)

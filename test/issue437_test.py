@@ -5,7 +5,6 @@ sys.path.insert(0, '..')
 
 from versioningDB import versioning 
 from pyspatialite import dbapi2
-from versioningDB.versioningAbc import versioningAbc
 import psycopg2
 import os
 import shutil
@@ -25,8 +24,8 @@ def test(host, pguser):
 
     # try the update
     wc = [os.path.join(tmp_dir,"issue437_wc0.sqlite"), os.path.join(tmp_dir,"issue437_wc1.sqlite")]
-    spversioning0 = versioningAbc([wc[0], pg_conn_info], 'spatialite')
-    spversioning1 = versioningAbc([wc[1], pg_conn_info], 'spatialite')
+    spversioning0 = versioning.versioningDb([wc[0], pg_conn_info], 'spatialite')
+    spversioning1 = versioning.versioningDb([wc[1], pg_conn_info], 'spatialite')
     for i, f in enumerate(wc):
         if os.path.isfile(f): os.remove(f) 
         sp = spversioning0 if i == 0 else spversioning1

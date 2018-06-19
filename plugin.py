@@ -42,7 +42,6 @@ from qgis.core import QgsCredentials, QgsDataSourceURI, QgsMapLayerRegistry, \
     QgsRuleBasedRendererV2
 from PyQt4.QtCore import *
 
-from .versioningDB.versioningAbc import versioningAbc
 from .versioningDB import versioning
 
 
@@ -738,9 +737,9 @@ class Plugin(QObject):
         uri = QgsDataSourceURI(layer.source())
 
         if layer.providerType() == 'spatialite':
-            self.versioning = versioningAbc([uri.database(), self.pg_conn_info()], layer.providerType())
+            self.versioning = versioning.versioningDb([uri.database(), self.pg_conn_info()], layer.providerType())
         else:
-            self.versioning = versioningAbc([self.pg_conn_info(), uri.schema()], layer.providerType())
+            self.versioning = versioning.versioningDb([self.pg_conn_info(), uri.schema()], layer.providerType())
             
         
         unresolved = self.versioning.unresolved_conflicts()
@@ -920,7 +919,7 @@ class Plugin(QObject):
             os.remove(filename)
 
         print "checking out ", tables_for_conninfo, " from ",uri.connectionInfo()
-        self.versioning = versioningAbc([filename, self.pg_conn_info()], 'spatialite')
+        self.versioning = versioning.versioningDb([filename, self.pg_conn_info()], 'spatialite')
         self.versioning.checkout(tables_for_conninfo, user_selected_features )
 
         # add layers from offline version
@@ -1024,7 +1023,7 @@ class Plugin(QObject):
             "<b>lowercase</b> letters, underscore or digits.", duration=10)
             return
         print "checking out ", tables_for_conninfo, " from ", uri.connectionInfo()
-        self.versioning = versioningAbc([self.pg_conn_info(), working_copy_schema], 'postgres')
+        self.versioning = versioning.versioningDb([self.pg_conn_info(), working_copy_schema], 'postgres')
         self.versioning.checkout(tables_for_conninfo, user_selected_features )
 
         # add layers from offline version

@@ -5,7 +5,6 @@ sys.path.insert(0, '..')
 
 from versioningDB import versioning
 from pyspatialite import dbapi2
-from versioningDB.versioningAbc import versioningAbc
 import psycopg2
 import os
 import shutil
@@ -20,7 +19,7 @@ def test(host, pguser):
     if os.path.isfile(sqlite_test_filename):
         os.remove(sqlite_test_filename)
 
-    spversioning = versioningAbc([sqlite_test_filename, pg_conn_info], 'spatialite')
+    spversioning = versioning.versioningDb([sqlite_test_filename, pg_conn_info], 'spatialite')
     # create the test database
     os.system("dropdb --if-exists -h " + host + " -U "+pguser+" epanet_test_db")
     os.system("createdb -h " + host + " -U "+pguser+" epanet_test_db")

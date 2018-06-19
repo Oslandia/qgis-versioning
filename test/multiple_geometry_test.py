@@ -4,7 +4,6 @@ import sys
 sys.path.insert(0, '..')
 
 from versioningDB import versioning 
-from versioningDB.versioningAbc import versioningAbc
 from pyspatialite import dbapi2
 import psycopg2
 import os
@@ -121,7 +120,7 @@ def test(host, pguser):
 
 
     wc = os.path.join(tmp_dir, 'wc_multiple_geometry_test.sqlite')
-    spversioning = versioningAbc([wc, pg_conn_info], 'spatialite')
+    spversioning = versioning.versioningDb([wc, pg_conn_info], 'spatialite')
     if os.path.isfile(wc): os.remove(wc)
     spversioning.checkout( ['epanet_trunk_rev_head.pipes','epanet_trunk_rev_head.junctions'] )
 

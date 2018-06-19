@@ -3,7 +3,6 @@ import sys
 sys.path.insert(0, '..')
 
 from versioningDB import versioning
-from versioningDB.versioningAbc import versioningAbc
 
 from pyspatialite import dbapi2
 import psycopg2
@@ -21,7 +20,7 @@ def test(host, pguser):
     if os.path.isfile(sqlite_test_filename):
         os.remove(sqlite_test_filename)
         
-    spversioning = versioningAbc([sqlite_test_filename, pg_conn_info], 'spatialite')
+    spversioning = versioning.versioningDb([sqlite_test_filename, pg_conn_info], 'spatialite')
 
     # create the test database
     os.system("dropdb --if-exists -h " + host + " -U "+pguser+" epanet_test_db")
@@ -59,7 +58,7 @@ def test(host, pguser):
     assert len(scur.fetchall()) ==  3
 
     # postgres working copy
-    pgversioning = versioningAbc([pg_conn_info, 'my_working_copy'], 'postgres')
+    pgversioning = versioning.versioningDb([pg_conn_info, 'my_working_copy'], 'postgres')
     pgversioning.checkout(["epanet_trunk_rev_head.junctions","epanet_trunk_rev_head.pipes"], [[1, 2, 3], []])
 
     pcon = psycopg2.connect(pg_conn_info)

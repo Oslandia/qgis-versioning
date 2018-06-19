@@ -34,7 +34,7 @@ def test(host, pguser):
     os.system("psql -h " + host + " -U "+pguser+" epanet_test_db -f "+test_data_dir+"/epanet_test_db.sql")
 
     # chechout
-    pgversioning = versioning.versioningDb([pg_conn_info, 'epanet_working_copy'], 'postgres')
+    pgversioning = versioning.pgLocal(pg_conn_info, 'epanet_working_copy')
     pgversioning.checkout(['epanet_trunk_rev_head.junctions','epanet_trunk_rev_head.pipes'])
 
     pcur = versioning.Db(psycopg2.connect(pg_conn_info))

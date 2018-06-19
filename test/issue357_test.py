@@ -23,8 +23,8 @@ def test(host, pguser):
 
     # try the update
     wc = [os.path.join(tmp_dir, "issue357_wc0.sqlite"), os.path.join(tmp_dir, "issue357_wc1.sqlite")]
-    spversioning0 = versioning.versioningDb([wc[0], pg_conn_info], 'spatialite')
-    spversioning1 = versioning.versioningDb([wc[1], pg_conn_info], 'spatialite')
+    spversioning0 = versioning.spatialite(wc[0], pg_conn_info)
+    spversioning1 = versioning.spatialite(wc[1], pg_conn_info)
     for i, f in enumerate(wc):
         if os.path.isfile(f): os.remove(f)
         sp = spversioning0 if i == 0 else spversioning1

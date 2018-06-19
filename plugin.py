@@ -737,9 +737,9 @@ class Plugin(QObject):
         uri = QgsDataSourceURI(layer.source())
 
         if layer.providerType() == 'spatialite':
-            self.versioning = versioning.versioningDb([uri.database(), self.pg_conn_info()], layer.providerType())
+            self.versioning = versioning.spatialite(uri.database(), self.pg_conn_info())
         else:
-            self.versioning = versioning.versioningDb([self.pg_conn_info(), uri.schema()], layer.providerType())
+            self.versioning = versioning.pgLocal(self.pg_conn_info(), uri.schema())
             
         
         unresolved = self.versioning.unresolved_conflicts()
@@ -918,7 +918,7 @@ class Plugin(QObject):
             os.remove(filename)
 
         print "checking out ", tables_for_conninfo, " from ",uri.connectionInfo()
-        self.versioning = versioning.versioningDb([filename, self.pg_conn_info()], 'spatialite')
+        self.versioning = versioning.spatialite(filename, self.pg_conn_info())
         self.versioning.checkout(tables_for_conninfo, user_selected_features )
 
         # add layers from offline version
@@ -1022,7 +1022,7 @@ class Plugin(QObject):
             "<b>lowercase</b> letters, underscore or digits.", duration=10)
             return
         print "checking out ", tables_for_conninfo, " from ", uri.connectionInfo()
-        self.versioning = versioning.versioningDb([self.pg_conn_info(), working_copy_schema], 'postgres')
+        self.versioning = versioning.pgLocal(self.pg_conn_info(), working_copy_schema)
         self.versioning.checkout(tables_for_conninfo, user_selected_features )
 
         # add layers from offline version

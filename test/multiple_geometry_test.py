@@ -120,7 +120,7 @@ def test(host, pguser):
 
 
     wc = os.path.join(tmp_dir, 'wc_multiple_geometry_test.sqlite')
-    spversioning = versioning.versioningDb([wc, pg_conn_info], 'spatialite')
+    spversioning = versioning.spatialite(wc, pg_conn_info)
     if os.path.isfile(wc): os.remove(wc)
     spversioning.checkout( ['epanet_trunk_rev_head.pipes','epanet_trunk_rev_head.junctions'] )
 

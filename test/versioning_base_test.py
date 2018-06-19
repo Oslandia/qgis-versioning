@@ -34,11 +34,11 @@ def test(host, pguser):
     os.system("psql -h " + host + " -U "+pguser+" epanet_test_db -c 'CREATE EXTENSION postgis'")
     os.system("psql -h " + host + " -U "+pguser+" epanet_test_db -f "+test_data_dir+"/epanet_test_db.sql")
 
-    spversioning1 = versioning.versioningDb([sqlite_test_filename1, pg_conn_info], 'spatialite')
-    spversioning2 = versioning.versioningDb([sqlite_test_filename2, pg_conn_info], 'spatialite')
-    spversioning3 = versioning.versioningDb([sqlite_test_filename3, pg_conn_info], 'spatialite')
-    spversioning4 = versioning.versioningDb([sqlite_test_filename4, pg_conn_info], 'spatialite')
-    spversioning5 = versioning.versioningDb([sqlite_test_filename5, pg_conn_info], 'spatialite')
+    spversioning1 = versioning.spatialite(sqlite_test_filename1, pg_conn_info)
+    spversioning2 = versioning.spatialite(sqlite_test_filename2, pg_conn_info)
+    spversioning3 = versioning.spatialite(sqlite_test_filename3, pg_conn_info)
+    spversioning4 = versioning.spatialite(sqlite_test_filename4, pg_conn_info)
+    spversioning5 = versioning.spatialite(sqlite_test_filename5, pg_conn_info)
     # chechout two tables
 
     try:

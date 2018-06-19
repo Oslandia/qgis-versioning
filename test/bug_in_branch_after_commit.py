@@ -26,7 +26,7 @@ def test(host, pguser):
     wc = tmp_dir+"/bug_in_branch_after_commit_wc.sqlite"
     if os.path.isfile(wc): os.remove(wc) 
     
-    spversioning = versioning.versioningDb([wc, pg_conn_info], 'spatialite')
+    spversioning = versioning.spatialite(wc, pg_conn_info)
     spversioning.checkout(['epanet_trunk_rev_head.junctions', 'epanet_trunk_rev_head.pipes'])
 
     scur = versioning.Db( dbapi2.connect( wc ) )

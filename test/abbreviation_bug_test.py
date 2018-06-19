@@ -19,7 +19,7 @@ def test(host, pguser):
     if os.path.isfile(sqlite_test_filename):
         os.remove(sqlite_test_filename)
 
-    spversioning = versioning.versioningDb([sqlite_test_filename, pg_conn_info], 'spatialite')
+    spversioning = versioning.spatialite(sqlite_test_filename, pg_conn_info)
     # create the test database
     os.system("dropdb --if-exists -h " + host + " -U "+pguser+" epanet_test_db")
     os.system("createdb -h " + host + " -U "+pguser+" epanet_test_db")

@@ -18,8 +18,8 @@ before_script:
   - createdb testdb && psql -U postgres -d testdb -c 'CREATE EXTENSION postgis;'
 
 install:
-  - pip install --upgrade pip
-  - pip install -r requirements.txt
+  - sudo pip install --upgrade pip
+  - sudo pip install -r requirements.txt
   
 script:
   - python --version

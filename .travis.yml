@@ -12,7 +12,7 @@ addons:
 before_install:
   - sudo apt search gdal
   - sudo apt search libproj
-  - sudo apt-get install -y gdal-bin libproj
+  - sudo apt-get install -y gdal-bin libproj-dev
 
 before_script:
   - psql -U postgres -c "create extension postgis"

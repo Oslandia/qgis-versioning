@@ -11,12 +11,15 @@ addons:
 
 before_install:
   - sudo apt search gdal
-  - sudo apt-get install -y gdal-bin python-pyspatialite python-psycopg2 python-pip
+  - sudo apt-get install -y gdal-bin
 
 before_script:
   - psql -U postgres -c "create extension postgis"
   - createdb testdb && psql -U postgres -d testdb -c 'CREATE EXTENSION postgis;'
 
+install:
+  - pip install -r requirements.txt
+  
 script:
   - python --version
   - cd test

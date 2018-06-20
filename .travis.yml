@@ -16,7 +16,7 @@ before_install:
 
 before_script:
   - psql -U postgres -c "create extension postgis"
-  - createdb testdb && psql -U postgres -d testdb -c 'CREATE EXTENSION postgis;'
+  - createdb testdb && psql -U postgres -d testdb -f test/epanet_test_db.sql
 
 install:
   - sudo pip install --upgrade pip

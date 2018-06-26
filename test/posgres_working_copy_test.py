@@ -4,7 +4,6 @@ import sys
 sys.path.insert(0, '..')
 
 from versioningDB import versioning 
-from versioningDB.postgresqlLocal import pgVersioning
 import psycopg2
 import os
 import shutil
@@ -27,7 +26,6 @@ def test(host, pguser):
     pg_conn_info = "dbname=epanet_test_db host=" + host + " user=" + pguser
     test_data_dir = os.path.dirname(os.path.realpath(__file__))
 
-    pgversioning = pgVersioning()
     # create the test database
 
     os.system("dropdb --if-exists -h " + host + " -U "+pguser+" epanet_test_db")
@@ -38,9 +36,11 @@ def test(host, pguser):
     # chechout
     #tables = ['epanet_trunk_rev_head.junctions','epanet_trunk_rev_head.pipes']
     tables = ['epanet_trunk_rev_head.junctions', 'epanet_trunk_rev_head.pipes']
-    pgversioning.checkout(pg_conn_info,tables, "epanet_working_copy")
+    pgversioning1 = versioning.pgLocal(pg_conn_info, 'epanet_working_copy')
+    pgversioning2 = versioning.pgLocal(pg_conn_info, 'epanet_working_copy_cflt')
+    pgversioning1.checkout(tables)
 
-    pgversioning.checkout(pg_conn_info,tables, "epanet_working_copy_cflt")
+    pgversioning2.checkout(tables)
 
     pcur = versioning.Db(psycopg2.connect(pg_conn_info))
 
@@ -71,7 +71,7 @@ def test(host, pguser):
     prtTab(pcur, 'epanet_working_copy.pipes_diff')
     pcur.commit()
 
-    pgversioning.commit([pg_conn_info, "epanet_working_copy"],"test commit msg")
+    pgversioning1.commit("test commit msg")
     prtTab(pcur, 'epanet.pipes')
 
     pcur.execute("SELECT trunk_rev_end FROM epanet.pipes WHERE pid = 1")
@@ -100,7 +100,7 @@ def test(host, pguser):
     pcur.execute("INSERT INTO epanet_working_copy_cflt.pipes_view(id, start_node, end_node, geom) VALUES ('3','1','2',ST_GeometryFromText('LINESTRING(1 -1,0 1)',2154))")
     prtTab(pcur, 'epanet_working_copy_cflt.pipes_diff')
     pcur.commit()
-    pgversioning.update( [pg_conn_info, "epanet_working_copy_cflt"] )
+    pgversioning2.update(  )
     prtTab(pcur, 'epanet_working_copy_cflt.pipes_diff')
     prtTab(pcur, 'epanet_working_copy_cflt.pipes_update_diff')
 
@@ -120,7 +120,7 @@ def test(host, pguser):
     prtTab(pcur, 'epanet_working_copy_cflt.pipes_conflicts')
     pcur.commit()
 
-    pgversioning.commit([pg_conn_info, "epanet_working_copy_cflt"],"second test commit msg")
+    pgversioning2.commit("second test commit msg")
 
 
     pcur.execute("SELECT * FROM epanet_working_copy_cflt.initial_revision")
@@ -134,7 +134,7 @@ def test(host, pguser):
     prtTab(pcur, 'epanet_working_copy_cflt.pipes_diff')
     pcur.commit()
 
-    pgversioning.commit([pg_conn_info, "epanet_working_copy_cflt"],"third test commit msg")
+    pgversioning2.commit("third test commit msg")
 
 
     prtTab(pcur, 'epanet_working_copy_cflt.pipes_diff')

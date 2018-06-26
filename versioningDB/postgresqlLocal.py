@@ -1,7 +1,6 @@
 # -*- coding: utf-8 -*-
 
 from __future__ import absolute_import
-from .versioningAbc import AbstractVersioning
 from .utils import *
 import psycopg2
 
@@ -9,7 +8,7 @@ from itertools import izip_longest
 
 DEBUG=False
 
-class pgVersioning(AbstractVersioning):    
+class pgVersioning(object):    
     
     def revision(self, connection ):
         (pg_conn_info, working_copy_schema) = connection
@@ -299,8 +298,8 @@ class pgVersioning(AbstractVersioning):
     # we need the initial_revision table all the same
     # for each table we need a diff and a view and triggers
     
-    def checkout(self, pg_conn_info, pg_table_names, working_source, selected_feature_lists = []):
-        working_copy_schema = working_source 
+    def checkout(self, connection, pg_table_names, selected_feature_lists = []):
+        (pg_conn_info, working_copy_schema) = connection
         """create postgres working copy from versioned database tables
         pg_table_names must be complete schema.table names
         the schema name must end with _branch_rev_head

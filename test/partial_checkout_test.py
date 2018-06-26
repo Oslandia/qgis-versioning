@@ -3,8 +3,6 @@ import sys
 sys.path.insert(0, '..')
 
 from versioningDB import versioning
-from versioningDB.postgresqlLocal import pgVersioning
-from versioningDB.spatialite import spVersioning
 
 from pyspatialite import dbapi2
 import psycopg2
@@ -15,15 +13,14 @@ import tempfile
 def test(host, pguser):
     pg_conn_info = "dbname=epanet_test_db host=" + host + " user=" + pguser
     
-    pgversioning = pgVersioning()
-    spversioning = spVersioning()
-    
     tmp_dir = tempfile.gettempdir()
     test_data_dir = os.path.dirname(os.path.realpath(__file__))
 
-    sqlite_test_filename = tmp_dir+"/partial_checkout_test.sqlite"
+    sqlite_test_filename = os.path.join(tmp_dir, "partial_checkout_test.sqlite")
     if os.path.isfile(sqlite_test_filename):
         os.remove(sqlite_test_filename)
+        
+    spversioning = versioning.spatialite(sqlite_test_filename, pg_conn_info)
 
     # create the test database
     os.system("dropdb --if-exists -h " + host + " -U "+pguser+" epanet_test_db")
@@ -52,7 +49,7 @@ def test(host, pguser):
     versioning.historize(pg_conn_info, 'epanet')
 
     # spatialite working copy
-    spversioning.checkout(pg_conn_info,["epanet_trunk_rev_head.junctions","epanet_trunk_rev_head.pipes"], sqlite_test_filename, [[1, 2, 3], []])
+    spversioning.checkout(["epanet_trunk_rev_head.junctions","epanet_trunk_rev_head.pipes"], [[1, 2, 3], []])
     assert( os.path.isfile(sqlite_test_filename) and "sqlite file must exist at this point" )
 
     scon = dbapi2.connect(sqlite_test_filename)
@@ -61,7 +58,8 @@ def test(host, pguser):
     assert len(scur.fetchall()) ==  3
 
     # postgres working copy
-    pgversioning.checkout(pg_conn_info,["epanet_trunk_rev_head.junctions","epanet_trunk_rev_head.pipes"], 'my_working_copy', [[1, 2, 3], []])
+    pgversioning = versioning.pgLocal(pg_conn_info, 'my_working_copy')
+    pgversioning.checkout(["epanet_trunk_rev_head.junctions","epanet_trunk_rev_head.pipes"], [[1, 2, 3], []])
 
     pcon = psycopg2.connect(pg_conn_info)
     pcur = pcon.cursor()

@@ -4,7 +4,6 @@ sys.path.insert(0, '..')
 
 from versioningDB import versioning
 from pyspatialite import dbapi2
-from versioningDB.spatialite import spVersioning
 import psycopg2
 import os
 import shutil
@@ -12,7 +11,6 @@ import tempfile
 
 def test(host, pguser):
     pg_conn_info = "dbname=epanet_test_db host=" + host + " user=" + pguser
-    spversioning = spVersioning()
     
     test_data_dir = os.path.dirname(os.path.realpath(__file__))
     tmp_dir = tempfile.gettempdir()
@@ -85,7 +83,8 @@ def test(host, pguser):
 
     wc = tmp_dir+'/wc_multiple_geometry_test.sqlite'
     if os.path.isfile(wc): os.remove(wc) 
-    spversioning.checkout( pg_conn_info, ['epanet_trunk_rev_head.pipes','epanet_trunk_rev_head.junctions'], wc )
+    spversioning = versioning.spatialite(wc, pg_conn_info)
+    spversioning.checkout( ['epanet_trunk_rev_head.pipes','epanet_trunk_rev_head.junctions'] )
 
 
     scur = versioning.Db( dbapi2.connect(wc) )
@@ -95,7 +94,7 @@ def test(host, pguser):
     print "--------------"
     for res in scur.fetchall(): print res
     scur.close()
-    spversioning.commit( [wc, pg_conn_info], 'moved a junction' )
+    spversioning.commit( 'moved a junction' )
 
     pcur.execute("SELECT ST_AsText(geometry), ST_AsText(geometry_schematic), printmap FROM epanet_trunk_rev_head.junctions ORDER BY hid DESC")
     res = pcur.fetchall()

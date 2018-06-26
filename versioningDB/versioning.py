@@ -11,7 +11,14 @@ from pyspatialite import dbapi2
 import psycopg2
 import platform
 from . import utils
+from .versioningAbc import versioningAbc
 
+versioningDb = versioningAbc
+def spatialite(sqlite_filename, pg_conn_info):
+    return versioningDb([sqlite_filename, pg_conn_info], 'spatialite')
+
+def pgLocal(pg_conn_info, schema):
+    return versioningDb([pg_conn_info, schema], 'postgres')
 
 Db = utils.Db
 os_info = utils.os_info

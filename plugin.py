@@ -37,6 +37,7 @@ from PyQt4.QtGui import QAction, QDialog, QDialogButtonBox, \
     QFileDialog, QIcon, QLabel, QLineEdit, QMessageBox, QTableWidget, \
     QTreeView, QTreeWidget, QVBoxLayout, QTableWidgetItem, QColor, QProgressBar,\
     QCheckBox, QComboBox, QDesktopServices
+from PyQt4.QtCore import QSettings
 from qgis.core import QgsCredentials, QgsDataSourceURI, QgsMapLayerRegistry, \
     QgsFeatureRequest, QGis, QgsFeature, QgsGeometry, QgsPoint, QgsSymbolV2, \
     QgsRuleBasedRendererV2
@@ -44,6 +45,8 @@ from PyQt4.QtCore import *
 
 from .versioningDB import versioning
 
+
+CONN = "PostgreSQL/connections"
 
 # Deactivate stdout (like output of print statements) because windows
 # causes occasional "IOError [Errno 9] File descriptor error"
@@ -228,6 +231,76 @@ class Plugin(QObject):
         #print "pg_users_list = " + str(pg_users_list)
         self.q_commit_msg_dlg.pg_users_combobox.addItems (pg_users_list)
 
+    def is_pgDistant(self, layer):
+        if layer.providerType() != 'postgres':
+            return False
+        
+        uri = QgsDataSourceURI(layer.source())
+        con = psycopg2.connect(self.get_conn_from_uri(uri))
+        cur = con.cursor()
+        cur.execute("""SELECT table_name FROM information_schema.tables WHERE table_schema = '{schema}' and table_name='wcs_con'""".format(schema=uri.schema()))
+        res = cur.fetchone()
+        
+        if res:
+            return True
+        
+        return False
+        
+    def get_conn_from_uri(self, uri):
+        """Returns a connection info from an URI"""
+        
+        pg_conn_info = None
+        if len(uri.service()) != 0:
+            pg_conn_info = uri.service()
+        else:
+            pg_conn_info = "dbname='{}' user='{}' host='{}' port='{}' password='{}'".format(
+                    uri.database(), uri.username(), uri.host(), uri.port(), uri.password())
+            
+        return pg_conn_info
+    
+    def get_conn_from_settings(self, dbname):
+        """Retruns a connection info and data from a dbname saved in QgsSettings"""
+        qs = QSettings()
+        conn_dict = {}
+        qs.beginGroup(CONN + '/' + dbname)
+        pg_conn_info = None
+        if len(qs.value('service')) != 0:
+            conn_dict['service'] = qs.value('service')
+            pg_conn_info = "service={}".format(conn_dict['service'])
+        else:
+            conn_dict['database'] = qs.value('database')
+            conn_dict['username'] = qs.value('username')
+            conn_dict['host'] = qs.value('host')
+            conn_dict['port'] = qs.value('port')
+            conn_dict['password'] = qs.value('password')
+            pg_conn_info = "dbname='{}' user='{}' host='{}' port='{}' password='{}'".format(qs.value('database'), qs.value('username'), qs.value('host'), qs.value('port'), qs.value('password'))
+        
+        return (pg_conn_info, conn_dict)
+
+    def selectDatabase(self):
+        dlg = QDialog()
+        dlg.setWindowTitle('Choose the database')
+        layout = QVBoxLayout(dlg)
+        button_box = QDialogButtonBox(dlg)
+        button_box.setStandardButtons(
+                QDialogButtonBox.Cancel|QDialogButtonBox.Ok)
+        button_box.accepted.connect(dlg.accept)
+        button_box.rejected.connect(dlg.reject)
+        
+        connectionBox = QComboBox( dlg )
+        qs = QSettings()
+        qs.beginGroup(CONN)
+        connections = qs.childGroups()
+        connectionBox.addItems(connections)
+        qs.endGroup()
+        
+        layout.addWidget( connectionBox )
+        layout.addWidget( button_box )
+        if not dlg.exec_() :
+            return None
+        
+        return connectionBox.currentText()
+        
     def on_legend_click(self, current, column=0):
         "changes menu when user clicks on legend"
         self.current_group_idx = -1
@@ -317,27 +390,38 @@ class Plugin(QObject):
             self.info.setText( uri.database().split("/")[-1] +' <b>working rev</b>='+str(rev))
             selection_type = 'working copy'
         if layer.providerType() == "postgres":
-            mtch = re.match(r'(.+)_([^_]+)_rev_(head|\d+)', uri.schema())
-            if mtch:
-                self.info.setText(uri.database()+' '+mtch.group(1)
-                        +' branch='+mtch.group(2)+' rev='+mtch.group(3))
-                if mtch.group(3) == 'head':
-                    selection_type = 'head'
-                else:
-                    selection_type = 'versioned'
-            else:
-                # check if it's a working copy
-                rev = 0
+            # IF schema contain table wcs_con is a pg distant versioning
+            ret = self.is_pgDistant(layer)
+            if ret:
                 try:
                     rev = self.versioning.revision()
                     selection_type = 'working copy'
                     self.info.setText( uri.database()+' '+uri.schema()
                             +' <b>working rev</b>='+str(rev) )
                 except:
-                    self.info.setText('Versioning : unversioned schema')
+                    self.info.setText('Versioning : the selected group is not a working copy')
                     selection_type = 'unversioned'
-
-
+            else:
+                mtch = re.match(r'(.+)_([^_]+)_rev_(head|\d+)', uri.schema())
+                if mtch:
+                    self.info.setText(uri.database()+' '+mtch.group(1)
+                            +' branch='+mtch.group(2)+' rev='+mtch.group(3))
+                    if mtch.group(3) == 'head':
+                        selection_type = 'head'
+                    else:
+                        selection_type = 'versioned'
+                else:
+                    # check if it's a working copy
+                    rev = 0
+                    try:
+                        rev = self.versioning.revision()
+                        selection_type = 'working copy'
+                        self.info.setText( uri.database()+' '+uri.schema()
+                                +' <b>working rev</b>='+str(rev) )
+                    except:
+                        self.info.setText('Versioning : unversioned schema')
+                        selection_type = 'unversioned'
+                    
         # refresh the available commands
         assert( selection_type )
         if selection_type == 'unversioned':
@@ -388,6 +472,14 @@ class Plugin(QObject):
         self.actions[-1].triggered.connect(self.checkout_pg)
         self.actions[-1].setVisible(False)
 
+        self.actions.append( QAction(
+            QIcon(os.path.dirname(__file__) + "/checkout_pg.svg"),
+            u"checkout", self.iface.mainWindow()) )
+        self.actions[-1].setToolTip ("postGIS distant checkout")
+        self.actions[-1].setWhatsThis("checkout distant postgres")
+        self.actions[-1].triggered.connect(self.checkout_pg_distant)
+        self.actions[-1].setVisible(False)
+        
         self.actions.append( QAction(
             QIcon(os.path.dirname(__file__) + "/update.svg"),
             u"update", self.iface.mainWindow()) )
@@ -739,7 +831,12 @@ class Plugin(QObject):
         if layer.providerType() == 'spatialite':
             self.versioning = versioning.spatialite(uri.database(), self.pg_conn_info())
         else:
-            self.versioning = versioning.pgLocal(self.pg_conn_info(), uri.schema())
+            if self.is_pgDistant(layer):
+                out = self.selectDatabase()
+                (pg_conn_info_out, conn_dict) = self.get_conn_from_settings(out)
+                self.versioning = versioning.pgCopy(pg_conn_info_out, uri.schema(), self.get_conn_from_uri(uri))
+            else:
+                self.versioning = versioning.pgLocal(self.pg_conn_info(), uri.schema())
             
         
         unresolved = self.versioning.unresolved_conflicts()
@@ -939,6 +1036,120 @@ class Plugin(QObject):
             self.iface.legendInterface().moveLayer( new_layer, grp_idx)
         self.iface.legendInterface().setGroupExpanded( grp_idx, True )
 
+    def checkout_pg_distant(self):
+        """create postgres working copy (schema) from versioned
+        database layers"""
+        # for each connection, we need the list of tables
+        tables_for_conninfo = []
+        # for each layer, we need the list of user selected features to be
+        # checked out; if a given layer has no user selected features, then all
+        # features will be checked out
+        user_selected_features = []
+        uri = None
+        conn_info = ''
+        for layer_id in self.current_layers:
+            layer = QgsMapLayerRegistry.instance().mapLayer( layer_id )
+            uri = QgsDataSourceURI(layer.source())
+
+            # Get actual PK fror corresponding table
+            actual_table_pk = versioning.get_actual_pk( uri,self.pg_conn_info() )
+            #print "Actual table pk = " + actual_table_pk
+
+            layer_selected_features_ids = [f[actual_table_pk] for f in layer.selectedFeatures()]
+
+            # Check if PK from view [uri.keyColumn()] matches actual PK. If not,
+            # throw error.  We need the right PK from the view in order to use
+            # the efficient selectedFeaturesIds().  selectedFeatures() or other
+            # ways that lead to a list of QGSFeature objects do not scale well.
+            if layer_selected_features_ids:
+                if uri.keyColumn()!= actual_table_pk:
+                    QMessageBox.warning(None,"Warning","Layer  \""+layer.name()+
+                    " \" does not have the right primary key.\n\nCheckout will "
+                    "proceed without the selected features subset.")
+                    user_selected_features.append([])
+                else:
+                    QMessageBox.warning(None,"Warning","You will be checking out "
+                    "the subset of "+str(len(layer_selected_features_ids))+" features "
+                    "you selected in layer \""+layer.name()+"\".\n\nIf you want "
+                    "the whole data set for that layer, abort checkout in the pop "
+                    "up asking for a filename, unselect features and start over.")
+                    user_selected_features.append(layer_selected_features_ids)
+            else:
+                user_selected_features.append([])
+                
+            if not conn_info:
+                conn_info = uri.connectionInfo()
+            else:
+                assert(conn_info == uri.connectionInfo())
+            table =  uri.schema()+"."+uri.table()
+            tables_for_conninfo.append(table)
+            
+        # DBase checkout
+        exportDatabase = self.selectDatabase()
+        if not exportDatabase:
+            return
+        
+        layer_id = self.current_layers[0]
+        layer = QgsMapLayerRegistry.instance().mapLayer( layer_id )
+        uri = QgsDataSourceURI(layer.source())
+        
+        pg_conn_info = self.get_conn_from_uri(uri)
+        
+        # TODO: normally a test on uri.schema should be sufficent
+        schema = uri.schema()
+        schemaShort = schema[:-len("_trunk_rev_head")]
+        
+        # check if schema already exists
+        (pg_conn_info_out, conn_dict) = self.get_conn_from_settings(exportDatabase)
+        
+        conn = psycopg2.connect(pg_conn_info_out)
+        cur = conn.cursor()
+        
+        cur.execute("SELECT schema_name FROM information_schema.schemata WHERE schema_name in ('{}', '{}');".format(schema, schemaShort))
+        a = cur.fetchall()
+        if len(a) > 0:
+            QMessageBox.critical(self.iface.mainWindow(),
+                                 "Error", 
+                                 "Schema {} already exists in database".format(schema),
+                                 QMessageBox.Close)
+            return
+
+        working_copy_schema = schema
+        self.versioning = versioning.pgCopy(self.pg_conn_info(), working_copy_schema, pg_conn_info_out)
+        self.versioning.checkout(tables_for_conninfo, user_selected_features)
+        
+        
+        # add layers from offline version
+        grp_idx = self.iface.legendInterface().addGroup( working_copy_schema )
+        for layer_id in reversed(self.current_layers):
+            layer = QgsMapLayerRegistry.instance().mapLayer( layer_id )
+            new_uri = QgsDataSourceURI(layer.source())
+            new_uri.setDataSource(working_copy_schema,
+                    new_uri.table()+"_view",
+                    'wkb_geometry',
+                    new_uri.sql(),
+                    new_uri.keyColumn())
+            # TODO: IT'S UGLY
+            if conn_dict.has_key('service'):
+                new_uri = QgsDataSourceURI(' '.join(["service="+conn_dict['service'],
+                                                     "key='ogc_fid'",
+                                                     new_uri.uri()[new_uri.uri().rfind('srid'):]]))
+            else:
+                new_uri = QgsDataSourceURI(' '.join(["dbname="+conn_dict['database'],
+                                            "host="+conn_dict['host'],
+                                            "port="+conn_dict['port'],
+                                            "user='"+conn_dict['username']+"'",
+                                            "password='"+conn_dict['password']+"'",
+                                            "key='ogc_fid'",
+                                            new_uri.uri()[new_uri.uri().rfind('srid'):]]))
+            
+            display_name =  QgsMapLayerRegistry.instance().mapLayer(layer_id).name()
+            print "replacing ", display_name
+            src = new_uri.uri().replace('()','')
+            print(src)
+            new_layer = self.iface.addVectorLayer(src, display_name, 'postgres')
+            self.iface.legendInterface().moveLayer( new_layer, grp_idx)
+        
     def checkout_pg(self):
         """create postgres working copy (schema) from versioned
         database layers"""
@@ -983,7 +1194,6 @@ class Plugin(QObject):
                 assert(conn_info == uri.connectionInfo())
             table =  uri.schema()+"."+uri.table()
             tables_for_conninfo.append(table)
-
 
         dlg = QDialog()
         dlg.setWindowTitle('Enter working copy schema name')

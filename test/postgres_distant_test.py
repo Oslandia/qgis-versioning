@@ -4,8 +4,10 @@ import sys
 sys.path.insert(0, '..')
 
 from versioningDB import versioning 
+from pyspatialite import dbapi2
 import psycopg2
 import os
+import tempfile
 
 
 def prtTab( cur, tab ):
@@ -25,6 +27,7 @@ def test(host, pguser):
     pg_conn_info = "dbname=epanet_test_db host=" + host + " user=" + pguser
     pg_conn_info_cpy = "dbname=epanet_test_copy_db host=" + host + " user=" + pguser
     test_data_dir = os.path.dirname(os.path.realpath(__file__))
+    tmp_dir = tempfile.gettempdir()
 
     # create the test database
 
@@ -58,8 +61,18 @@ def test(host, pguser):
     assert( len(pcurcpy.fetchall()) == 3 )
     pcur.execute("SELECT * FROM epanet.pipes")
     assert( len(pcur.fetchall()) == 1 )
-    
     pgversioning.commit('commit')
+
+    sqlite_test_filename1 = os.path.join(tmp_dir, "versioning_base_test1.sqlite")
+    if os.path.isfile(sqlite_test_filename1): os.remove(sqlite_test_filename1)
+    spversioning1 = versioning.spatialite(sqlite_test_filename1, pg_conn_info)
+    spversioning1.checkout( ['epanet_trunk_rev_head.pipes','epanet_trunk_rev_head.junctions'] )
+    scon = dbapi2.connect(sqlite_test_filename1)
+    scur = scon.cursor()
+    scur.execute("INSERT INTO pipes_view(id, start_node, end_node, GEOMETRY) VALUES ('4', '10','100',GeomFromText('LINESTRING(2 0, 0 2)',2154))")
+    scon.commit()
+    spversioning1.commit("sp commit")
+    
     pgversioning.update( )
     
     pcurcpy.close()

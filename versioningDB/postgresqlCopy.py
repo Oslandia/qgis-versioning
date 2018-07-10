@@ -1,10 +1,11 @@
 # -*- coding: utf-8 -*-
 
 from __future__ import absolute_import
-from .utils import *
-from .postgresqlLocal import pgVersioning
+from .utils import (Db, pg_pk, pg_geom, pg_geoms, pg_branches, quote_ident,
+                    preserve_fid, escape_quote, get_username, os_info)
 import psycopg2
 import tempfile
+import os
 
 from itertools import izip_longest
 
@@ -170,19 +171,10 @@ class pgVersioningCopy(object):
                 "WHERE f_table_name = '"+table+"_diff'")
             pcurcpy.commit()
     
-            # import the diff to spatialite
-#            cmd = ['ogr2ogr',
-#                    '-preserve_fid',
-#                    '-lco', 'FID=ogc_fid',
-#                    '-f', 'SQLite',
-#                    '-update',
-#                    '"' + sqlite_filename + '"',
-#                    'PG:"'+pg_conn_info+'"',
-#                    diff_schema+'.'+table+"_diff",
-#                    '-nln', table+"_diff"]
+            # import the diff to postgresql
             cmd = ['ogr2ogr',
                     '-preserve_fid',
-                    '-lco', 'FID=ogc_fid'
+                    '-lco', 'FID=ogc_fid',
                     '-lco', 'schema=' + wcs,
                     '-f', 'PostgreSQL',
                     '-update',
@@ -206,7 +198,7 @@ class pgVersioningCopy(object):
             cols = cols[:-2] # remove last coma and space
     
             # update the initial revision
-            pcurcpy.execute("UPDATE "+wcs+"."+initial_revision+" "
+            pcurcpy.execute("UPDATE "+wcs+".initial_revision "
                 "SET rev = "+str(max_rev)+", max_pk = "+str(max_pg_pk)+" "
                 "WHERE table_name = '"+wcs+"."+table+"'")
     
@@ -311,19 +303,9 @@ class pgVersioningCopy(object):
                             "FROM "+wcs+"."+table+"_diff "
                             "WHERE ogc_fid = "+str(child)+" "
                             "AND "+branch+"_rev_end IS NOT NULL" )
-    
-                pcurcpy.execute("DELETE FROM geometry_columns "
-                    "WHERE f_table_name = '"+wcs+"."+table+"_conflicts'")
-                for geom_name, srid, geom_type in geoms_name_srid_type: 
-                    pcurcpy.execute(
-                        """SELECT RecoverGeometryColumn(
-                        '{table}_conflicts', '{geom_name}', 
-                        {srid}, '{geom_type}', 'XY')
-                        """.format(table=wcs+"."+table, srid=srid, geom_type=geom_type, geom_name=geom_name))
-    
-    
+        
                 pcurcpy.execute("CREATE UNIQUE INDEX IF NOT EXISTS "
-                    +wcs+"."+table+"_conflicts_idx ON "+wcs+"."+table+"_conflicts(ogc_fid)")
+                    +table+"_conflicts_idx ON "+wcs+"."+table+"_conflicts(ogc_fid)")
     
                 # create trigers such that on delete the conflict is resolved
                 # if we delete 'theirs', we set their child to our fid and
@@ -363,9 +345,9 @@ class pgVersioningCopy(object):
                 pcurcpy.commit()
     
             pcurcpy.execute("CREATE UNIQUE INDEX IF NOT EXISTS "
-                +wcs+"."+table+"_diff_idx ON "+wcs+"."+table+"_diff(ogc_fid)")
+                +table+"_diff_idx ON "+wcs+"."+table+"_diff(ogc_fid)")
             # insert and replace all in diff
-            pcurcpy.execute("INSERT OR REPLACE INTO "+wcs+"."+table+" ("+cols+") "
+            pcurcpy.execute("INSERT INTO "+wcs+"."+table+" ("+cols+") "
                 "SELECT "+cols+" FROM "+wcs+"."+table+"_diff")
     
         pcurcpy.commit()
@@ -377,7 +359,6 @@ class pgVersioningCopy(object):
         """create working copy from versioned database tables
         pg_table_names must be complete schema.table names
         the schema name must end with _branch_rev_head
-        the file sqlite_filename must not exists
         the views and trigger for local edition will be created
         along with the tables and triggers for conflict resolution"""
     
@@ -418,20 +399,11 @@ class pgVersioningCopy(object):
             # export schema and tables to the database
             tmp_dir = tempfile.gettempdir()
             tmp_dump = os.path.join(tmp_dir, "versioning.sql")
-            # use ogr2ogr to create spatialite db
+            # use ogr2ogr to create the dump
             if first_table:
                 first_table = False
-#                cmd = ['ogr2ogr',
-#                        '-f', 'SQLite',
-#                        '-dsco', 'SPATIALITE=yes',
-#                        '"' + sqlite_filename + '"',
-#                        'PG:"'+pg_conn_info+'"', temp_view_name,
-#                        '-nln', table]
-                # We need to create a temp view because of windows commandline
-                # limitations, e.g. ogr2ogr with a very long where clause
-                # GDAL > 2.1 allows specifying a filename for where args, e.g.
-                #cmd += ['-where', '"'+pkey+' in ('+",".join([str(feature_list[i]) for i in range(0, len(feature_list))])+')"']
-                # Get column names because we cannot just call 'SELECT *'
+                # We use the same logic as spatialite
+                # TODO: improve postgresql logic
                 pcur.execute("SELECT column_name FROM information_schema.columns WHERE table_schema = \'"+schema+"\' AND table_name   = \'"+table+"\'")
                 column_list = pcur.fetchall()
                 new_columns_str = preserve_fid( pkey, column_list)
@@ -466,12 +438,6 @@ class pgVersioningCopy(object):
                 pcurcpy.commit()
     
             else:
-#                cmd = ['ogr2ogr',
-#                            '-f', 'SQLite',
-#                            '-update',
-#                            '"' + sqlite_filename + '"',
-#                            'PG:"'+pg_conn_info+'"', temp_view_name,
-#                            '-nln', table]
                 # Same comments as in 'if feature_list' above
                 pcur.execute("SELECT column_name FROM information_schema.columns WHERE table_schema = \'"+schema+"\' AND table_name   = \'"+table+"\'")
                 column_list = pcur.fetchall()
@@ -505,7 +471,6 @@ class pgVersioningCopy(object):
     
     
             # create views and triggers in postgresql copy
-            
             cols = ""
             newcols = ""
             hcols = ['ogc_fid'] + sum([[brch+'_rev_begin', brch+'_rev_end',
@@ -527,15 +492,6 @@ class pgVersioningCopy(object):
                 "FROM {wcs}.initial_revision WHERE table_name = '{wcs}.{table}') alias )".format(wcs=wcs, table=table))
             current_rev_sub = ("(SELECT rev FROM {wcs}.initial_revision "
                 "WHERE table_name = '{table}')".format(wcs=wcs, table=table))
-    
-#            pcurcpy.execute("DELETE FROM views_geometry_columns "
-#                "WHERE view_name = '"+wcs+"."+table+"_view'")
-#            if 'GEOMETRY' in cols:
-#                pcurcpy.execute("INSERT INTO views_geometry_columns "
-#                        "(view_name, view_geometry, view_rowid, "
-#                            "f_table_name, f_geometry_column, read_only) "
-#                        "VALUES"+"('"+wcs+"."+table+"_view', 'geometry', 'rowid', '"
-#                        +wcs+"."+table+"', 'geometry', 0)")
     
             # when we edit something old, we insert and update parent
             sql = """CREATE OR REPLACE FUNCTION 
@@ -679,7 +635,7 @@ class pgVersioningCopy(object):
         pcurcpy.execute("SELECT table_name FROM information_schema.tables "
             "WHERE table_schema='"+wcs+"' AND table_name LIKE '%_conflicts'")
         for table_conflicts in pcurcpy.fetchall():
-            if DEBUG: print 'table_conflicts:', table_conflicts[0]
+            if DEBUG: print('table_conflicts:', table_conflicts[0])
             pcurcpy.execute("SELECT * FROM "+table_conflicts[0])
             if pcurcpy.fetchone():
                 found.append( table_conflicts[0][:-10] )
@@ -690,9 +646,9 @@ class pgVersioningCopy(object):
     def commit(self, connection, commit_msg, commit_user = ''):
         """merge modifications into database
         returns the number of updated layers"""
-        # get the target revision from the spatialite db
+        # get the target revision from the postgresql copy
         # create the diff in postgres
-        # load the diff in spatialite
+        # load the diff in pg copy
         # detect conflicts
         # merge changes and update target_revision
         # delete diff
@@ -753,7 +709,6 @@ class pgVersioningCopy(object):
                 pg_username = ''
     
             pcur = Db(psycopg2.connect(pg_conn_info))
-            pg_users_list = get_pg_users_list(pg_conn_info)
             pkey = pg_pk( pcur, table_schema, table )
             pgeom = pg_geom( pcur, table_schema, table )
     
@@ -780,11 +735,11 @@ class pgVersioningCopy(object):
                 cmd.insert(5, '-lco')
                 cmd.insert(6, 'GEOMETRY_NAME='+pgeom)
     
-            if DEBUG: print ' '.join(cmd)
+            if DEBUG: print(' '.join(cmd))
             os.system(' '.join(cmd))
     
             for l in pcur.execute( "select * from geometry_columns").fetchall():
-                if DEBUG: print l
+                if DEBUG: print( l)
     
             # remove dif table and geometry column
             pcurcpy.execute("DELETE FROM geometry_columns "
@@ -793,7 +748,7 @@ class pgVersioningCopy(object):
     
     
             if not there_is_something_to_commit:
-                if DEBUG: print "nothing to commit for ", wcs+"."+table
+                if DEBUG: print("nothing to commit for ", wcs+"."+table)
                 pcur.close()
                 continue
     
@@ -802,7 +757,7 @@ class pgVersioningCopy(object):
             pcur.execute("SELECT rev FROM "+table_schema+".revisions "
                 "WHERE rev = "+str(rev+1))
             if not pcur.fetchone():
-                if DEBUG: print "inserting rev ", str(rev+1)
+                if DEBUG: print("inserting rev ", str(rev+1))
                 pcur.execute("INSERT INTO "+table_schema+".revisions "
                     "(rev, commit_msg, branch, author) "
                     "VALUES ("+str(rev+1)+", '"+escape_quote(commit_msg)+"', '"+branch+"',"

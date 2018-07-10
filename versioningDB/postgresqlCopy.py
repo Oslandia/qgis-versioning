@@ -443,6 +443,7 @@ class pgVersioningCopy(object):
                 
                 cmd = ['ogr2ogr',
                        '-lco', 'schema=' + wcs,
+                       '-lco', 'DROP_TABLE=OFF',
                        '-f', 'PGDump',
                        '"' + tmp_dump + '"',
                        'PG:"'+pg_conn_info+' tables=' + wcs + '.' + table + '"', temp_view_name,
@@ -450,12 +451,8 @@ class pgVersioningCopy(object):
                     
                 print (' '.join(cmd))
                 os.system(' '.join(cmd))
-                pcurcpy = Db(psycopg2.connect(pg_conn_info_copy))
-                dump = open(tmp_dump, "r").read()
-                
-                if DEBUG: print(dump)
-                
-                pcurcpy.execute(dump.replace("CREATE SCHEMA", "CREATE SCHEMA IF NOT EXISTS"))
+                pcurcpy = Db(psycopg2.connect(pg_conn_info_copy))                                
+                pcurcpy.execute(open(tmp_dump, "r").read().replace("CREATE SCHEMA", "CREATE SCHEMA IF NOT EXISTS"))
                 pcurcpy.commit()
     
     
@@ -487,12 +484,13 @@ class pgVersioningCopy(object):
         
                 cmd = ['ogr2ogr',
                        '-lco', 'schema=' + wcs,
+                       '-lco', 'DROP_TABLE=OFF',
                        '-f', 'PGDump',
                        '"' + tmp_dump + '"',
                        'PG:"'+pg_conn_info+' tables=' + wcs + '.' + table + '"', temp_view_name,
                        '-nln', table]
                     
-                print ' '.join(cmd)
+                print(' '.join(cmd))
                 os.system(' '.join(cmd))
                 pcurcpy = Db(psycopg2.connect(pg_conn_info_copy))
                 pcurcpy.execute(open(tmp_dump, "r").read().replace("CREATE SCHEMA", "CREATE SCHEMA IF NOT EXISTS"))

@@ -42,7 +42,7 @@ def test(host, pguser):
     # chechout
     #tables = ['epanet_trunk_rev_head.junctions','epanet_trunk_rev_head.pipes']
     tables = ['epanet_trunk_rev_head.junctions', 'epanet_trunk_rev_head.pipes']
-    pgversioning = versioning.pgCopy(pg_conn_info, 'epanet_trunk_rev_head', pg_conn_info_cpy)
+    pgversioning = versioning.pgLocal(pg_conn_info, 'epanet_trunk_rev_head', pg_conn_info_cpy)
     pgversioning.checkout(tables)
     
     

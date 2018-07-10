@@ -58,7 +58,7 @@ def test(host, pguser):
     assert len(scur.fetchall()) ==  3
 
     # postgres working copy
-    pgversioning = versioning.pgLocal(pg_conn_info, 'my_working_copy')
+    pgversioning = versioning.pgServer(pg_conn_info, 'my_working_copy')
     pgversioning.checkout(["epanet_trunk_rev_head.junctions","epanet_trunk_rev_head.pipes"], [[1, 2, 3], []])
 
     pcon = psycopg2.connect(pg_conn_info)

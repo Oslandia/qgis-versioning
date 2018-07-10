@@ -2,9 +2,9 @@
 
 from __future__ import absolute_import
 
-from .postgresqlLocal import pgVersioning
+from .postgresqlServer import pgVersioningServer
 from .spatialite import spVersioning
-from .postgresqlCopy import pgVersioningCopy
+from .postgresqlLocal import pgVersioningLocal
 
 TYPE = ('postgres', 'spatialite', 'pgDistant')
 CONNECTIONS = {'postgres': 2, 'spatialite': 2, 'pgDistant': 3}
@@ -17,16 +17,16 @@ class versioningAbc(object):
                len(connection) == CONNECTIONS[typebase])
         
         self.typebase = typebase
-        # spatialite : [sqlite_filename, pg_contn_info]
+        # spatialite : [sqlite_filename, pg_conn_info]
         # postgres : [pg_conn_info, working_copy_schema]
         # pgDistant : [pg_conn_info, working_copy_schema, pg_conn_info_out]
         self.connection = connection
         if self.typebase == 'spatialite':
             self.ver = spVersioning()
         elif self.typebase == 'pgDistant':
-            self.ver = pgVersioningCopy()
+            self.ver = pgVersioningLocal()
         else:
-            self.ver = pgVersioning()
+            self.ver = pgVersioningServer()
             
     def revision(self):
         return self.ver.revision(self.connection)

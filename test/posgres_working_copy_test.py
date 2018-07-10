@@ -36,8 +36,8 @@ def test(host, pguser):
     # chechout
     #tables = ['epanet_trunk_rev_head.junctions','epanet_trunk_rev_head.pipes']
     tables = ['epanet_trunk_rev_head.junctions', 'epanet_trunk_rev_head.pipes']
-    pgversioning1 = versioning.pgLocal(pg_conn_info, 'epanet_working_copy')
-    pgversioning2 = versioning.pgLocal(pg_conn_info, 'epanet_working_copy_cflt')
+    pgversioning1 = versioning.pgServer(pg_conn_info, 'epanet_working_copy')
+    pgversioning2 = versioning.pgServer(pg_conn_info, 'epanet_working_copy_cflt')
     pgversioning1.checkout(tables)
 
     pgversioning2.checkout(tables)

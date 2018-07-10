@@ -473,10 +473,10 @@ class Plugin(QObject):
         self.actions[-1].setVisible(False)
 
         self.actions.append( QAction(
-            QIcon(os.path.dirname(__file__) + "/checkout_pg.svg"),
+            QIcon(os.path.dirname(__file__) + "/checkout_pg_local.svg"),
             u"checkout", self.iface.mainWindow()) )
-        self.actions[-1].setToolTip ("postGIS distant checkout")
-        self.actions[-1].setWhatsThis("checkout distant postgres")
+        self.actions[-1].setToolTip ("postGIS local checkout")
+        self.actions[-1].setWhatsThis("checkout local postgres")
         self.actions[-1].triggered.connect(self.checkout_pg_distant)
         self.actions[-1].setVisible(False)
         
@@ -834,9 +834,9 @@ class Plugin(QObject):
             if self.is_pgDistant(layer):
                 out = self.selectDatabase()
                 (pg_conn_info_out, conn_dict) = self.get_conn_from_settings(out)
-                self.versioning = versioning.pgCopy(pg_conn_info_out, uri.schema(), self.get_conn_from_uri(uri))
+                self.versioning = versioning.pgLocal(pg_conn_info_out, uri.schema(), self.get_conn_from_uri(uri))
             else:
-                self.versioning = versioning.pgLocal(self.pg_conn_info(), uri.schema())
+                self.versioning = versioning.pgServer(self.pg_conn_info(), uri.schema())
             
         
         unresolved = self.versioning.unresolved_conflicts()
@@ -1115,7 +1115,7 @@ class Plugin(QObject):
             return
 
         working_copy_schema = schema
-        self.versioning = versioning.pgCopy(self.pg_conn_info(), working_copy_schema, pg_conn_info_out)
+        self.versioning = versioning.pgLocal(self.pg_conn_info(), working_copy_schema, pg_conn_info_out)
         self.versioning.checkout(tables_for_conninfo, user_selected_features)
         
         
@@ -1232,7 +1232,7 @@ class Plugin(QObject):
             "<b>lowercase</b> letters, underscore or digits.", duration=10)
             return
         print "checking out ", tables_for_conninfo, " from ", uri.connectionInfo()
-        self.versioning = versioning.pgLocal(self.pg_conn_info(), working_copy_schema)
+        self.versioning = versioning.pgServer(self.pg_conn_info(), working_copy_schema)
         self.versioning.checkout(tables_for_conninfo, user_selected_features )
 
         # add layers from offline version

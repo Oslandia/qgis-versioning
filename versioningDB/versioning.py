@@ -17,10 +17,10 @@ versioningDb = versioningAbc
 def spatialite(sqlite_filename, pg_conn_info):
     return versioningDb([sqlite_filename, pg_conn_info], 'spatialite')
 
-def pgLocal(pg_conn_info, schema):
+def pgServer(pg_conn_info, schema):
     return versioningDb([pg_conn_info, schema], 'postgres')
 
-def pgCopy(pg_conn_info, schema, pg_conn_info_out):
+def pgLocal(pg_conn_info, schema, pg_conn_info_out):
     return versioningDb([pg_conn_info, schema, pg_conn_info_out], 'pgDistant')
 
 Db = utils.Db

@@ -451,7 +451,11 @@ class pgVersioningCopy(object):
                 print (' '.join(cmd))
                 os.system(' '.join(cmd))
                 pcurcpy = Db(psycopg2.connect(pg_conn_info_copy))
-                pcurcpy.execute(open(tmp_dump, "r").read().replace("CREATE SCHEMA", "CREATE SCHEMA IF NOT EXISTS"))
+                dump = open(tmp_dump, "r").read()
+                
+                if DEBUG: print(dump)
+                
+                pcurcpy.execute(dump.replace("CREATE SCHEMA", "CREATE SCHEMA IF NOT EXISTS"))
                 pcurcpy.commit()
     
     

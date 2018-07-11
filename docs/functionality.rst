@@ -13,6 +13,7 @@ Depending on the type of layer group (unversioned/versioned PostGIS database, Po
    Icon                     Unversioned  Versioned     Working copy (PG/SL) Definition
    =======================  ===========  ============  ==================== ================================
    |branch_png|                             X                                  Branching
+   |merge_png|                                         X                             Merging
    |checkout_png|                           X                                  Checkout Spatialite (SL)
    |checkout_pg_png|                        X                                  Checkout PostGIS (PG)
    |checkout_pg_local_png|                  X                                  Checkout PostGIS local (PGL)
@@ -32,6 +33,7 @@ The following table shows the combination of plugin text information and icons a
    No group                 |no_group_selected_png|    No group item selected in legend
    Unversioned              |unversioned_menu_png|     Only option : historize
    Versioned                |versioned_menu_png|       Textinfo : DB + schema + branch= + rev=
+   Versioned (branch)       |versbranch_menu_png|      Textinfo : DB + schema + branch= + rev=
    Working Copy (SL)        |working_copy_sl_png|      Textinfo : filename + working + rev=
    Working copy (PG & PGL)  |working_copy_pg_png|      Textinfo : DB + schema + working rev=
    Mixed layers             |layers_not_same_db_png|   Layers in group do not share the same database or schema
@@ -167,6 +169,14 @@ They are moved in a table with the same name in a new schema with the same schem
 A view is created to find the table as if it had not been archived.
 
 |archive_schemas_png|
+=======
+Merging
+*******
+
+As a reminder, the data between branches are the same, only the information on 4 columns added in the views differ.
+Thus, a merge consists in putting back into trunk, the revision numbers of the columns _rev_begin and _rev_end branches. If trunk_rev_begin is empty it means it is an addition. If trunk_rev_begin exists and trunk_rev_end and null and branch_rev_end is not it is a deletion in the other branch.
+
+The workflow must be branching, checkout from this branch, work into your working copy, commit into the branch, merging.
 
 Plugin group types in pictures
 ==============================

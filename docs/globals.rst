@@ -28,6 +28,7 @@
 .. |branch_png| image:: images/branch.png
 .. |checkout_png| image:: images/checkout.png
 .. |checkout_pg_png| image:: images/checkout_pg.png
+.. |checkout_pg_local_png| image:: images/checkout_pg_local.png
 .. |commit_png| image:: images/commit.png
 .. |help_png| image:: images/help.png
 .. |historize_png| image:: images/historize.png

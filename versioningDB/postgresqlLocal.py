@@ -1,674 +1,866 @@
 # -*- coding: utf-8 -*-
 
 from __future__ import absolute_import
-from .utils import *
+from .utils import (Db, pg_pk, pg_geom, pg_geoms, pg_branches, quote_ident,
+                    preserve_fid, escape_quote, get_username, os_info)
 import psycopg2
+import tempfile
+import os
 
 from itertools import izip_longest
 
-DEBUG=False
+DEBUG = True
 
-class pgVersioning(object):    
-    
-    def revision(self, connection ):
-        (pg_conn_info, working_copy_schema) = connection
+
+class pgVersioningLocal(object):
+    def __pragmaTableInfo(self, schema, table):
+        """returns an sql query to fetch information like PRAGMA table_info(table) from SQLite"""
+        sql = """select 
+          ordinal_position, 
+          column_name, 
+          data_type, 
+          is_nullable, 
+          column_default, 
+          COALESCE(pk.pk, false) as pk 
+        from 
+          INFORMATION_SCHEMA.COLUMNS 
+          LEFT JOIN (
+            SELECT 
+              a.attname, 
+              true AS pk 
+            FROM 
+              pg_index i 
+              JOIN pg_attribute a ON a.attrelid = i.indrelid 
+              AND a.attnum = ANY(i.indkey) 
+            WHERE 
+              i.indrelid = '{schema}.{table}' :: regclass 
+              AND i.indisprimary
+          ) pk ON pk.attname = column_name 
+        WHERE 
+          (table_schema, table_name) = ('{schema}', '{table}') 
+        ORDER BY 
+          ordinal_position""".format(schema=schema, table=table)
+
+        return sql
+
+    def revision(self, connection):
+        (pg_conn_info, wcs, pg_conn_info_copy) = connection
         """returns the revision the working copy was created from plus one"""
-        pcur = Db(psycopg2.connect(pg_conn_info))
-        pcur.execute("SELECT rev "+ "FROM "+working_copy_schema+".initial_revision")
+        pcurcpy = Db(psycopg2.connect(pg_conn_info_copy))
+        pcurcpy.execute("SELECT rev " + "FROM "+wcs+".initial_revision")
         rev = 0
-        for [res] in pcur.fetchall():
-            if rev :
-                assert( res == rev )
-            else :
+        for [res] in pcurcpy.fetchall():
+            if rev:
+                assert(res == rev)
+            else:
                 rev = res
-        pcur.close()
-        return rev + 1    
-    
-    def late(self, connection ):
-        (pg_conn_info, working_copy_schema) = connection
+        pcurcpy.close()
+        return rev + 1
+
+    def late(self, connection):
+        (pg_conn_info, wcs, pg_conn_info_copy) = connection
         """Return 0 if up to date, the number of commits in between otherwise"""
+        pcurcpy = Db(psycopg2.connect(pg_conn_info_copy))
         pcur = Db(psycopg2.connect(pg_conn_info))
-        pcur.execute("SELECT rev, branch, table_schema "
-            "FROM "+working_copy_schema+".initial_revision")
-        versioned_layers = pcur.fetchall()
+        pcurcpy.execute("SELECT rev, branch, table_schema "
+                        "FROM "+wcs+".initial_revision")
+        versioned_layers = pcurcpy.fetchall()
         if not versioned_layers:
             raise RuntimeError("Cannot find versioned layer in "
-                    +working_copy_schema)
-    
+                               + wcs)
+
         late_by = 0
-    
+
         for [rev, branch, table_schema] in versioned_layers:
             pcur.execute("SELECT MAX(rev) FROM "+table_schema+".revisions "
-                "WHERE branch = '"+branch+"'")
+                         "WHERE branch = '"+branch+"'")
             [max_rev] = pcur.fetchone()
             late_by = max(max_rev - rev, late_by)
-    
+
+        pcurcpy.close()
+        pcur.close()
         return late_by
 
-    def update(self, connection ):
-        (pg_conn_info, working_copy_schema) = connection
+    def update(self, connection):
+        (pg_conn_info, wcs, pg_conn_info_copy) = connection
         """merge modifications since last update into working copy"""
-        if DEBUG: print "update"
-        wcs = working_copy_schema
-        if self.unresolved_conflicts([pg_conn_info, wcs]):
-            raise RuntimeError("There are unresolved conflicts in "+wcs)
-    
-        # create the diff from previous
+        if DEBUG:
+            print("update")
+        if self.unresolved_conflicts([pg_conn_info_copy, wcs, pg_conn_info_copy]):
+            raise RuntimeError("There are unresolved conflicts in "
+                               + wcs)
+        # get the target revision from the postgresql copy db
+        # create the diff in postgres
+        # load the diff in postgresql copy
         # detect conflicts and create conflict layers
         # merge changes and update target_revision
-    
-    
-        pcur = Db(psycopg2.connect(pg_conn_info))
-        pcur.execute("SELECT rev, branch, table_schema, table_name, max_pk "
-            "FROM "+wcs+".initial_revision")
-        versioned_layers = pcur.fetchall()
-    
+        # delete diff
+
+        pcurcpy = Db(psycopg2.connect(pg_conn_info_copy))
+        pcurcpy.execute("SELECT rev, branch, table_schema, table_name, max_pk "
+                        "FROM {}.initial_revision".format(wcs))
+        versioned_layers = pcurcpy.fetchall()
+
         for [rev, branch, table_schema, table, current_max_pk] in versioned_layers:
-    
+            pcur = Db(psycopg2.connect(pg_conn_info))
             pcur.execute("SELECT MAX(rev) FROM "+table_schema+".revisions "
-                "WHERE branch = '"+branch+"'")
+                         "WHERE branch = '"+branch+"'")
             [max_rev] = pcur.fetchone()
             if max_rev == rev:
-                if DEBUG: print ("Nothing new in branch "+branch+" "
-                    "in "+table_schema+"."+table+" since last update")
+                if DEBUG:
+                    print("Nothing new in branch "+branch+" in "+table_schema+"."
+                          + table+" since last update")
+                pcur.close()
                 continue
-    
+
             # get the max pkey
-            pkey = pg_pk( pcur, table_schema, table )
-            pgeom = pg_geom( pcur, table_schema, table )
+            pkey = pg_pk(pcur, table_schema, table)
+            pgeom = pg_geom(pcur, table_schema, table)
+            pgeoms = pg_geoms(pcur, table_schema, table)
             pcur.execute("SELECT MAX("+pkey+") FROM "+table_schema+"."+table)
             [max_pg_pk] = pcur.fetchone()
-            if not max_pg_pk :
+            if not max_pg_pk:
                 max_pg_pk = 0
-    
+
             # create the diff
+            diff_schema = (table_schema+"_"+branch+"_"+str(rev) +
+                           "_to_"+str(max_rev)+"_diff")
+            pcur.execute("SELECT schema_name FROM information_schema.schemata "
+                         "WHERE schema_name = '"+diff_schema+"'")
+            if not pcur.fetchone():
+                pcur.execute("CREATE SCHEMA "+diff_schema)
+
+            other_branches = pg_branches(pcur, table_schema).remove(branch)
+            other_branches = other_branches if other_branches else []
+            other_branches_columns = sum([
+                [brch+'_rev_begin', brch+'_rev_end',
+                 brch+'_parent', brch+'_child']
+                for brch in other_branches], [])
             pcur.execute("SELECT column_name "
-                    "FROM information_schema.columns "
-                    "WHERE table_schema = '"+table_schema+"' "
-                    "AND table_name = '"+table+"'")
+                         "FROM information_schema.columns "
+                         "WHERE table_schema = '"+table_schema+"' "
+                         "AND table_name = '"+table+"'")
             cols = ""
             for col in pcur.fetchall():
-                if col[0] != pgeom:
+                if col[0] not in pgeoms and col[0] not in other_branches_columns:
                     cols += quote_ident(col[0])+", "
-            cols = cols[:-2] # remove last coma and space
-    
-            pcur.execute("SELECT srid, type "
-                "FROM geometry_columns "
-                "WHERE f_table_schema = '"+table_schema+"' "
-                "AND f_table_name ='"+table+"' AND f_geometry_column = '"+pgeom+"'")
-            srid_type = pcur.fetchone()
-            [srid, geom_type] = srid_type if srid_type else [None, None]
-            pcur.execute( "DROP TABLE IF EXISTS "+wcs+"."+table+"_update_diff "
-                "CASCADE")
-            geom = (", "+pgeom+"::geometry('"+geom_type+"', "+str(srid)+") "
-                "AS "+pgeom) if pgeom else ''
-            pcur.execute( "CREATE TABLE "+wcs+"."+table+"_update_diff AS "
-                    "SELECT "+cols+geom+" "
-                    "FROM "+table_schema+"."+table+" "
-                    "WHERE "+branch+"_rev_end = "+str(rev)+" "
-                    "OR "+branch+"_rev_begin > "+str(rev))
-            pcur.execute( "ALTER TABLE "+wcs+"."+table+"_update_diff "
-                    "ADD CONSTRAINT "+table+"_"+branch+"_pk_pk "
-                    "PRIMARY KEY ("+pkey+")")
-    
+            cols = cols[:-2]  # remove last coma and space
+            pcur.execute("""
+                SELECT f_geometry_column, srid, type
+                FROM geometry_columns
+                WHERE f_table_schema = '{table_schema}'
+                AND f_table_name = '{table}'
+                """.format(table_schema=table_schema, table=table))
+            geoms_name_srid_type = pcur.fetchall()
+            geom = ""
+            for geom_name, srid, geom_type in geoms_name_srid_type:
+                geom += ", {geom_name}::geometry('{geom_type}', {srid})".format(
+                        geom_name=geom_name, geom_type=geom_type, srid=srid)
+
+            pcur.execute("DROP TABLE IF EXISTS "+diff_schema+"."+table+"_diff")
+            pcur.execute("CREATE TABLE "+diff_schema+"."+table+"_diff AS "
+                         "SELECT "+cols+geom+" "
+                         "FROM "+table_schema+"."+table+" "
+                         "WHERE "+branch+"_rev_end >= "+str(rev)+" "
+                         "OR "+branch+"_rev_begin > "+str(rev))
+            pcur.execute("ALTER TABLE "+diff_schema+"."+table+"_diff "
+                         "ADD CONSTRAINT "+table+"_"+branch+"_pk_pk "
+                         "PRIMARY KEY ("+pkey+")")
+            pcur.commit()
+
+            pcurcpy.execute("DROP TABLE IF EXISTS "+wcs+"."+table+"_diff")
+            pcurcpy.execute("DROP TABLE IF EXISTS idx_" +
+                            wcs+"."+table+"_diff_GEOMETRY")
+            pcurcpy.execute("DELETE FROM geometry_columns "
+                            "WHERE f_table_name = '"+table+"_diff'")
+            pcurcpy.commit()
+
+            # import the diff to postgresql
+            cmd = ['ogr2ogr',
+                   '-preserve_fid',
+                   '-lco', 'FID=ogc_fid',
+                   '-lco', 'schema=' + wcs,
+                   '-f', 'PostgreSQL',
+                   '-update',
+                   'PG:"'+pg_conn_info_copy+'"',
+                   'PG:"'+pg_conn_info+'"',
+                   diff_schema+'.'+table+"_diff",
+                   '-nln', wcs+'.'+table+"_diff"]
+
+            if DEBUG:
+                print(' '.join(cmd))
+            os.system(' '.join(cmd))
+
+            # cleanup in postgis
+            pcur.execute("DROP SCHEMA "+diff_schema+" CASCADE")
+            pcur.commit()
+            pcur.close()
+
+            pcurcpy.execute(self.__pragmaTableInfo(wcs, table))
+            cols = ""
+            for col in pcurcpy.fetchall():
+                cols += quote_ident(col[1])+", "
+            cols = cols[:-2]  # remove last coma and space
+
             # update the initial revision
-            pcur.execute("UPDATE "+wcs+".initial_revision "
-                "SET rev = "+str(max_rev)+", max_pk = "+str(max_pg_pk)+" "
-                "WHERE table_name = '"+table+"'")
-    
-            pcur.execute("UPDATE "+wcs+"."+table+"_diff "
-                    "SET "+branch+"_rev_end = "+str(max_rev)+" "
-                    "WHERE "+branch+"_rev_end = "+str(rev))
-            pcur.execute("UPDATE "+wcs+"."+table+"_diff "
-                    "SET "+branch+"_rev_begin = "+str(max_rev+1)+" "
-                    "WHERE "+branch+"_rev_begin = "+str(rev+1))
-    
+            pcurcpy.execute("UPDATE "+wcs+".initial_revision "
+                            "SET rev = "+str(max_rev) +
+                            ", max_pk = "+str(max_pg_pk)+" "
+                            "WHERE table_name = '"+wcs+"."+table+"'")
+
+            pcurcpy.execute("UPDATE "+wcs+"."+table+" "
+                            "SET "+branch+"_rev_end = "+str(max_rev)+" "
+                            "WHERE "+branch+"_rev_end = "+str(rev))
+            pcurcpy.execute("UPDATE "+wcs+"."+table+" "
+                            "SET "+branch+"_rev_begin = "+str(max_rev+1)+" "
+                            "WHERE "+branch+"_rev_begin = "+str(rev+1))
+
+            # we cannot add constrain to the spatialite db in order to have
+            # spatialite update parent and child when we bump inserted pkey
+            # above the max pkey in the diff we must do this manually
             bump = max_pg_pk - current_max_pk
-            assert( bump >= 0)
+            assert(bump >= 0)
             # now bump the pks of inserted rows in working copy
-            # parents will be updated thanks to the ON UPDATE CASCADE
-            pcur.execute("UPDATE "+wcs+"."+table+"_diff "
-                    "SET "+pkey+" = -"+pkey+" "
-                    "WHERE "+branch+"_rev_begin = "+str(max_rev+1))
-            pcur.execute("UPDATE "+wcs+"."+table+"_diff "
-                    "SET "+pkey+" = -"+pkey+" + "+str(bump)+" "
-                    "WHERE "+branch+"_rev_begin = "+str(max_rev+1))
-    
+            # note that to do that, we need to set a negative value because
+            # the UPDATE is not implemented correctly according to:
+            # http://stackoverflow.com/questions/19381350/simulate-order-by-in-sqlite-update-to-handle-uniqueness-constraint
+            pcurcpy.execute("UPDATE "+wcs+"."+table+" "
+                            "SET ogc_fid = -ogc_fid  "
+                            "WHERE "+branch+"_rev_begin = "+str(max_rev+1))
+            pcurcpy.execute("UPDATE "+wcs+"."+table+" "
+                            "SET ogc_fid = "+str(bump)+"-ogc_fid WHERE ogc_fid < 0")
+            # and bump the pkey in the child field
+            # not that we don't care for nulls since adding something
+            # to null is null
+            pcurcpy.execute("UPDATE "+wcs+"."+table+" "
+                            "SET "+branch+"_child = "+branch +
+                            "_child  + "+str(bump)+" "
+                            "WHERE "+branch+"_rev_end = "+str(max_rev))
+
             # detect conflicts: conflict occur if two lines with the same pkey have
             # been modified (i.e. have a non null child) or one has been removed
             # and the other modified
-            pcur.execute("DROP VIEW IF EXISTS "+wcs+"."+table+"_conflicts_pk")
-            pcur.execute("CREATE VIEW "+wcs+"."+table+"_conflicts_pk AS "
-                "SELECT DISTINCT d."+pkey+" as conflict_deleted_pk "
-                "FROM "+wcs+"."+table+"_diff AS d, "
-                    +wcs+"."+table+"_update_diff AS ud "
-                "WHERE d."+pkey+" = ud."+pkey+" "
-                    "AND (d."+branch+"_child != ud."+branch+"_child "
-                    "OR (d."+branch+"_child IS NULL "
-                        "AND ud."+branch+"_child IS NOT NULL) "
-                    "OR (d."+branch+"_child IS NOT NULL "
-                        "AND ud."+branch+"_child IS NULL)) ")
-            pcur.execute("SELECT conflict_deleted_pk "
-                "FROM  "+wcs+"."+table+"_conflicts_pk" )
-            geom = ', '+pgeom if pgeom else ''
-            if pcur.fetchone():
-                if DEBUG: print "there are conflicts"
+            pcurcpy.execute("DROP VIEW  IF EXISTS "+wcs +
+                            "."+table+"_conflicts_ogc_fid")
+            pcurcpy.execute("CREATE VIEW "+wcs+"."+table+"_conflicts_ogc_fid AS "
+                            "SELECT DISTINCT sl.ogc_fid as conflict_deleted_fid "
+                            "FROM "+wcs+"."+table+" AS sl, "+wcs+"."+table+"_diff AS pg "
+                            "WHERE sl.ogc_fid = pg.ogc_fid "
+                            "AND sl."+branch+"_child != pg."+branch+"_child")
+            pcurcpy.execute("SELECT conflict_deleted_fid "
+                            "FROM  "+wcs+"."+table+"_conflicts_ogc_fid")
+            if pcurcpy.fetchone():
+                if DEBUG:
+                    print("there are conflicts")
                 # add layer for conflicts
-                pcur.execute("DROP TABLE IF EXISTS "+wcs+"."+table+"_cflt ")
-                pcur.execute("CREATE TABLE "+wcs+"."+table+"_cflt AS "
-                    # insert new features from mine
-                    "SELECT "+branch+"_parent AS conflict_id, 'mine' AS origin, "
-                        "'modified' AS action, "+cols+geom+" "
-                    "FROM "+wcs+"."+table+"_diff, "
-                        +wcs+"."+table+"_conflicts_pk AS cflt "
-                    "WHERE "+pkey+" = (SELECT "+branch+"_child "
-                                    "FROM "+wcs+"."+table+"_diff "
-                                    "WHERE "+pkey+" = conflict_deleted_pk) "
-                    "UNION ALL "
-                    # insert new features from theirs
-                    "SELECT "+branch+"_parent AS conflict_id, 'theirs' AS origin, "
-                        "'modified' AS action, "+cols+geom+" "
-                    "FROM "+wcs+"."+table+"_update_diff "+", "
-                        +wcs+"."+table+"_conflicts_pk AS cflt "
-                    "WHERE "+pkey+" = (SELECT "+branch+"_child "
-                                    "FROM "+wcs+"."+table+"_update_diff "
-                                    "WHERE "+pkey+" = conflict_deleted_pk) "
-                     # insert deleted features from mine
-                    "UNION ALL "
-                    "SELECT "+branch+"_parent AS conflict_id, 'mine' AS origin, "
-                        "'deleted' AS action, "+cols+geom+" "
-                    "FROM "+wcs+"."+table+"_diff, "
-                        +wcs+"."+table+"_conflicts_pk AS cflt "
-                    "WHERE "+pkey+" = conflict_deleted_pk "
-                    "AND "+branch+"_child IS NULL "
-                     # insert deleted features from theirs
-                    "UNION ALL "
-                    "SELECT "+branch+"_parent AS conflict_id, 'theirs' AS origin, "
-                        "'deleted' AS action, "+cols+geom+" "
-                    "FROM "+wcs+"."+table+"_update_diff, "
-                        +wcs+"."+table+"_conflicts_pk AS cflt "
-                    "WHERE "+pkey+" = conflict_deleted_pk "
-                    "AND "+branch+"_child IS NULL" )
-    
+                pcurcpy.execute("DROP TABLE IF EXISTS " +
+                                wcs+"."+table+"_conflicts ")
+                pcurcpy.execute("CREATE TABLE "+wcs+"."+table+"_conflicts AS "
+                                # insert new features from mine
+                                "SELECT "+branch+"_parent AS conflict_id, 'mine' AS origin, "
+                                "'modified' AS action, "+cols+" "
+                                "FROM "+wcs+"."+table+", "+wcs+"."+table+"_conflicts_ogc_fid AS cflt "
+                                "WHERE ogc_fid = (SELECT "+branch + \
+                                "_child FROM "+wcs+"."+table+" "
+                                "WHERE ogc_fid = conflict_deleted_fid) "
+                                "UNION ALL "
+                                # insert new features from theirs
+                                "SELECT "+branch+"_parent AS conflict_id, 'theirs' AS origin, "
+                                "'modified' AS action, "+cols+" "
+                                "FROM "+wcs+"."+table+"_diff "+", "+wcs+"."+table+"_conflicts_ogc_fid AS cflt "
+                                "WHERE ogc_fid = (SELECT "+branch + \
+                                "_child FROM "+wcs+"."+table+"_diff "
+                                "WHERE ogc_fid = conflict_deleted_fid) "
+                                # insert deleted features from mine
+                                "UNION ALL "
+                                "SELECT "+branch+"_parent AS conflict_id, 'mine' AS origin, "
+                                "'deleted' AS action, "+cols+" "
+                                "FROM "+wcs+"."+table+", "+wcs+"."+table+"_conflicts_ogc_fid AS cflt "
+                                "WHERE ogc_fid = conflict_deleted_fid "
+                                "AND "+branch+"_child IS NULL "
+                                # insert deleted features from theirs
+                                "UNION ALL "
+                                "SELECT "+branch+"_parent AS conflict_id, 'theirs' AS origin, "
+                                "'deleted' AS action, "+cols+" "
+                                "FROM "+wcs+"."+table+"_diff, "+wcs+"."+table+"_conflicts_ogc_fid AS cflt "
+                                "WHERE ogc_fid = conflict_deleted_fid "
+                                "AND "+branch+"_child IS NULL")
+
                 # identify conflicts for deleted
-                pcur.execute("UPDATE "+wcs+"."+table+"_cflt "
-                    "SET conflict_id = "+pkey+" "+ "WHERE action = 'deleted'")
-    
-                # now follow child if any for 'theirs' 'modified'
-                # since several edition could be made
-                # we want the very last child
+                pcurcpy.execute("UPDATE "+wcs+"."+table+"_conflicts "
+                                "SET conflict_id = ogc_fid " + "WHERE action = 'deleted'")
+
+                # now follow child if any for 'theirs' 'modified' since several
+                # edition could be made we want the very last child
                 while True:
-                    pcur.execute("SELECT conflict_id, "+pkey+", "+branch+"_child "
-                        "FROM "+wcs+"."+table+"_cflt "
-                        "WHERE origin='theirs' "
-                        "AND action='modified' "
-                        "AND "+branch+"_child IS NOT NULL")
-                    res = pcur.fetchall()
-                    if not res :
+                    pcurcpy.execute("SELECT conflict_id, ogc_fid, "+branch+"_child "
+                                    "FROM "+wcs+"."+table+"_conflicts WHERE origin='theirs' "
+                                    "AND action='modified' AND "+branch+"_child IS NOT NULL")
+                    res = pcurcpy.fetchall()
+                    if not res:
                         break
                     # replaces each entries by it's child
                     for [cflt_id, fid, child] in res:
-                        pcur.execute("DELETE FROM "+wcs+"."+table+"_cflt "
-                            "WHERE "+pkey+" = "+str(fid))
-                        pcur.execute("INSERT INTO "+wcs+"."+table+"_cflt "
-                            "SELECT "+str(cflt_id)+" AS conflict_id, "
-                                "'theirs' AS origin, 'modified' AS action, "
-                                +cols+" FROM "+wcs+"."+table+"_update_diff "
-                            "WHERE "+pkey+" = "+str(child)+" "
-                            "AND "+branch+"_rev_end IS NULL" )
-                        pcur.execute("INSERT INTO "+wcs+"."+table+"_cflt "
-                            "SELECT "+str(cflt_id)+" AS conflict_id, "
-                                "'theirs' AS origin, 'deleted' AS action, "
-                                +cols+" FROM "+wcs+"."+table+"_update_diff "
-                            "WHERE "+pkey+" = "+str(child)+" "
-                            "AND "+branch+"_rev_end IS NOT NULL" )
-    
+                        pcurcpy.execute("DELETE FROM "+wcs+"."+table+"_conflicts "
+                                        "WHERE ogc_fid = "+str(fid))
+                        pcurcpy.execute("INSERT INTO "+wcs+"."+table+"_conflicts "
+                                        "SELECT "+str(cflt_id) +
+                                        " AS conflict_id, "
+                                        "'theirs' AS origin, 'modified' AS action, "+cols+" "
+                                        "FROM "+wcs+"."+table+"_diff "
+                                        "WHERE ogc_fid = "+str(child)+" "
+                                        "AND "+branch+"_rev_end IS NULL")
+                        pcurcpy.execute("INSERT INTO "+wcs+"."+table+"_conflicts "
+                                        "SELECT "+str(cflt_id) +
+                                        " AS conflict_id, "
+                                        "'theirs' AS origin, 'deleted' AS action, "+cols+" "
+                                        "FROM "+wcs+"."+table+"_diff "
+                                        "WHERE ogc_fid = "+str(child)+" "
+                                        "AND "+branch+"_rev_end IS NOT NULL")
+
+                pcurcpy.execute("CREATE UNIQUE INDEX IF NOT EXISTS "
+                                + table+"_conflicts_idx ON "+wcs+"."+table+"_conflicts(ogc_fid)")
+
                 # create trigers such that on delete the conflict is resolved
-                # if we delete 'theirs', we set their child to our fid
-                # and their rev_end
-                # if we delete 'mine'... well, we delete 'mine'
-    
-                pcur.execute("SELECT column_name "
-                        "FROM information_schema.columns "
-                        "WHERE table_schema = '"+wcs+"' "
-                        "AND table_name = '"+table+"_diff'")
-                cols = ""
-                for col in pcur.fetchall():
-                    cols += quote_ident(col[0])+", "
-                cols = cols[:-2] # remove last coma and space
-    
-                pcur.execute("CREATE OR REPLACE VIEW "
-                    +wcs+"."+table+"_conflicts AS SELECT * "
-                    "FROM  "+wcs+"."+table+"_cflt" )
-    
-                pcur.execute("CREATE OR REPLACE FUNCTION "
-                    +wcs+".delete_"+table+"_conflicts() RETURNS trigger AS $$\n"
-                    "BEGIN\n"
-                        "DELETE FROM "+wcs+"."+table+"_diff "
-                        "WHERE "+pkey+" = OLD."+pkey+" AND OLD.origin = 'mine';\n"
-    
-                        # we need to insert their parent to update it
-                        # if it's not already there
-                        "INSERT INTO "+wcs+"."+table+"_diff("+cols+") "
-                        "SELECT "+cols+" FROM "+table_schema+"."+table+" "
-                        "WHERE "+pkey+" = OLD."+branch+"_parent "
-                        "AND OLD.origin = 'theirs' "
-                        "AND (SELECT COUNT(*) FROM "+wcs+"."+table+"_diff "
-                            "WHERE "+pkey+" =  OLD."+branch+"_parent ) = 0;\n"
-    
-                        "UPDATE "+wcs+"."+table+"_diff "
-                        "SET "+branch+"_child = (SELECT "+pkey+" "
-                                              "FROM "+wcs+"."+table+"_cflt "
-                                              "WHERE origin = 'mine' "
-                                              "AND conflict_id = OLD.conflict_id), "
-                              +branch+"_rev_end = "+str(max_rev)+" "
-                        "WHERE "+pkey+" = OLD."+pkey+" AND OLD.origin = 'theirs';\n"
-    
-                        "UPDATE "+wcs+"."+table+"_diff "
-                        "SET "+branch+"_parent = OLD."+pkey+" "
-                        "WHERE "+pkey+" = (SELECT "+pkey+" FROM "+wcs+"."+table+"_cflt "
-                                        "WHERE origin = 'mine' "
-                                        "AND conflict_id = OLD.conflict_id) "
-                        "AND OLD.origin = 'theirs';\n"
-    
-                        "DELETE FROM "+wcs+"."+table+"_cflt "
-                        "WHERE conflict_id = OLD.conflict_id;\n"
-                        "RETURN NULL;\n"
-                    "END;\n"
-                "$$ LANGUAGE plpgsql;")
-    
-                pcur.execute("DROP TRIGGER IF EXISTS "
-                    "delete_"+table+"_conflicts ON "+wcs+"."+table+"_conflicts ")
-                pcur.execute("CREATE TRIGGER "
-                    "delete_"+table+"_conflicts "
-                    "INSTEAD OF DELETE ON "+wcs+"."+table+"_conflicts "
-                    "FOR EACH ROW "
-                    "EXECUTE PROCEDURE "+wcs+".delete_"+table+"_conflicts();")
-                pcur.commit()
-    
-                pcur.execute("ALTER TABLE "+wcs+"."+table+"_cflt "
-                    "ADD CONSTRAINT "+table+"_"+branch+"conflicts_pk_pk "
-                    "PRIMARY KEY ("+pkey+")")
-    
-        pcur.commit()
-        pcur.close()
-        
-    # functions checkout, update and commit for a posgres working copy
-    # we don't want to duplicate data
-    # we need the initial_revision table all the same
-    # for each table we need a diff and a view and triggers
-    
-    def checkout(self, connection, pg_table_names, selected_feature_lists = []):
-        (pg_conn_info, working_copy_schema) = connection
-        """create postgres working copy from versioned database tables
+                # if we delete 'theirs', we set their child to our fid and
+                # their rev_end if we delete 'mine'... well, we delete 'mine'
+                pcurcpy.execute("CREATE OR REPLACE FUNCTION "
+                                + wcs+".delete_"+table+"_conflicts() RETURNS trigger AS $$\n"
+                                "BEGIN\n"
+                                "DELETE FROM "+wcs+"."+table+" "
+                                "WHERE ogc_fid = old.ogc_fid AND old.origin = 'mine';\n"
+
+                                "UPDATE "+wcs+"."+table+" "
+                                "SET "+branch+"_child = (SELECT ogc_fid "
+                                "FROM "+wcs+"."+table+"_conflicts "
+                                "WHERE origin = 'mine' "
+                                "AND conflict_id = old.conflict_id), "
+                                + branch+"_rev_end = "+str(max_rev)+" "
+                                "WHERE ogc_fid = old.ogc_fid AND old.origin = 'theirs';\n"
+
+                                "UPDATE "+wcs+"."+table+" "
+                                "SET "+branch+"_parent = old.ogc_fid "
+                                "WHERE ogc_fid = (SELECT ogc_fid "
+                                "FROM "+wcs+"."+table+"_conflicts WHERE origin = 'mine' "
+                                "AND conflict_id = old.conflict_id) "
+                                "AND old.origin = 'theirs';\n"
+
+                                "DELETE FROM "+wcs+"."+table+"_conflicts "
+                                "WHERE conflict_id = old.conflict_id;\n"
+                                "END;\n"
+                                "$$ LANGUAGE plpgsql;")
+                pcurcpy.execute("DROP TRIGGER IF EXISTS "
+                                "delete_"+table+"_conflicts ON "+wcs+"."+table+"_conflicts ")
+                pcurcpy.execute("CREATE TRIGGER "
+                                "delete_"+table+"_conflicts "
+                                "INSTEAD OF DELETE ON "+wcs+"."+table+"_conflicts "
+                                "FOR EACH ROW "
+                                "EXECUTE PROCEDURE "+wcs+".delete_"+table+"_conflicts();")
+                pcurcpy.commit()
+
+            pcurcpy.execute("CREATE UNIQUE INDEX IF NOT EXISTS "
+                            + table+"_diff_idx ON "+wcs+"."+table+"_diff(ogc_fid)")
+            # insert and replace all in diff
+            pcurcpy.execute("INSERT INTO "+wcs+"."+table+" ("+cols+") "
+                            "SELECT "+cols+" FROM "+wcs+"."+table+"_diff")
+
+        pcurcpy.commit()
+        pcurcpy.close()
+
+    def checkout(self, connection, pg_table_names, selected_feature_lists=[]):
+        (pg_conn_info, wcs, pg_conn_info_copy) = connection
+        """create working copy from versioned database tables
         pg_table_names must be complete schema.table names
         the schema name must end with _branch_rev_head
-        the working_copy_schema must not exist
-        the views and triggers for local edition will be created
+        the views and trigger for local edition will be created
         along with the tables and triggers for conflict resolution"""
-        pcur = Db(psycopg2.connect(pg_conn_info))
-        wcs = working_copy_schema
-        pcur.execute("SELECT schema_name FROM information_schema.schemata "
-            "WHERE schema_name = '"+wcs+"'")
-        if pcur.fetchone():
-            raise RuntimeError("Schema "+wcs+" already exists")
-    
+
         for pg_table_name in pg_table_names:
             [schema, table] = pg_table_name.split('.')
-            if not ( schema and table and schema[-9:] == "_rev_head"):
-                raise RuntimeError("Schema names must end with suffix "
-                    "_branch_rev_head")
-    
-    
-        pcur.execute("CREATE SCHEMA "+wcs)
-    
+            if not (schema and table and schema[-9:] == "_rev_head"):
+                raise RuntimeError("Schema names must end with "
+                                   "suffix _branch_rev_head")
+
+        pcur = Db(psycopg2.connect(pg_conn_info))
+        pcurcpy = Db(psycopg2.connect(pg_conn_info_copy))
+
+        pcurcpy.execute("CREATE SCHEMA " + wcs)
+        pcurcpy.commit()
+
+        temp_view_names = []
         first_table = True
         for pg_table_name, feature_list in list(izip_longest(pg_table_names, selected_feature_lists)):
             [schema, table] = pg_table_name.split('.')
             [schema, sep, branch] = schema[:-9].rpartition('_')
             del sep
-    
-            pkey = pg_pk( pcur, schema, table )
-            history_columns = [pkey] + sum([
-                [brch+'_rev_end', brch+'_rev_begin',
-                brch+'_child', brch+'_parent' ] for brch in pg_branches( pcur, schema )],[])
-    
+
             # fetch the current rev
             pcur.execute("SELECT MAX(rev) FROM "+schema+".revisions")
             current_rev = int(pcur.fetchone()[0])
-    
+
             # max pkey for this table
+            pkey = pg_pk(pcur, schema, table)
             pcur.execute("SELECT MAX("+pkey+") FROM "+schema+"."+table)
             [max_pg_pk] = pcur.fetchone()
-            if not max_pg_pk :
+            if not max_pg_pk:
                 max_pg_pk = 0
+
+            temp_view_name = schema+"."+table+"_checkout_temp_view"
+            temp_view_names.append(temp_view_name)
+
+            # export schema and tables to the database
+            tmp_dir = tempfile.gettempdir()
+            tmp_dump = os.path.join(tmp_dir, "versioning.sql")
+            # use ogr2ogr to create the dump
             if first_table:
                 first_table = False
-                pcur.execute("CREATE TABLE "+wcs+".initial_revision AS SELECT "
-                        +str(current_rev)+" AS rev, '"
-                        +branch+"'::varchar AS branch, '"
-                        +schema+"'::varchar AS table_schema, '"
-                        +table+"'::varchar AS table_name, "
-                        +str(max_pg_pk)+" AS max_pk")
+                # We use the same logic as spatialite
+                # TODO: improve postgresql logic
+                pcur.execute("SELECT column_name FROM information_schema.columns WHERE table_schema = \'" +
+                             schema+"\' AND table_name   = \'"+table+"\'")
+                column_list = pcur.fetchall()
+                new_columns_str = preserve_fid(pkey, column_list)
+                view_str = "CREATE OR REPLACE VIEW "+temp_view_name + \
+                    " AS SELECT "+new_columns_str+" FROM " + schema+"."+table
+                if feature_list:
+                    view_str = "CREATE OR REPLACE VIEW "+temp_view_name+" AS SELECT "+new_columns_str+" FROM " + schema+"." + \
+                        table+" WHERE "+pkey + \
+                        ' in ('+",".join([str(feature_list[i])
+                                          for i in range(0, len(feature_list))])+')'
+                pcur.execute(view_str)
+                pcur.commit()
+
+                cmd = ['ogr2ogr',
+                       '-lco', 'schema=' + wcs,
+                       '-lco', 'DROP_TABLE=OFF',
+                       '-f', 'PGDump',
+                       '"' + tmp_dump + '"',
+                       'PG:"'+pg_conn_info+' tables=' + wcs + '.' + table + '"', temp_view_name,
+                       '-nln', table]
+
+                print(' '.join(cmd))
+                os.system(' '.join(cmd))
+                pcurcpy = Db(psycopg2.connect(pg_conn_info_copy))
+                pcurcpy.execute(open(tmp_dump, "r").read().replace(
+                    "CREATE SCHEMA", "CREATE SCHEMA IF NOT EXISTS"))
+                pcurcpy.commit()
+
+                # save target revision in a table
+                pcurcpy.execute("CREATE TABLE "+wcs+".initial_revision AS SELECT " +
+                                str(current_rev)+" AS rev, '" +
+                                str(branch)+"'::text AS branch, '" +
+                                str(schema)+"'::text AS table_schema, '" +
+                                str(table)+"'::text AS table_name, " +
+                                str(max_pg_pk)+" AS max_pk")
+                pcurcpy.commit()
+
             else:
-                pcur.execute("INSERT INTO "+wcs+".initial_revision"
-                "(rev, branch, table_schema, table_name, max_pk) "
-                "VALUES ("+str(current_rev)+", '"+branch+"', '"+schema+"', "
-                    "'"+table+"', "+str(max_pg_pk)+")" )
-    
-            # create diff, views and triggers
-            pcur.execute("SELECT column_name "
-                    "FROM information_schema.columns "
-                    "WHERE table_schema = '"+schema+"' "
-                    "AND table_name = '"+table+"'")
+                # Same comments as in 'if feature_list' above
+                pcur.execute("SELECT column_name FROM information_schema.columns WHERE table_schema = \'" +
+                             schema+"\' AND table_name   = \'"+table+"\'")
+                column_list = pcur.fetchall()
+                new_columns_str = preserve_fid(pkey, column_list)
+                view_str = "CREATE OR REPLACE VIEW "+temp_view_name + \
+                    " AS SELECT "+new_columns_str+" FROM " + schema+"."+table
+                if feature_list:
+                    view_str = "CREATE OR REPLACE VIEW "+temp_view_name+" AS SELECT "+new_columns_str+" FROM " + schema+"." + \
+                        table+" WHERE "+pkey + \
+                        ' in ('+",".join([str(feature_list[i])
+                                          for i in range(0, len(feature_list))])+')'
+                pcur.execute(view_str)
+                pcur.commit()
+
+                cmd = ['ogr2ogr',
+                       '-lco', 'schema=' + wcs,
+                       '-lco', 'DROP_TABLE=OFF',
+                       '-f', 'PGDump',
+                       '"' + tmp_dump + '"',
+                       'PG:"'+pg_conn_info+' tables=' + wcs + '.' + table + '"', temp_view_name,
+                       '-nln', table]
+
+                print(' '.join(cmd))
+                os.system(' '.join(cmd))
+                pcurcpy = Db(psycopg2.connect(pg_conn_info_copy))
+                pcurcpy.execute(open(tmp_dump, "r").read().replace(
+                    "CREATE SCHEMA", "CREATE SCHEMA IF NOT EXISTS"))
+                pcurcpy.commit()
+
+                # save target revision in a table if not in there
+                pcurcpy.execute("INSERT INTO "+wcs+".initial_revision"
+                                "(rev, branch, table_schema, table_name, max_pk) "
+                                "VALUES ("+str(current_rev)+", '"+branch+"', '" +
+                                schema+"', '"+table+"', "+str(max_pg_pk)+")")
+                pcurcpy.commit()
+
+            # create views and triggers in postgresql copy
             cols = ""
             newcols = ""
-            for [col] in pcur.fetchall():
-                if col not in history_columns:
-                    cols = quote_ident(col)+", "+cols
-                    newcols = "new."+quote_ident(col)+", "+newcols
+            hcols = ['ogc_fid'] + sum([[brch+'_rev_begin', brch+'_rev_end',
+                                        brch+'_parent', brch+'_child'] for brch in pg_branches(pcur, schema)], [])
+            for res in pcurcpy.execute(self.__pragmaTableInfo(wcs, table)).fetchall():
+                if res[1].lower() not in [c.lower() for c in hcols]:
+                    cols += quote_ident(res[1]) + ", "
+                    newcols += "new."+quote_ident(res[1])+", "
             cols = cols[:-2]
-            newcols = newcols[:-2] # remove last coma and space
-            hcols = (pkey+", "+branch+"_rev_begin, "+branch+"_rev_end, "
-                    +branch+"_parent, "+branch+"_child")
-    
-            pcur.execute("CREATE TABLE "+wcs+"."+table+"_diff "
-                    "AS SELECT "+cols+" FROM "+schema+"."+table+" WHERE False")
-    
-            pcur.execute("ALTER TABLE "+wcs+"."+table+"_diff "
-                "ADD COLUMN "+pkey+" integer PRIMARY KEY, "
-                "ADD COLUMN "+branch+"_rev_begin integer, "
-                "ADD COLUMN "+branch+"_rev_end   integer, "
-                "ADD COLUMN "+branch+"_parent    integer,"
-                "ADD COLUMN "+branch+"_child     integer "
-                "REFERENCES "+wcs+"."+table+"_diff("+pkey+") "
-                "ON UPDATE CASCADE ON DELETE CASCADE")
-    
-            if feature_list:
-                additional_filter = "AND t.{pkey} IN ({features})".format(
-                        pkey=pkey,
-                        features = ','.join(str(f) for f in feature_list)
-                        )
-            else:
-                additional_filter = ""
-    
-            current_rev_sub = "(SELECT MAX(rev) FROM "+wcs+".initial_revision)"
-            pcur.execute("""
-                CREATE VIEW {wcs}.{table}_view AS 
-                    SELECT {pkey}, {cols}
-                    FROM {wcs}.{table}_diff 
-                    WHERE ({branch}_rev_end IS NULL OR {branch}_rev_end >= {current_rev_sub}+1 ) 
-                    AND {branch}_rev_begin IS NOT NULL 
-                    UNION ALL
-                    SELECT /*DISTINCT ON ({pkey})*/ t.{pkey}, {cols}
-                    FROM {schema}.{table} AS t 
-                    LEFT JOIN (SELECT {pkey} FROM {wcs}.{table}_diff) AS d ON t.{pkey} = d.{pkey} 
-                    WHERE d.{pkey} IS NULL 
-                    AND t.{branch}_rev_begin <= {current_rev_sub} 
-                    AND ((t.{branch}_rev_end IS NULL 
-                        OR t.{branch}_rev_end >= {current_rev_sub}) 
-                        AND t.{branch}_rev_begin IS NOT NULL)
-                    {additional_filter}
-                """.format(
-                    wcs=wcs,
-                    schema=schema,
-                    table=table,
-                    pkey=pkey,
-                    cols=cols,
-                    hcols=hcols,
-                    branch=branch,
-                    current_rev_sub=current_rev_sub,
-                    additional_filter=additional_filter
-                ))
-    
-            max_fid_sub = ("( SELECT MAX(max_fid) FROM ( SELECT MAX("+pkey+") "
-                "AS max_fid FROM "+wcs+"."+table+"_diff "
-                "UNION SELECT max_pk AS max_fid "
-                "FROM "+wcs+".initial_revision "
-                "WHERE table_name = '"+table+"') AS src )")
-    
-            pcur.execute("CREATE OR REPLACE FUNCTION myprt(error_message text) "
-            "RETURNS void as $$\n"
-                "begin\n"
-                    "raise notice '%', error_message;\n"
-                "end;\n"
-                "$$ language plpgsql;")
-    
-            pcur.execute("CREATE FUNCTION "+wcs+".update_"+table+"() "
-            "RETURNS trigger AS $$\n"
-                "BEGIN\n"
-                    # when we edit something we already added , we just update
-                    "UPDATE "+wcs+"."+table+"_diff "
-                    "SET ("+cols+") = ("+newcols+") "
-                    "WHERE "+pkey+" = OLD."+pkey+" "
-                    "AND "+branch+"_rev_begin = "+current_rev_sub+"+1 "
-                    "AND "
-                    "(SELECT COUNT(*) FROM "+schema+"."+table+" "
-                        "WHERE "+pkey+" = OLD."+pkey+" "
-                        "AND "+branch+"_rev_begin <= "+current_rev_sub+" "
-                        "AND ("+branch+"_rev_end IS NULL "
-                            "OR "+branch+"_rev_end >= "+current_rev_sub+" ) "
-                    ") = 0 ;"
-    
-                    # insert the parent in diff if not already there
-                    "INSERT INTO "+wcs+"."+table+"_diff "
-                    "("+cols+", "+pkey+", "+branch+"_rev_begin, "
-                        +branch+"_rev_end, "+branch+"_parent ) "
-                    "SELECT "+cols+", "+pkey+", "+branch+"_rev_begin, "
-                        +branch+"_rev_end, "+branch+"_parent "
-                    "FROM "+schema+"."+table+" "
-                    "WHERE "+pkey+" = OLD."+pkey+" "
-                    "AND "+branch+"_rev_begin <= "+current_rev_sub+" "
-                    "AND (SELECT COUNT(*) FROM "+wcs+"."+table+"_diff "
-                        "WHERE "+pkey+" = OLD."+pkey+" "
-                        "AND "+branch+"_rev_end = "+current_rev_sub+" ) = 0 ;"
-    
-                    # when we edit something old, we insert new
-                    "INSERT INTO "+wcs+"."+table+"_diff "
-                    "("+pkey+", "+cols+", "+branch+"_rev_begin, "+branch+"_parent) "
-                    "SELECT "+max_fid_sub+"+1, "+newcols+", "
-                        +current_rev_sub+"+1, OLD."+pkey+" "
-                    "WHERE (SELECT COUNT(*) FROM "+schema+"."+table+" "
-                        "WHERE "+pkey+" = OLD."+pkey+" "
-                        "AND "+branch+"_rev_begin <= "+current_rev_sub+" "
-                        "AND ("+branch+"_rev_end IS NULL "
-                            "OR "+branch+"_rev_end >= "+current_rev_sub+" ) "
-                        ") = 1; "
-    
-                    # update the parent in diff if it comes from the table
-                    # (i.e not the diff)
-                    "UPDATE "+wcs+"."+table+"_diff "
-                        "SET ("+branch+"_rev_end, "+branch+"_child) "
-                        "= ("+current_rev_sub+", "+max_fid_sub+") "
-                        "WHERE "+pkey+" = OLD."+pkey+" "
-                        "AND (SELECT COUNT(*) FROM "+schema+"."+table+" "
-                        "WHERE "+pkey+" = OLD."+pkey+" "
-                        "AND "+branch+"_rev_begin <= "+current_rev_sub+" "
-                        "AND ("+branch+"_rev_end IS NULL "
-                            "OR "+branch+"_rev_end >= "+current_rev_sub+")) = 1;\n"
-                    "RETURN NEW;\n"
-                "END;\n"
-            "$$ LANGUAGE plpgsql;")
-    
-            pcur.execute("CREATE TRIGGER update_"+table+" "
-                "INSTEAD OF UPDATE ON "+wcs+"."+table+"_view "
-                "FOR EACH ROW EXECUTE PROCEDURE "+wcs+".update_"+table+"();")
-    
-            pcur.execute("CREATE FUNCTION "+wcs+".insert_"+table+"() "
-            "RETURNS trigger AS $$\n"
-                "BEGIN\n"
-                    "INSERT INTO "+wcs+"."+table+"_diff "+
-                        "("+pkey+", "+cols+", "+branch+"_rev_begin) "
-                        "VALUES "
-                        "("+max_fid_sub+"+1, "+newcols+", "+current_rev_sub+"+1);\n"
-                    "RETURN NEW;\n"
-                "END;\n"
-            "$$ LANGUAGE plpgsql;")
-    
-            pcur.execute("CREATE TRIGGER insert_"+table+" "
-                "INSTEAD OF INSERT ON "+wcs+"."+table+"_view "
-                "FOR EACH ROW EXECUTE PROCEDURE "+wcs+".insert_"+table+"();")
-    
-            pcur.execute("CREATE FUNCTION "+wcs+".delete_"+table+"() "
-            "RETURNS trigger AS $$\n"
-                "BEGIN\n"
-                    # insert if not already in diff
-                    "INSERT INTO "+wcs+"."+table+"_diff "
-                        "SELECT "+cols+", "+hcols+" FROM "+schema+"."+table+" "
-                        "WHERE "+pkey+" = OLD."+pkey+" "
-                        "AND (SELECT COUNT(*) FROM "+wcs+"."+table+"_diff "
-                        "WHERE "+pkey+" = OLD."+pkey+") = 0;\n"
-                    # update if it comes from table (not diff)
-                    "UPDATE "+wcs+"."+table+"_diff "
-                        "SET "+branch+"_rev_end = "+current_rev_sub+" "
-                        "WHERE "+pkey+" = OLD."+pkey+" "
-                        "AND (SELECT COUNT(*) FROM  "+schema+"."+table+" "
-                        "WHERE "+pkey+" = OLD."+pkey+") = 1; "
-    
-                    # if its just in diff, remove it from child
-                    "UPDATE "+wcs+"."+table+"_diff "
-                        "SET "+branch+"_child = NULL "
-                        "WHERE "+branch+"_child = OLD."+pkey+" "
-                        "AND (SELECT COUNT(*) FROM  "+schema+"."+table+" "
-                        "WHERE "+pkey+" = OLD."+pkey+") = 0;\n"
-    
-                    # if it's just in diff, delete it
-                    "DELETE FROM  "+wcs+"."+table+"_diff "
-                        "WHERE "+pkey+" = OLD."+pkey+" "
-                        "AND (SELECT COUNT(*) FROM  "+schema+"."+table+" "
-                        "WHERE "+pkey+" = OLD."+pkey+") = 0;\n"
-                    "RETURN OLD;\n"
-                "END;\n"
-            "$$ LANGUAGE plpgsql;")
-    
-            pcur.execute("CREATE TRIGGER delete_"+table+" "
-                "INSTEAD OF DELETE ON "+wcs+"."+table+"_view "
-                "FOR EACH ROW EXECUTE PROCEDURE "+wcs+".delete_"+table+"();")
-    
-        pcur.commit()
+            newcols = newcols[:-2]  # remove last coma
+
+            pcurcpy.execute("CREATE VIEW "+wcs+"."+table+"_view "+"AS "
+                            "SELECT row_number() over() AS ROWID, ogc_fid, "+cols+" "
+                            "FROM "+wcs+"."+table+" WHERE "+branch+"_rev_end IS NULL "
+                            "AND "+branch+"_rev_begin IS NOT NULL")
+
+            max_fid_sub = ("( SELECT MAX(max_fid) FROM ( SELECT MAX(ogc_fid) AS "
+                           "max_fid FROM {wcs}.{table} UNION SELECT max_pk AS max_fid "
+                           "FROM {wcs}.initial_revision WHERE table_name = '{wcs}.{table}') alias )".format(wcs=wcs, table=table))
+            current_rev_sub = ("(SELECT rev FROM {wcs}.initial_revision "
+                               "WHERE table_name = '{table}')".format(wcs=wcs, table=table))
+
+            # when we edit something old, we insert and update parent
+            sql = """CREATE OR REPLACE FUNCTION 
+                {wcs}.update_old_{table}_view() RETURNS trigger AS $$\n
+                BEGIN\n
+                INSERT INTO {wcs}.{table} 
+                (ogc_fid, {cols}, {branch}_rev_begin, 
+                 {branch}_parent)
+                VALUES 
+                ({max_fid_sub}+1, {newcols}, {current_rev_sub}+1, old.ogc_fid);\n
+                
+                UPDATE {wcs}.{table} SET {branch}_rev_end = {current_rev_sub}, 
+                {branch}_child = {max_fid_sub} WHERE ogc_fid = old.ogc_fid;\n
+                RETURN OLD;\n
+                END;\n$$ LANGUAGE plpgsql;""".format(wcs=wcs,
+                                                     table=table,
+                                                     cols=cols,
+                                                     branch=branch,
+                                                     max_fid_sub=max_fid_sub,
+                                                     newcols=newcols,
+                                                     current_rev_sub=current_rev_sub
+                                                     )
+            print(sql)
+            pcurcpy.execute(sql)
+            pcurcpy.execute("DROP TRIGGER IF EXISTS "
+                            "update_old_"+table+"_view ON "+wcs+"."+table+"_view ")
+
+
+#                WHEN (SELECT COUNT(*) FROM {wcs}.{table}
+#                WHERE ogc_fid = new.ogc_fid
+#                AND ({branch}_rev_begin <= {current_rev_sub} ) )\
+            sql = """CREATE TRIGGER 
+                update_old_{table}_conflicts 
+                INSTEAD OF UPDATE ON {wcs}.{table}_view 
+                FOR EACH ROW 
+                EXECUTE PROCEDURE {wcs}.update_old_{table}_view()\n""".format(
+                wcs=wcs,
+                table=table)
+            print(sql)
+            pcurcpy.execute(sql)
+            pcurcpy.commit()
+
+            # when we edit something new, we just update
+
+
+#                  "WHEN (SELECT COUNT(*) FROM "+wcs+"."+table+" "
+#                  "WHERE ogc_fid = new.ogc_fid AND ("+branch+"_rev_begin > "
+#                  +current_rev_sub+" ) ) \n
+#
+            pcurcpy.execute("CREATE OR REPLACE FUNCTION " +
+                            wcs+".update_new_"+table+"_view() RETURNS trigger AS $$\n"
+                            "BEGIN\n"
+                            "UPDATE "+wcs+"."+table+" "
+                            "SET (ogc_fid, "+cols+", "+branch +
+                            "_rev_begin, "+branch+"_parent) "
+                            " = "
+                            "(new.ogc_fid, "+newcols+", " +
+                            current_rev_sub+"+1, (SELECT "
+                            + branch+"_parent FROM "+wcs+"."+table +
+                            " WHERE ogc_fid = new.ogc_fid));\n"
+                            "RETURN NEW;\n"
+                            "END;\n"
+                            "$$ LANGUAGE plpgsql;")
+            pcurcpy.execute("DROP TRIGGER IF EXISTS "
+                            "update_new_"+table+"_view ON "+wcs+"."+table+"_view ")
+            pcurcpy.execute("CREATE TRIGGER "
+                            "update_new_"+table+"_conflicts "
+                            "INSTEAD OF UPDATE ON "+wcs+"."+table+"_view "
+                            "FOR EACH ROW "
+                            "EXECUTE PROCEDURE "+wcs+".update_new_"+table+"_view();\n")
+            pcurcpy.commit()
+
+            pcurcpy.execute("CREATE OR REPLACE FUNCTION " +
+                            wcs+".insert_"+table+"() RETURNS trigger AS $$\n"
+                            "BEGIN\n"
+                            "INSERT INTO "+wcs+"."+table+" " +
+                            "(ogc_fid, "+cols+", "+branch+"_rev_begin) "
+                            "VALUES "
+                            "("+max_fid_sub+"+1, "+newcols +
+                            ", "+current_rev_sub+"+1);\n"
+                            "RETURN NEW;\n"
+                            "END;\n"
+                            "$$ LANGUAGE plpgsql;")
+            pcurcpy.execute("DROP TRIGGER IF EXISTS "
+                            "insert_"+table+" ON "+wcs+"."+table)
+            pcurcpy.execute("CREATE TRIGGER "
+                            "insert_new_"+table+"_conflicts "
+                            "INSTEAD OF INSERT ON "+wcs+"."+table + "_view "
+                            " FOR EACH ROW "
+                            "EXECUTE PROCEDURE "+wcs+".insert_"+table+"();")
+            pcurcpy.commit()
+
+            pcurcpy.execute("CREATE OR REPLACE FUNCTION " +
+                            wcs+".delete_"+table+"() RETURNS trigger AS $$\n"
+                            "BEGIN\n"
+                            # update it if its old
+                            "UPDATE "+wcs+"."+table+" "
+                            "SET "+branch+"_rev_end = "+current_rev_sub+" "
+                            "WHERE ogc_fid = old.ogc_fid "
+                            "AND "+branch+"_rev_begin < "+current_rev_sub+"+1;\n"
+                            # update its parent if its modified
+                            "UPDATE "+wcs+"."+table+" "
+                            "SET "+branch+"_rev_end = "+current_rev_sub+", "+branch+"_child = NULL "
+                            "WHERE "+branch+"_child = old.ogc_fid;\n"
+                            # delete it if its new and remove it from child
+                            "UPDATE "+wcs+"."+table+" "
+                            "SET "+branch+"_child = NULL "
+                            "WHERE "+branch+"_child = old.ogc_fid "
+                            "AND "+branch+"_rev_begin = "+current_rev_sub+"+1;\n"
+                            "DELETE FROM "+wcs+"."+table+" "
+                            "WHERE ogc_fid = old.ogc_fid "
+                            "AND "+branch+"_rev_begin = "+current_rev_sub+"+1;\n"
+                            "RETURN NEW;\n"
+                            "END;\n"
+                            "$$ LANGUAGE plpgsql;")
+            pcurcpy.execute("DROP TRIGGER IF EXISTS "
+                            "delete_"+table+" ON "+wcs+"."+table)
+            pcurcpy.execute("CREATE TRIGGER "
+                            "delete_new_"+table+"_conflicts "
+                            "INSTEAD OF DELETE ON "+wcs+"."+table + "_view "
+                            "FOR EACH ROW "
+                            "EXECUTE PROCEDURE "+wcs+".insert_"+table+"();")
+            pcurcpy.commit()
+
+        # Remove temp views after sqlite file is written
+        for i in temp_view_names:
+            del_view_str = "DROP VIEW IF EXISTS " + i
+            pcur.execute(del_view_str)
+            pcur.commit()
+
+        pcurcpy.execute("""CREATE TABLE %s.wcs_con as SELECT '%s'::text as connection""" % (wcs,
+                                                                                            pg_conn_info.replace("'", "''")))
+        pcurcpy.commit()
         pcur.close()
-    
-    def unresolved_conflicts(self, connection ):
-        (pg_conn_info, working_copy_schema) = connection
+        pcurcpy.close()
+
+    def unresolved_conflicts(self, connection):
+        (pg_conn_info, wcs, pg_conn_info_copy) = connection
         """return a list of tables with unresolved conflicts"""
         found = []
-        pcur = Db(psycopg2.connect(pg_conn_info))
-        pcur.execute("SELECT table_name FROM information_schema.tables "
-            "WHERE table_schema='"+working_copy_schema+"' "
-            "AND table_name LIKE '%_cflt'")
-        for table_conflicts in pcur.fetchall():
-            if DEBUG: print 'table_conflicts:', table_conflicts[0]
-            pcur.execute("SELECT * "
-                "FROM "+working_copy_schema+"."+table_conflicts[0])
-            if pcur.fetchone():
-                found.append( table_conflicts[0][:-5] )
-        pcur.commit()
-        pcur.close()
+        pcurcpy = Db(psycopg2.connect(pg_conn_info_copy))
+        pcurcpy.execute("SELECT table_name FROM information_schema.tables "
+                        "WHERE table_schema='"+wcs+"' AND table_name LIKE '%_conflicts'")
+        for table_conflicts in pcurcpy.fetchall():
+            if DEBUG:
+                print('table_conflicts:', table_conflicts[0])
+            pcurcpy.execute("SELECT * FROM "+table_conflicts[0])
+            if pcurcpy.fetchone():
+                found.append(table_conflicts[0][:-10])
+        pcurcpy.commit()
+        pcurcpy.close()
         return found
-    
+
     def commit(self, connection, commit_msg, commit_user=''):
-        (pg_conn_info, working_copy_schema) = connection
         """merge modifications into database
         returns the number of updated layers"""
-        wcs = working_copy_schema
-    
-        unresolved = self.unresolved_conflicts([pg_conn_info, wcs])
+        # get the target revision from the postgresql copy
+        # create the diff in postgres
+        # load the diff in pg copy
+        # detect conflicts
+        # merge changes and update target_revision
+        # delete diff
+        (pg_conn_info, wcs, pg_conn_info_copy) = connection
+        unresolved = self.unresolved_conflicts(
+            [pg_conn_info, wcs, pg_conn_info_copy])
         if unresolved:
-            raise RuntimeError("There are unresolved conflicts in "+wcs+" "
-                "for table(s) "+', '.join(unresolved) )
-    
-        late_by = self.late([pg_conn_info, wcs])
+            raise RuntimeError("There are unresolved conflicts in "
+                               + wcs+" for table(s) "+', '.join(unresolved))
+
+        late_by = self.late([pg_conn_info, wcs, pg_conn_info_copy])
         if late_by:
-            raise RuntimeError("Working copy "+working_copy_schema+" "
-                "is not up to date. It's late by "+str(late_by)+" commit(s).\n\n"
-                "Please update before committing your modifications")
-    
-        # Better if we could have a QgsDataSourceURI.username()
-        try :
-            pg_username = pg_conn_info.split(' ')[3].replace("'","").split('=')[1]
-        except (IndexError):
-            pg_username = ''
-        pcur = Db(psycopg2.connect(pg_conn_info))
-        pcur.execute("SELECT rev, branch, table_schema, table_name "
-            "FROM "+wcs+".initial_revision")
-        versioned_layers = pcur.fetchall()
-    
+            raise RuntimeError("Working copy "+wcs +
+                               " is not up to date. "
+                               "It's late by "+str(late_by)+" commit(s).\n\n"
+                               "Please update before commiting your modifications")
+
+        pcurcpy = Db(psycopg2.connect(pg_conn_info_copy))
+        pcurcpy.execute("SELECT rev, branch, table_schema, table_name "
+                        "FROM "+wcs+".initial_revision")
+        versioned_layers = pcurcpy.fetchall()
+
         if not versioned_layers:
             raise RuntimeError("Cannot find a versioned layer in "+wcs)
-    
-    
+
+        schema_list = {}  # for final cleanup
         nb_of_updated_layer = 0
         next_rev = 0
         for [rev, branch, table_schema, table] in versioned_layers:
+            diff_schema = (table_schema+"_"+branch+"_"+str(rev) +
+                           "_to_"+str(rev+1)+"_diff")
+
             if next_rev:
-                assert( next_rev == rev + 1 )
-            else: next_rev = rev + 1
-    
-            pkey = pg_pk( pcur, table_schema, table )
-            history_columns = [pkey] + sum([
-                [brch+'_rev_end', brch+'_rev_begin',
-                brch+'_child', brch+'_parent' ] for brch in pg_branches( pcur, table_schema )],[])
-            pcur.execute("SELECT column_name "
-                    "FROM information_schema.columns "
-                    "WHERE table_schema = '"+table_schema+"' "
-                    "AND table_name = '"+table+"'")
-            cols = ""
-            for [col] in pcur.fetchall():
-                if col not in history_columns:
-                    cols = quote_ident(col)+", "+cols
-            cols = cols[:-2] # remove last coma and space
-            hcols = (pkey+", "+branch+"_rev_begin, "+branch+"_rev_end, "
-                    +branch+"_parent, "+branch+"_child")
-    
-            pcur.execute( "SELECT "+pkey+" FROM "+wcs+"."+table+"_diff")
-            there_is_something_to_commit = pcur.fetchone()
-    
-            if not there_is_something_to_commit:
-                if DEBUG: print "nothing to commit for ", table
-                continue
-            nb_of_updated_layer += 1
-    
-            pcur.execute("SELECT rev FROM "+table_schema+".revisions "
-                "WHERE rev = "+str(rev+1))
+                assert(next_rev == rev + 1)
+            else:
+                next_rev = rev + 1
+
+            pcurcpy.execute("DROP TABLE IF EXISTS "+wcs+"."+table+"_diff")
+
+            sql = """CREATE TABLE {wcs}.{table}_diff as SELECT * FROM {wcs}.{table} WHERE 1=2""".format(
+                wcs=wcs, table=table)
+            if DEBUG:
+                print(sql)
+            pcurcpy.execute(sql)
+            pcurcpy.commit()
+
+            pcurcpy.execute("INSERT INTO "+wcs+"."+table+"_diff "
+                            "SELECT * "
+                            "FROM "+wcs+"."+table+" "
+                            "WHERE "+branch+"_rev_end = "+str(rev)+" "
+                            "OR "+branch+"_rev_begin > "+str(rev))
+            pcurcpy.execute("SELECT ogc_fid FROM "+wcs+"."+table+"_diff")
+            there_is_something_to_commit = pcurcpy.fetchone()
+            if DEBUG:
+                print("there_is_something_to_commit ",
+                      there_is_something_to_commit)
+            pcurcpy.commit()
+
+            # Better if we could have a QgsDataSourceURI.username()
+            try:
+                pg_username = pg_conn_info.split(
+                    ' ')[3].replace("'", "").split('=')[1]
+            except (IndexError):
+                pg_username = ''
+
+            pcur = Db(psycopg2.connect(pg_conn_info))
+            pkey = pg_pk(pcur, table_schema, table)
+            pgeom = pg_geom(pcur, table_schema, table)
+
+            # import layers in postgis schema
+            pcur.execute("SELECT schema_name FROM information_schema.schemata "
+                         "WHERE schema_name = '"+diff_schema+"'")
             if not pcur.fetchone():
-                if DEBUG: print "inserting rev ", str(rev+1)
+                schema_list[diff_schema] = pg_conn_info
+                pcur.execute("CREATE SCHEMA "+diff_schema)
+            pcur.execute("DROP TABLE IF EXISTS "+diff_schema+"."+table+"_diff")
+            pcur.commit()
+            cmd = ['ogr2ogr',
+                   '-preserve_fid',
+                   '-f',
+                   'PostgreSQL',
+                   'PG:"'+pg_conn_info+'"',
+                   '-lco',
+                   'FID='+pkey,
+                   'PG:"'+pg_conn_info_copy+'"',
+                   wcs+"."+table+"_diff",
+                   '-nln', diff_schema+'.'+table+"_diff"]
+            geoms = pg_geoms(pcur, table_schema, table)
+            if len(pg_geoms(pcur, table_schema, table)) == 1:
+                cmd.insert(5, '-lco')
+                cmd.insert(6, 'GEOMETRY_NAME='+pgeom)
+
+            if DEBUG:
+                print(' '.join(cmd))
+            os.system(' '.join(cmd))
+
+            for l in pcur.execute("select * from geometry_columns").fetchall():
+                if DEBUG:
+                    print(l)
+
+            # remove dif table and geometry column
+            pcurcpy.execute("DELETE FROM geometry_columns "
+                            "WHERE f_table_name = '"+wcs+"."+table+"_diff'")
+            pcurcpy.execute("DROP TABLE "+wcs+"."+table+"_diff")
+
+            if not there_is_something_to_commit:
+                if DEBUG:
+                    print("nothing to commit for ", wcs+"."+table)
+                pcur.close()
+                continue
+
+            nb_of_updated_layer += 1
+
+            pcur.execute("SELECT rev FROM "+table_schema+".revisions "
+                         "WHERE rev = "+str(rev+1))
+            if not pcur.fetchone():
+                if DEBUG:
+                    print("inserting rev ", str(rev+1))
                 pcur.execute("INSERT INTO "+table_schema+".revisions "
-                    "(rev, commit_msg, branch, author) "
-                    "VALUES ("+str(rev+1)+", '"+escape_quote(commit_msg)+"', '"+branch+"',"
-                    "'"+os_info()+":"+get_username()+"."+pg_username+"')")
-    
+                             "(rev, commit_msg, branch, author) "
+                             "VALUES ("+str(rev+1)+", '" +
+                             escape_quote(commit_msg)+"', '"+branch+"',"
+                             "'"+os_info()+":"+get_username()+"."+pg_username+"."+commit_user+"')")
+
+            other_branches = pg_branches(pcur, table_schema).remove(branch)
+            other_branches = other_branches if other_branches else []
+            other_branches_columns = sum([
+                [brch+'_rev_begin', brch+'_rev_end',
+                 brch+'_parent', brch+'_child']
+                for brch in other_branches], [])
+            pcur.execute("""
+                SELECT column_name, data_type, character_maximum_length
+                FROM information_schema.columns
+                WHERE table_schema = '{table_schema}'
+                AND table_name = '{table}'
+                """.format(table_schema=table_schema, table=table))
+            cols = pcur.fetchall()
+            cols = ', '.join([col[0] for col in cols])
+
             # insert inserted and modified
-            pcur.execute("INSERT INTO "+table_schema+"."+table+" "
-                "("+cols+", "+hcols+") "
-                "SELECT "+cols+", "+hcols+" FROM "+wcs+"."+table+"_diff "
-                "WHERE "+branch+"_rev_begin = "+str(rev+1))
-    
+            sql = """INSERT INTO {table_schema}.{table} ({cols}) 
+                SELECT {cols} FROM {diff_schema}.{table}_diff 
+                WHERE {branch}_rev_begin = {rev}""".format(table_schema=table_schema,
+                                                           table=table, cols=cols, diff_schema=diff_schema, branch=branch, rev=str(rev+1))
+            if DEBUG:
+                print(sql)
+            pcur.execute(sql)
+
             # update deleted and modified
             pcur.execute("UPDATE "+table_schema+"."+table+" AS dest "
-                    "SET ("+branch+"_rev_end, "+branch+"_child)"
-                        "=(src."+branch+"_rev_end, src."+branch+"_child) "
-                    "FROM "+wcs+"."+table+"_diff AS src "
-                    "WHERE dest."+pkey+" = src."+pkey+" "
-                    "AND src."+branch+"_rev_end = "+str(rev))
-    
-            if DEBUG: print "truncate diff for ", table
-            # clears the diff
-            pcur.execute("TRUNCATE TABLE "+wcs+"."+table+"_diff CASCADE")
-            #pcur.execute("DELETE FROM "+wcs+"."+table+"_diff_pkey")
-            if DEBUG: print "diff truncated for ", table
-    
+                         "SET ("+branch+"_rev_end, "+branch+"_child)"
+                         "=(src."+branch+"_rev_end, src."+branch+"_child) "
+                         "FROM "+diff_schema+"."+table+"_diff AS src "
+                         "WHERE dest."+pkey+" = src."+pkey+" "
+                         "AND src."+branch+"_rev_end = "+str(rev))
+
+            pcur.commit()
+            pcur.close()
+
+            pcurcpy.commit()
+
         if nb_of_updated_layer:
             for [rev, branch, table_schema, table] in versioned_layers:
-                pkey = pg_pk( pcur, table_schema, table )
-                pcur.execute("UPDATE "+wcs+".initial_revision "
-                    "SET (rev, max_pk) "
-                    "= ((SELECT MAX(rev) FROM "+table_schema+".revisions), "
-                        "(SELECT MAX("+pkey+") FROM "+table_schema+"."+table+")) "
-                    "WHERE table_schema = '"+table_schema+"' "
-                    "AND table_name = '"+table+"' "
-                    "AND branch = '"+branch+"'")
-    
-        pcur.commit()
-        pcur.close()
+                pcur = Db(psycopg2.connect(pg_conn_info))
+                pkey = pg_pk(pcur, table_schema, table)
+                pcur.execute("SELECT MAX(rev) FROM "+table_schema+".revisions")
+                [rev] = pcur.fetchone()
+                pcur.execute("SELECT MAX("+pkey+") FROM " +
+                             table_schema+"."+table)
+                [max_pk] = pcur.fetchone()
+                if not max_pk:
+                    max_pk = 0
+                pcur.close()
+                pcurcpy.execute("UPDATE "+wcs+".initial_revision "
+                                "SET rev = "+str(rev) +
+                                ", max_pk = "+str(max_pk)+" "
+                                "WHERE table_schema = '"+table_schema+"' "
+                                "AND table_name = '"+table+"' "
+                                "AND branch = '"+branch+"'")
+
+        pcurcpy.commit()
+        pcurcpy.close()
+
+        # cleanup diffs in postgis
+        for schema, conn_info in schema_list.iteritems():
+            pcur = Db(psycopg2.connect(conn_info))
+            pcur.execute("DROP SCHEMA "+schema+" CASCADE")
+            pcur.commit()
+            pcur.close()
+
         return nb_of_updated_layer
-    

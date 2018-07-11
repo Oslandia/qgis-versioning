@@ -17,8 +17,11 @@ versioningDb = versioningAbc
 def spatialite(sqlite_filename, pg_conn_info):
     return versioningDb([sqlite_filename, pg_conn_info], 'spatialite')
 
-def pgLocal(pg_conn_info, schema):
+def pgServer(pg_conn_info, schema):
     return versioningDb([pg_conn_info, schema], 'postgres')
+
+def pgLocal(pg_conn_info, schema, pg_conn_info_out):
+    return versioningDb([pg_conn_info, schema, pg_conn_info_out], 'pgDistant')
 
 Db = utils.Db
 os_info = utils.os_info
@@ -84,7 +87,7 @@ def add_branch( pg_conn_info, schema, branch, commit_msg,
     if base_rev != 'head' and (int(base_rev) > max_rev or int(base_rev) <= 0):
         pcur.close()
         raise RuntimeError("Revision "+str(base_rev)+" doesn't exist")
-    if DEBUG: print 'max rev = ', max_rev
+    if DEBUG: print ('max rev = ', max_rev)
 
     pcur.execute("INSERT INTO "+schema+".revisions(rev, branch, commit_msg ) "
         "VALUES ("+str(max_rev+1)+", '"+branch+"', '"+ utils.escape_quote(commit_msg)+"')")
@@ -113,7 +116,7 @@ def add_branch( pg_conn_info, schema, branch, commit_msg,
             pkey =  utils.pg_pk( pcur, schema, table )
         except:
             if 'VERSIONING_NO_PK' in os.environ and os.environ['VERSIONING_NO_PK'] == 'skip':
-                if DEBUG: print schema+'.'+table+' has no primary key, skipping'
+                if DEBUG: print (schema+'.'+table+' has no primary key, skipping')
             else:
                 raise RuntimeError(schema+'.'+table+' has no primary key')
 
@@ -265,7 +268,7 @@ def add_revision_view(pg_conn_info, schema, branch, rev):
     pcur.execute("SELECT schema_name FROM information_schema.schemata "
         "WHERE schema_name = '"+rev_schema+"'")
     if pcur.fetchone():
-        if DEBUG: print rev_schema, ' already exists'
+        if DEBUG: print (rev_schema, ' already exists')
         return
 
     security = ' WITH (security_barrier)'

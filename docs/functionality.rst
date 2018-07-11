@@ -9,33 +9,34 @@ In a nutshell
 
 Depending on the type of layer group (unversioned/versioned PostGIS database, PostGIS/Spatialite working copy) the |plugin| provides a different set of functionalities, as summarized in the following table.
 
-   =================  ===========  ============  ==================== ================================
-   Icon               Unversioned  Versioned     Working copy (PG/SL) Definition
-   =================  ===========  ============  ==================== ================================
-   |branch_png|                       X                                  Branching
-   |checkout_png|                     X                                  Checkout Spatialite (SL)
-   |checkout_pg_png|                  X                                  Checkout PostGIS (PG)
-   |commit_png|                                     X                    Commit changes
-   |help_png|         X               X             X                    Help
-   |historize_png|    X                                                  Start versioning (historize)
-   |update_png|                                     X                    Check if working copy up to date
-   |view_png|                         X                                  View revisions
-   =================  ===========  ============  ==================== ================================
+   =======================  ===========  ============  ==================== ================================
+   Icon                     Unversioned  Versioned     Working copy (PG/SL) Definition
+   =======================  ===========  ============  ==================== ================================
+   |branch_png|                             X                                  Branching
+   |checkout_png|                           X                                  Checkout Spatialite (SL)
+   |checkout_pg_png|                        X                                  Checkout PostGIS (PG)
+   |checkout_pg_local_png|                  X                                  Checkout PostGIS local (PGL)
+   |commit_png|                                           X                    Commit changes
+   |help_png|               X               X             X                    Help
+   |historize_png|          X                                                  Start versioning (historize)
+   |update_png|                                           X                    Check if working copy up to date
+   |view_png|                               X                                  View revisions
+   =======================  ===========  ============  ==================== ================================
 
 The following table shows the combination of plugin text information and icons as a function of group type selected in the |qg| legend.
 
-   =================  ========================   ================================
-   Group type         Menu                       Comments
-   =================  ========================   ================================
-   No group           |no_group_selected_png|    No group item selected in legend
-   Unversioned        |unversioned_menu_png|     Only option : historize
-   Versioned          |versioned_menu_png|       Textinfo : DB + schema + branch= + rev=
-   Working Copy (SL)  |working_copy_sl_png|      Textinfo : filename + working + rev=
-   Working copy (PG)  |working_copy_pg_png|      Textinfo : DB + schema + working rev=
-   Mixed layers       |layers_not_same_db_png|   Layers in group do not share the same database or schema
-   Same Name          |groups_same_name_png|     Groups must have different names
-   Empty group        |empty_group_png|          Selected group is empty
-   =================  ========================   ================================
+   =======================  ========================   ================================
+   Group type               Menu                       Comments
+   =======================  ========================   ================================
+   No group                 |no_group_selected_png|    No group item selected in legend
+   Unversioned              |unversioned_menu_png|     Only option : historize
+   Versioned                |versioned_menu_png|       Textinfo : DB + schema + branch= + rev=
+   Working Copy (SL)        |working_copy_sl_png|      Textinfo : filename + working + rev=
+   Working copy (PG & PGL)  |working_copy_pg_png|      Textinfo : DB + schema + working rev=
+   Mixed layers             |layers_not_same_db_png|   Layers in group do not share the same database or schema
+   Same Name                |groups_same_name_png|     Groups must have different names
+   Empty group              |empty_group_png|          Selected group is empty
+   =======================  ========================   ================================
 
 Typical workflow
 ================
@@ -68,7 +69,7 @@ Upon accepting, the plugin creates a *versions* table in the formerly unversione
 Versioned database
 ++++++++++++++++++
 
-The plugin menu for a versioned layer group shows 5 icons.
+The plugin menu for a versioned layer group shows 6 icons.
 
 |versioned_menu_png|
 
@@ -81,14 +82,14 @@ The space-separated text items on the left identify four components :
 
 Three operations can be performed on a versioned layer group :
 
-#. checking out a working copy (PG or SL)
+#. checking out a working copy (SL , PG or PGL)
 #. viewing specific revisions
 #. branching
 
 Checking out a working copy
 ***************************
 
-Checking out a working copy creates one of two new layer groups, either a PG checkout (|checkout_pg_png|) or a spatialite checkout (|checkout_png|) :
+Checking out a working copy creates one of three new layer groups, either a spatialite checkout (|checkout_png|), a PG checkout (|checkout_pg_png|) into the same database or a PG local checkout (|checkout_pg_local_png|) into an other database, typically on a local database:
 
 - a spatialite layer group, called *working copy* (or named with the full path name of the spatialite file created if a group called "working copy" already exists) is created in the legend
 
@@ -109,7 +110,7 @@ The following image shows the three icons found in the menu bar for a working co
 
 |working_copy_sl_png|
 
-- PostGIS
+- PostGIS (PG and PGL)
 
 |working_copy_pg_png|
 

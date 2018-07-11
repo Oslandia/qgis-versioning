@@ -334,7 +334,6 @@ def revisions(pg_conn_info, schema):
     pcur.close()
     return revs
 
-<<<<<<< HEAD
 def archive(pg_conn_info, schema, revision_end):
     """Archiving tables from schema ended at revision_end"""
 
@@ -442,10 +441,10 @@ def merge(pg_conn_info, schema, branch_name):
         if ret > 0:
             total += ret
             # Merge data not initialised in trunk
-            pcur.execute("""UPDATE {schema}.{table} SET (trunk_rev_begin, trunk_rev_end) = ({branche}_rev_begin, {branche}_rev_end) WHERE trunk_rev_begin is NULL and {branche}_rev_begin is NOT NULL""".format(
+            pcur.execute("""UPDATE {schema}.{table} SET (trunk_rev_begin, trunk_rev_end, trunk_parent, trunk_child) = ({branche}_rev_begin, {branche}_rev_end, {branche}_parent, {branche}_child) WHERE trunk_rev_begin is NULL and {branche}_rev_begin is NOT NULL""".format(
                 schema=schema, table=table, branche=branch_name))
             # Merge data initialised but deleted in branch
-            pcur.execute("""UPDATE {schema}.{table} SET (trunk_rev_end) = ({branche}_rev_end) WHERE trunk_rev_end is NULL""".format(
+            pcur.execute("""UPDATE {schema}.{table} SET (trunk_rev_end, trunk_parent, trunk_child) = ({branche}_rev_end, {branche}_parent, {branche}_child) WHERE trunk_rev_end is NULL""".format(
                 schema=schema, table=table, branche=branch_name))
 
     if total > 0:

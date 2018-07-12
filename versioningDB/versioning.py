@@ -323,15 +323,17 @@ def archive(pg_conn_info, schema, revision_end):
     """Archiving tables from schema ended at revision_end"""
 
     pcur = Db(psycopg2.connect(pg_conn_info))
+
+    schema_archive= schema+'_archive'
+    pcur.execute("CREATE SCHEMA IF NOT EXISTS {schema}".format(schema=schema_archive))
+    pcur.commit()
+    
     pcur.execute("SELECT table_name FROM information_schema.tables "
         "WHERE table_schema = '"+schema+"' "
         "AND table_type = 'BASE TABLE'")
-
+    
     for [table] in pcur.fetchall():
         if table == 'revisions': 
-            continue
-        found = table.rfind('_archive')
-        if found != -1 and table[found:] == '_archive':
             continue
         
         pk = utils.pg_pk(pcur, schema, table)
@@ -349,18 +351,18 @@ def archive(pg_conn_info, schema, revision_end):
                      (SELECT 1 
                      FROM information_schema.tables
                      WHERE  table_schema = '{schema}' AND
-                     table_name = '{table}_archive' )""".format(schema=schema, table=table))
+                     table_name = '{table}' )""".format(schema=schema_archive, table=table))
         exists = pcur.fetchone()[0]
         if not exists:
-            sql = """CREATE TABLE {schema}.{table}_archive as SELECT {cols} FROM {schema}.{table} LIMIT 0""".format(schema=schema, table=table, cols=colsall)
+            sql = """CREATE TABLE {schemaarc}.{table} as SELECT {cols} FROM {schema}.{table} LIMIT 0""".format(schemaarc=schema_archive, schema=schema, table=table, cols=colsall)
             if DEBUG: 
                 print(sql)
                 
             pcur.execute(sql)
             
-            pcur.execute("""ALTER TABLE {schema}.{table}_archive ADD PRIMARY KEY ({pk})""".format(schema=schema,
+            pcur.execute("""ALTER TABLE {schema}.{table} ADD PRIMARY KEY ({pk})""".format(schema=schema_archive,
                         table=table, pk=pk))
-            pcur.execute("""ALTER TABLE {schema}.{table}_archive ADD COLUMN date_archiving timestamp without time zone DEFAULT now()""".format(schema=schema,
+            pcur.execute("""ALTER TABLE {schema}.{table} ADD COLUMN date_archiving timestamp without time zone DEFAULT now()""".format(schema=schema_archive,
                         table=table))
             createIndex(pcur, schema, table, 'trunk')
             
@@ -373,21 +375,21 @@ def archive(pg_conn_info, schema, revision_end):
             lcols = pcur.fetchall()
             colswithoutvcols = ', '.join(list(zip(*lcols)[0]))
             
-            pcur.execute("""CREATE VIEW {schema}.{table}_all as (WITH un as (
+            pcur.execute("""CREATE VIEW {schemaarc}.{table}_all as (WITH un as (
                         SELECT {colsall} FROM {schema}.{table}
                         UNION ALL
-                        SELECT {colsall} FROM {schema}.{table}_archive)
+                        SELECT {colsall} FROM {schemaarc}.{table})
                         SELECT {colswithoutvcols}, trunk_rev_begin, trunk_rev_end, a.trunk_parent, un.trunk_child FROM un
                         LEFT JOIN
                         (SELECT {pk} as trunk_parent, trunk_child FROM un WHERE trunk_child IS NOT NULL) a
                         on a.trunk_child = {pk}
                         ORDER BY {pk})""".format(schema=schema,
-                        table=table, colsall=colsall, colswithoutvcols=colswithoutvcols, pk=pk))
+                        schemaarc=schema_archive, table=table, colsall=colsall, colswithoutvcols=colswithoutvcols, pk=pk))
         
-        pcur.execute("""INSERT INTO {schema}.{table}_archive ({cols}) (SELECT {cols} 
+        pcur.execute("""INSERT INTO {schemaarc}.{table} ({cols}) (SELECT {cols} 
                     FROM {schema}.{table} 
                     WHERE trunk_rev_end <= {rev_number})""".format(schema=schema,
-                    table=table, rev_number=revision_end, cols=colsall))
+                    schemaarc=schema_archive, table=table, rev_number=revision_end, cols=colsall))
         
         pcur.execute("""UPDATE {schema}.{table} 
                     SET trunk_parent = NULL 

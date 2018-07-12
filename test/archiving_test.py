@@ -9,6 +9,12 @@ import psycopg2
 import os
 
 def printTab(pcur, schema, table):
+    pk = 'pid'
+    try:
+        pk = versioning.pg_pk(pcur, schema, table)
+    except:
+        pass
+    
     print("\n**********************************")
     print(schema+"."+table)
     pcur.execute("""SELECT column_name FROM information_schema.columns WHERE
@@ -18,7 +24,7 @@ def printTab(pcur, schema, table):
     cols = ', '.join(list(zip(*lcols)[0]))
     print(cols)
     
-    pcur.execute("""SELECT * FROM {schema}.{table} ORDER BY {pk}""".format(schema=schema, table=table, pk=versioning.pg_pk(pcur, schema, table)))
+    pcur.execute("""SELECT * FROM {schema}.{table} ORDER BY {pk}""".format(schema=schema, table=table, pk=pk))
     
     rows = pcur.fetchall()
     for row in rows:
@@ -83,6 +89,9 @@ def test(host, pguser):
     pcur.commit()
     pgversioning.commit("rev 12")
     
+    pcur.execute("SELECT * FROM epanet.pipes ORDER BY pid")
+    end = pcur.fetchall()
+    
     printTab(pcur, 'epanet', 'pipes')
     pcur.execute("SELECT count(*) FROM epanet.pipes")
     [ret] = pcur.fetchone()
@@ -119,6 +128,15 @@ def test(host, pguser):
     pcur.execute("SELECT pid FROM epanet.pipes_archive ORDER BY pid")
     ret = pcur.fetchall()
     assert(list(zip(*ret)[0]) == [1, 3, 5, 7])
+    
+    # view
+    printTab(pcur, 'epanet', 'pipes_all')
+    pcur.execute("SELECT count(*) FROM epanet.pipes_all")
+    [ret] = pcur.fetchone()
+    assert(ret == 11)
+    pcur.execute("SELECT * FROM epanet.pipes_all ORDER BY pid")
+    endv = pcur.fetchall()
+    assert(end==endv)
     
     pcur.close()
 if __name__ == "__main__":

@@ -343,7 +343,7 @@ def archive(pg_conn_info, schema, revision_end):
                     SELECT column_name FROM information_schema.columns WHERE
                     table_schema = '{schema}' AND table_name = '{table}' and ordinal_position <= (SELECT ordinal_position FROM pos)""".format(schema=schema, table=table))
         lcols = pcur.fetchall()
-        cols = ', '.join(list(zip(*lcols)[0]))
+        colsall = ', '.join(list(zip(*lcols)[0]))
         
         pcur.execute("""SELECT EXISTS
                      (SELECT 1 
@@ -352,7 +352,7 @@ def archive(pg_conn_info, schema, revision_end):
                      table_name = '{table}_archive' )""".format(schema=schema, table=table))
         exists = pcur.fetchone()[0]
         if not exists:
-            sql = """CREATE TABLE {schema}.{table}_archive as SELECT {cols} FROM {schema}.{table} LIMIT 0""".format(schema=schema, table=table, cols=cols)
+            sql = """CREATE TABLE {schema}.{table}_archive as SELECT {cols} FROM {schema}.{table} LIMIT 0""".format(schema=schema, table=table, cols=colsall)
             if DEBUG: 
                 print(sql)
                 
@@ -363,11 +363,31 @@ def archive(pg_conn_info, schema, revision_end):
             pcur.execute("""ALTER TABLE {schema}.{table}_archive ADD COLUMN date_archiving timestamp without time zone DEFAULT now()""".format(schema=schema,
                         table=table))
             createIndex(pcur, schema, table, 'trunk')
+            
+            pcur.execute("""WITH pos as (
+            SELECT ordinal_position FROM information_schema.columns 
+            WHERE table_schema = '{schema}' AND table_name = '{table}' and column_name = 'trunk_rev_begin'
+            )
+            SELECT column_name FROM information_schema.columns WHERE
+            table_schema = '{schema}' AND table_name = '{table}' and ordinal_position < (SELECT ordinal_position FROM pos)""".format(schema=schema, table=table))
+            lcols = pcur.fetchall()
+            colswithoutvcols = ', '.join(list(zip(*lcols)[0]))
+            
+            pcur.execute("""CREATE VIEW {schema}.{table}_all as (WITH un as (
+                        SELECT {colsall} FROM {schema}.{table}
+                        UNION ALL
+                        SELECT {colsall} FROM {schema}.{table}_archive)
+                        SELECT {colswithoutvcols}, trunk_rev_begin, trunk_rev_end, a.trunk_parent, un.trunk_child FROM un
+                        LEFT JOIN
+                        (SELECT {pk} as trunk_parent, trunk_child FROM un WHERE trunk_child IS NOT NULL) a
+                        on a.trunk_child = {pk}
+                        ORDER BY {pk})""".format(schema=schema,
+                        table=table, colsall=colsall, colswithoutvcols=colswithoutvcols, pk=pk))
         
         pcur.execute("""INSERT INTO {schema}.{table}_archive ({cols}) (SELECT {cols} 
                     FROM {schema}.{table} 
                     WHERE trunk_rev_end <= {rev_number})""".format(schema=schema,
-                    table=table, rev_number=revision_end, cols=cols))
+                    table=table, rev_number=revision_end, cols=colsall))
         
         pcur.execute("""UPDATE {schema}.{table} 
                     SET trunk_parent = NULL 

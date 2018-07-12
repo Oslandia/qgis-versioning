@@ -17,6 +17,7 @@ Depending on the type of layer group (unversioned/versioned PostGIS database, Po
    |checkout_pg_png|                        X                                  Checkout PostGIS (PG)
    |checkout_pg_local_png|                  X                                  Checkout PostGIS local (PGL)
    |commit_png|                                           X                    Commit changes
+   |archive_png|                            X                                  Archiving
    |help_png|               X               X             X                    Help
    |historize_png|          X                                                  Start versioning (historize)
    |update_png|                                           X                    Check if working copy up to date
@@ -85,6 +86,7 @@ Three operations can be performed on a versioned layer group :
 #. checking out a working copy (SL , PG or PGL)
 #. viewing specific revisions
 #. branching
+#. archiving
 
 Checking out a working copy
 ***************************
@@ -154,6 +156,17 @@ Branching involves the creation of a new schema in the database.  The new schema
 
 .. note::
    Even though branches are to hold independent versioning histories, they still result in a "commit" in the *revisions* table.
+
+Archiving
+*********
+
+Archiving consists of moving deleted data (trunk_rev_end) from version 1 to the selected version.
+
+They are moved in a table with the same name in a new schema with the same schema name suffixed by _archive. The administrator can move this tables on a tablespace if he deems it useful
+
+A view is created to find the table as if it had not been archived.
+
+|archive_schemas_png|
 
 Plugin group types in pictures
 ==============================

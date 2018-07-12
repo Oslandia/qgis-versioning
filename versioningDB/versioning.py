@@ -63,6 +63,13 @@ def historize( pg_conn_info, schema ):
     pcur.close()
     add_branch( pg_conn_info, schema, 'trunk', 'initial commit' )
 
+def createIndex(pcur, schema, table, branch):
+    """ create index on columns used for versinoning"""
+    for ext in ["_rev_begin", "_rev_end", "_parent", "_child"]:
+        query = "CREATE INDEX IF NOT EXISTS idx_rev_%s%s ON %s.%s (%s%s)"
+        data = (table, ext, schema, table, branch, ext)
+        pcur.execute(query % data)
+            
 def add_branch( pg_conn_info, schema, branch, commit_msg,
         base_branch='trunk', base_rev='head' ):
     """Create a new branch (add 4 columns to tables)"""
@@ -129,10 +136,7 @@ def add_branch( pg_conn_info, schema, branch, commit_msg,
             "REFERENCES "+schema+"."+table+"("+pkey+"),"
             "ADD COLUMN "+branch+"_child     integer "
             "REFERENCES "+schema+"."+table+"("+pkey+")")
-        for ext in ["_rev_begin", "_rev_end", "_parent", "_child"]:
-            query = "CREATE INDEX IF NOT EXISTS idx_rev_%s%s ON %s.%s (%s%s)"
-            data = (table, ext, schema, table, branch, ext)
-            pcur.execute(query % data)
+        createIndex(pcur, schema, table, branch)
 
         if branch == 'trunk': # initial versioning
             pcur.execute("UPDATE "+schema+"."+table+" "
@@ -314,3 +318,69 @@ def revisions(pg_conn_info, schema):
         revs.append(res)
     pcur.close()
     return revs
+
+def archive(pg_conn_info, schema, revision_end):
+    """Archiving tables from schema ended at revision_end"""
+
+    pcur = Db(psycopg2.connect(pg_conn_info))
+    pcur.execute("SELECT table_name FROM information_schema.tables "
+        "WHERE table_schema = '"+schema+"' "
+        "AND table_type = 'BASE TABLE'")
+
+    for [table] in pcur.fetchall():
+        if table == 'revisions': 
+            continue
+        found = table.rfind('_archive')
+        if found != -1 and table[found:] == '_archive':
+            continue
+        
+        pk = utils.pg_pk(pcur, schema, table)
+        # get columns from table. ONLY revisionned table and 4 columns for revision can be used
+        pcur.execute("""WITH pos as (
+                    SELECT ordinal_position FROM information_schema.columns 
+                    WHERE table_schema = '{schema}' AND table_name = '{table}' and column_name = 'trunk_child'
+                    )
+                    SELECT column_name FROM information_schema.columns WHERE
+                    table_schema = '{schema}' AND table_name = '{table}' and ordinal_position <= (SELECT ordinal_position FROM pos)""".format(schema=schema, table=table))
+        lcols = pcur.fetchall()
+        cols = ', '.join(list(zip(*lcols)[0]))
+        
+        pcur.execute("""SELECT EXISTS
+                     (SELECT 1 
+                     FROM information_schema.tables
+                     WHERE  table_schema = '{schema}' AND
+                     table_name = '{table}_archive' )""".format(schema=schema, table=table))
+        exists = pcur.fetchone()[0]
+        if not exists:
+            sql = """CREATE TABLE {schema}.{table}_archive as SELECT {cols} FROM {schema}.{table} LIMIT 0""".format(schema=schema, table=table, cols=cols)
+            if DEBUG: 
+                print(sql)
+                
+            pcur.execute(sql)
+            
+            pcur.execute("""ALTER TABLE {schema}.{table}_archive ADD PRIMARY KEY ({pk})""".format(schema=schema,
+                        table=table, pk=pk))
+            pcur.execute("""ALTER TABLE {schema}.{table}_archive ADD COLUMN date_archiving timestamp without time zone DEFAULT now()""".format(schema=schema,
+                        table=table))
+            createIndex(pcur, schema, table, 'trunk')
+        
+        pcur.execute("""INSERT INTO {schema}.{table}_archive ({cols}) (SELECT {cols} 
+                    FROM {schema}.{table} 
+                    WHERE trunk_rev_end <= {rev_number})""".format(schema=schema,
+                    table=table, rev_number=revision_end, cols=cols))
+        
+        pcur.execute("""UPDATE {schema}.{table} 
+                    SET trunk_parent = NULL 
+                    WHERE {pk} IN (
+                    SELECT trunk_child 
+                    FROM {schema}.{table} 
+                    WHERE trunk_rev_end <= {rev_number})""".format(
+                    schema=schema,
+                    table=table, 
+                    rev_number=revision_end,
+                    pk=pk))
+        pcur.execute("""DELETE FROM {schema}.{table} WHERE trunk_rev_end <= {rev_number}""".format(schema=schema,
+                    table=table, rev_number=revision_end))
+    pcur.commit()
+    pcur.close()
+        

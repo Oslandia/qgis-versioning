@@ -9,7 +9,7 @@ import os
 
 from itertools import izip_longest
 
-DEBUG = True
+DEBUG = False
 
 
 class pgVersioningLocal(object):
@@ -516,9 +516,17 @@ class pgVersioningLocal(object):
                                "WHERE table_name = '{table}')".format(wcs=wcs, table=table))
 
             # when we edit something old, we insert and update parent
-            sql = """CREATE OR REPLACE FUNCTION 
+            sql = """
+                
+                CREATE OR REPLACE FUNCTION 
                 {wcs}.update_old_{table}_view() RETURNS trigger AS $$\n
+                DECLARE\n
+                cnt integer;\n
                 BEGIN\n
+                SELECT COUNT(*) FROM {wcs}.{table} 
+                WHERE ogc_fid = new.ogc_fid AND ({branch}_rev_begin <= 
+                {current_rev_sub} ) into cnt;\n
+                IF cnt > 0 THEN\n
                 INSERT INTO {wcs}.{table} 
                 (ogc_fid, {cols}, {branch}_rev_begin, 
                  {branch}_parent)
@@ -527,6 +535,7 @@ class pgVersioningLocal(object):
                 
                 UPDATE {wcs}.{table} SET {branch}_rev_end = {current_rev_sub}, 
                 {branch}_child = {max_fid_sub} WHERE ogc_fid = old.ogc_fid;\n
+                END IF;\n
                 RETURN OLD;\n
                 END;\n$$ LANGUAGE plpgsql;""".format(wcs=wcs,
                                                      table=table,
@@ -541,10 +550,6 @@ class pgVersioningLocal(object):
             pcurcpy.execute("DROP TRIGGER IF EXISTS "
                             "update_old_"+table+"_view ON "+wcs+"."+table+"_view ")
 
-
-#                WHEN (SELECT COUNT(*) FROM {wcs}.{table}
-#                WHERE ogc_fid = new.ogc_fid
-#                AND ({branch}_rev_begin <= {current_rev_sub} ) )\
             sql = """CREATE TRIGGER 
                 update_old_{table}_conflicts 
                 INSTEAD OF UPDATE ON {wcs}.{table}_view 
@@ -557,15 +562,15 @@ class pgVersioningLocal(object):
             pcurcpy.commit()
 
             # when we edit something new, we just update
-
-
-#                  "WHEN (SELECT COUNT(*) FROM "+wcs+"."+table+" "
-#                  "WHERE ogc_fid = new.ogc_fid AND ("+branch+"_rev_begin > "
-#                  +current_rev_sub+" ) ) \n
-#
             pcurcpy.execute("CREATE OR REPLACE FUNCTION " +
                             wcs+".update_new_"+table+"_view() RETURNS trigger AS $$\n"
+                            "DECLARE\n"
+                            "cnt integer;\n"
                             "BEGIN\n"
+                            "SELECT COUNT(*) FROM "+wcs+"."+table+" "
+                            "WHERE ogc_fid = new.ogc_fid AND ("+branch+"_rev_begin > "
+                            +current_rev_sub+" ) into cnt;\n"
+                            "IF cnt > 0 THEN\n"
                             "UPDATE "+wcs+"."+table+" "
                             "SET (ogc_fid, "+cols+", "+branch +
                             "_rev_begin, "+branch+"_parent) "
@@ -574,6 +579,7 @@ class pgVersioningLocal(object):
                             current_rev_sub+"+1, (SELECT "
                             + branch+"_parent FROM "+wcs+"."+table +
                             " WHERE ogc_fid = new.ogc_fid));\n"
+                            "end if;\n"
                             "RETURN NEW;\n"
                             "END;\n"
                             "$$ LANGUAGE plpgsql;")
@@ -635,7 +641,7 @@ class pgVersioningLocal(object):
                             "delete_new_"+table+"_conflicts "
                             "INSTEAD OF DELETE ON "+wcs+"."+table + "_view "
                             "FOR EACH ROW "
-                            "EXECUTE PROCEDURE "+wcs+".insert_"+table+"();")
+                            "EXECUTE PROCEDURE "+wcs+".delete_"+table+"();")
             pcurcpy.commit()
 
         # Remove temp views after sqlite file is written
@@ -803,14 +809,21 @@ class pgVersioningLocal(object):
                 [brch+'_rev_begin', brch+'_rev_end',
                  brch+'_parent', brch+'_child']
                 for brch in other_branches], [])
+                
+            pkey = pg_pk( pcur, table_schema, table )
             pcur.execute("""
-                SELECT column_name, data_type, character_maximum_length
+                SELECT column_name
                 FROM information_schema.columns
                 WHERE table_schema = '{table_schema}'
                 AND table_name = '{table}'
                 """.format(table_schema=table_schema, table=table))
-            cols = pcur.fetchall()
-            cols = ', '.join([col[0] for col in cols])
+            history_columns = [pkey]
+            cols = ""
+            allcols = pcur.fetchall()
+            for [col] in allcols:
+                if col not in history_columns:
+                    cols = quote_ident(col)+", "+cols
+            cols = cols[:-2] # remove last coma and space
 
             # insert inserted and modified
             sql = """INSERT INTO {table_schema}.{table} ({cols}) 

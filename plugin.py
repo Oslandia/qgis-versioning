@@ -324,7 +324,8 @@ class Plugin(QObject):
                               'commit',
                               'view',
                               'branch',
-                              'historize']:
+                              'historize',
+                              'archive']:
                 act.setVisible(False)
         if current:
             try:  # qgis 2.2
@@ -450,7 +451,7 @@ class Plugin(QObject):
                     act.setVisible(True)
         elif selection_type == 'head':
             for act in self.actions:
-                if act.text() in ['checkout', 'view', 'branch']:
+                if act.text() in ['checkout', 'view', 'branch', 'archive']:
                     act.setVisible(True)
         elif selection_type == 'working copy':
             for act in self.actions:
@@ -522,6 +523,13 @@ class Plugin(QObject):
             u"branch", self.iface.mainWindow()))
         self.actions[-1].setWhatsThis("create branch")
         self.actions[-1].triggered.connect(self.branch)
+        self.actions[-1].setVisible(False)
+        
+        self.actions.append(QAction(
+            QIcon(os.path.dirname(__file__) + "/archiving.svg"),
+            u"archive", self.iface.mainWindow()))
+        self.actions[-1].setWhatsThis("archiving revisions")
+        self.actions[-1].triggered.connect(self.archive)
         self.actions[-1].setVisible(False)
 
         self.actions.append(QAction(
@@ -1377,7 +1385,46 @@ class Plugin(QObject):
                 self.info.setText(
                     uri.database() + ' <b>working rev</b>='+str(rev))
         else:
-            # self.iface.messageBar().pushMessage("Info",
+             # self.iface.messageBar().pushMessage("Info",
             # "There was no modification to commit", duration=10)
             QMessageBox.information(self.iface.mainWindow(), "Info",
                                     "There was no modification to commit")
+
+    def archive(self):
+        layer = QgsMapLayerRegistry.instance().mapLayer(
+            self.current_layers[0])
+        uri = QgsDataSourceURI(layer.source())
+        mtch = re.match(r'(.+)_([^_]+)_rev_(head|\d+)', uri.schema())
+        schema = mtch.group(1)
+        base_branch = mtch.group(2)
+        base_rev = mtch.group(3)
+        
+        dlg = QDialog()
+        dlg.setWindowTitle('Choose the revisions to archiving')
+        layout = QVBoxLayout(dlg)
+        button_box = QDialogButtonBox(dlg)
+        button_box.setStandardButtons(
+            QDialogButtonBox.Cancel | QDialogButtonBox.Ok)
+        button_box.accepted.connect(dlg.accept)
+        button_box.rejected.connect(dlg.reject)
+    
+        label = QLabel(dlg)
+        label.setText('Archiving until revision number: ')
+        revBox = QComboBox(dlg)
+        
+        
+        pcur = versioning.Db(psycopg2.connect(self.pg_conn_info()))
+    
+        pcur.execute("SELECT MAX(rev) FROM "+schema+".revisions")
+        [max_rev] = pcur.fetchone()
+        
+        revisions = [str(rev) for rev in range(1, max_rev+1)]
+        revBox.addItems(revisions)
+    
+        layout.addWidget(label)
+        layout.addWidget(revBox)
+        layout.addWidget(button_box)
+        if not dlg.exec_():
+            return None
+    
+        versioning.archive(self.pg_conn_info(), schema, revBox.currentText())

@@ -1,0 +1,121 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<svg
+   xmlns:dc="http://purl.org/dc/elements/1.1/"
+   xmlns:cc="http://creativecommons.org/ns#"
+   xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#"
+   xmlns:svg="http://www.w3.org/2000/svg"
+   xmlns="http://www.w3.org/2000/svg"
+   xmlns:sodipodi="http://sodipodi.sourceforge.net/DTD/sodipodi-0.dtd"
+   xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape"
+   height="24"
+   width="24"
+   version="1.1"
+   id="svg28"
+   sodipodi:docname="archiving.svg"
+   inkscape:version="0.92.2 (5c3e80d, 2017-08-06)"
+   inkscape:export-filename="/home/lbartoletti/prog/Oslandia/qgis_versioning/docs/images/archiving.png"
+   inkscape:export-xdpi="96"
+   inkscape:export-ydpi="96">
+  <metadata
+     id="metadata34">
+    <rdf:RDF>
+      <cc:Work
+         rdf:about="">
+        <dc:format>image/svg+xml</dc:format>
+        <dc:type
+           rdf:resource="http://purl.org/dc/dcmitype/StillImage" />
+      </cc:Work>
+    </rdf:RDF>
+  </metadata>
+  <defs
+     id="defs32" />
+  <sodipodi:namedview
+     pagecolor="#ffffff"
+     bordercolor="#666666"
+     borderopacity="1"
+     objecttolerance="10"
+     gridtolerance="10"
+     guidetolerance="10"
+     inkscape:pageopacity="0"
+     inkscape:pageshadow="2"
+     inkscape:window-width="1920"
+     inkscape:window-height="1016"
+     id="namedview30"
+     showgrid="false"
+     inkscape:zoom="9.8333333"
+     inkscape:cx="-22.983051"
+     inkscape:cy="12"
+     inkscape:window-x="0"
+     inkscape:window-y="2"
+     inkscape:window-maximized="1"
+     inkscape:current-layer="svg28" />
+  <g
+     stroke="#6e97c4"
+     transform="translate(0 -8)"
+     id="g26">
+    <path
+       d="m 2.5,15.5 h 19 L 18.855932,22.135593 21.5,29.5 h -19 l 2.5423729,-7.771186 z"
+       id="path2"
+       inkscape:connector-curvature="0"
+       style="fill:#e6e6e6"
+       sodipodi:nodetypes="ccccccc" />
+    <path
+       d="m2.5 10.5h19v5h-19z"
+       fill="#bad9ec"
+       id="path4" />
+    <path
+       d="m5 13h4"
+       fill="none"
+       overflow="visible"
+       stroke-width="2"
+       id="path6" />
+    <path
+       d="m11 13h7.999999"
+       fill="none"
+       stroke-width="2"
+       id="path8" />
+    <path
+       d="m5 17.5h4"
+       fill="none"
+       overflow="visible"
+       id="path10" />
+    <path
+       d="m11 17.5h7.999999"
+       fill="none"
+       id="path12" />
+    <path
+       d="m5 20.5h4"
+       fill="none"
+       overflow="visible"
+       id="path14" />
+    <path
+       d="m11 20.5h7.999999"
+       fill="none"
+       id="path16" />
+    <path
+       d="m5 23.5h4"
+       fill="none"
+       overflow="visible"
+       id="path18" />
+    <path
+       d="m11 23.5h7.999999"
+       fill="none"
+       id="path20" />
+    <path
+       d="m5 26.5h4"
+       fill="none"
+       overflow="visible"
+       id="path22" />
+    <path
+       d="m11 26.5h7.999999"
+       fill="none"
+       id="path24" />
+  </g>
+  <rect
+     style="fill:#55d400;fill-opacity:1;stroke:#000000;stroke-opacity:1"
+     id="rect4530"
+     width="13.999999"
+     height="3"
+     x="5"
+     y="12.5" />
+</svg>

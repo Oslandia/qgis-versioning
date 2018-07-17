@@ -25,6 +25,8 @@
 .. |selected_features_warning| image:: images/selected_features_warning.png
 .. |selected_features_local| image:: images/selected_features_local.png
 
+.. |archive_png| image:: images/archiving.png
+.. |archive_schemas_png| image:: images/archive_schemas.png
 .. |branch_png| image:: images/branch.png
 .. |checkout_png| image:: images/checkout.png
 .. |checkout_pg_png| image:: images/checkout_pg.png

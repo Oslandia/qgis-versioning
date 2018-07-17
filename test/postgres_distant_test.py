@@ -96,12 +96,33 @@ def test(host, pguser):
     spversioning1.commit("sp commit")
     
     pgversioning.update( )
+    pcur.execute("SELECT * FROM epanet.pipes")
+    assert( len(pcur.fetchall()) == 5 )
+    pcurcpy.execute("SELECT * FROM epanet_trunk_rev_head.pipes")
+    assert( len(pcurcpy.fetchall())  == 5 )
+    
+    pcur.execute("SELECT * FROM epanet_trunk_rev_head.pipes")
+    assert( len(pcur.fetchall()) == 3 )
+    pcurcpy.execute("SELECT * FROM epanet_trunk_rev_head.pipes_view")
+    assert( len(pcurcpy.fetchall())  == 3 )
+    
+    pcur.execute("SELECT pid FROM epanet_trunk_rev_head.pipes ORDER BY pid")
+    ret = pcur.fetchall()
+    assert(list(zip(*ret)[0]) == [3, 4, 5])
+    pcurcpy.execute("SELECT ogc_fid FROM epanet_trunk_rev_head.pipes_view ORDER BY ogc_fid")
+    ret = pcurcpy.fetchall()
+    assert(list(zip(*ret)[0]) == [3, 4, 5])
+    
+    pcurcpy.execute("INSERT INTO epanet_trunk_rev_head.pipes_view(id, start_node, end_node, wkb_geometry) VALUES ('4','1','2',ST_GeometryFromText('LINESTRING(3 2,0 1)',2154))")
+    pcurcpy.commit()
+    pgversioning.commit('INSERT AFTER UPDATE')
+    
     
     pcurcpy.close()
     pcur.close()
     
 if __name__ == "__main__":
     if len(sys.argv) != 3:
-        print("Usage: python2 versioning_base_test.py host pguser")
+        print("Usage: python2 postgres_distant_test.py host pguser")
     else:
         test(*sys.argv[1:])

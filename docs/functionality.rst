@@ -174,7 +174,7 @@ Merging
 *******
 
 As a reminder, the data between branches are the same, only the information on 4 columns added in the views differ.
-Thus, a merge consists in putting back into trunk, the revision numbers of the columns _rev_begin and _rev_end branches. If trunk_rev_begin is empty it means it is an addition. If trunk_rev_begin exists and trunk_rev_end and null and branch_rev_end is not it is a deletion in the other branch.
+Thus, a merge consists in putting back into trunk the revision numbers of the columns _rev_begin and _rev_end branches. If trunk_rev_begin is empty it means that's an addition. If trunk_rev_begin exists and trunk_rev_end is null and branch_rev_end is not null it is a deletion in the other branch.
 
 The workflow must be branching, checkout from this branch, work into your working copy, commit into the branch, merging.
 

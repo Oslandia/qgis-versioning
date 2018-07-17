@@ -325,7 +325,8 @@ class Plugin(QObject):
                               'view',
                               'branch',
                               'historize',
-                              'archive']:
+                              'archive',
+                              'merge']:
                 act.setVisible(False)
         if current:
             try:  # qgis 2.2
@@ -405,6 +406,8 @@ class Plugin(QObject):
             self.info.setText(uri.database().split(
                 "/")[-1] + ' <b>working rev</b>='+str(rev))
             selection_type = 'working copy'
+
+        mergeable = False
         if layer.providerType() == "postgres":
             # IF schema contain table wcs_con is a pg distant versioning
             ret = self.is_pgDistant(layer)
@@ -427,6 +430,7 @@ class Plugin(QObject):
                         selection_type = 'head'
                     else:
                         selection_type = 'versioned'
+                    mergeable = mtch.group(2) != 'trunk'
                 else:
                     # check if it's a working copy
                     rev = 0
@@ -456,6 +460,10 @@ class Plugin(QObject):
         elif selection_type == 'working copy':
             for act in self.actions:
                 if act.text() in ['update', 'commit']:
+                    act.setVisible(True)
+        if mergeable:
+            for act in self.actions:
+                if act.text() in ['merge']:
                     act.setVisible(True)
 
     def initGui(self):
@@ -533,6 +541,13 @@ class Plugin(QObject):
         self.actions[-1].setVisible(False)
 
         self.actions.append(QAction(
+            QIcon(os.path.dirname(__file__) + "/merge.svg"),
+            u"merge", self.iface.mainWindow()))
+        self.actions[-1].setWhatsThis("merge branch")
+        self.actions[-1].triggered.connect(self.merge)
+        self.actions[-1].setVisible(False)
+
+        self.actions.append(QAction(
             QIcon(os.path.dirname(__file__) + "/help.svg"),
             u"help", self.iface.mainWindow()))
         self.actions[-1].setWhatsThis("versioning-help")
@@ -556,6 +571,21 @@ class Plugin(QObject):
             self.legend.itemChanged.disconnect(self.on_legend_click)
         except:  # qgis 2.4
             self.legend.clicked.disconnect(self.on_legend_click)
+
+    def merge(self):
+        """merge branch into trunk"""
+        layer = QgsMapLayerRegistry.instance().mapLayer(
+            self.current_layers[0])
+        uri = QgsDataSourceURI(layer.source())
+        mtch = re.match(r'(.+)_([^_]+)_rev_(head|\d+)', uri.schema())
+        schema = mtch.group(1)
+        base_branch = mtch.group(2)
+        base_rev = mtch.group(3)
+
+        ret = versioning.merge(self.pg_conn_info(), schema, base_branch)
+
+        QMessageBox.information(self.iface.mainWindow(), "Merge",
+                                "%d feature(s) merged." % ret)
 
     def branch(self):
         """create branch and import layers"""

@@ -202,11 +202,18 @@ class pgVersioningLocal(object):
                 cols += quote_ident(col[1])+", "
             cols = cols[:-2]  # remove last coma and space
 
+            sql = """UPDATE {wcs}.initial_revision 
+                  SET rev = {max_rev}
+                  , max_pk = {max_pg_pk} 
+                  WHERE table_schema = '{wcs_short}' 
+                  and table_name = '{table}'""".format(
+                          wcs=wcs,
+                          wcs_short=wcs[:-len("_trunk_rev_head")],
+                          max_rev=max_rev, max_pg_pk=max_pg_pk,
+                          table=table)
+            print(sql)
             # update the initial revision
-            pcurcpy.execute("UPDATE "+wcs+".initial_revision "
-                            "SET rev = "+str(max_rev) +
-                            ", max_pk = "+str(max_pg_pk)+" "
-                            "WHERE table_name = '"+wcs+"."+table+"'")
+            pcurcpy.execute(sql)
 
             pcurcpy.execute("UPDATE "+wcs+"."+table+" "
                             "SET "+branch+"_rev_end = "+str(max_rev)+" "
@@ -360,8 +367,32 @@ class pgVersioningLocal(object):
 
             pcurcpy.execute("CREATE UNIQUE INDEX IF NOT EXISTS "
                             + table+"_diff_idx ON "+wcs+"."+table+"_diff(ogc_fid)")
+            
             # insert and replace all in diff
-            pcurcpy.execute("INSERT INTO "+wcs+"."+table+" ("+cols+") "
+            pkey = pg_pk(pcurcpy, wcs, table)
+            
+            pcurcpy.execute("""
+                SELECT column_name
+                FROM information_schema.columns
+                WHERE table_schema = '{table_schema}'
+                AND table_name = '{table}'
+                """.format(table_schema=wcs, table=table))
+            history_columns = [pkey]
+            cols = ""
+            coli = ""
+            allcols = pcurcpy.fetchall()
+            for [col] in allcols:
+                if col not in history_columns:
+                    cols = quote_ident(col)+", "+cols
+                    coli = quote_ident(col)+", "+coli
+                else:
+                    coli = quote_ident(col)+", "+coli
+                    cols = "(SELECT max({pkey}) FROM {table_schema}.{table}) + row_number() over() as ".format(table_schema=wcs,
+                                                           table=table, pkey=pkey)+quote_ident(pkey)+", "+cols
+                    
+            cols = cols[:-2] # remove last coma and space
+            coli = coli[:-2]
+            pcurcpy.execute("INSERT INTO "+wcs+"."+table+" ("+coli+") "
                             "SELECT "+cols+" FROM "+wcs+"."+table+"_diff")
 
         pcurcpy.commit()
@@ -716,7 +747,7 @@ class pgVersioningLocal(object):
             else:
                 next_rev = rev + 1
 
-            pcurcpy.execute("DROP TABLE IF EXISTS "+wcs+"."+table+"_diff")
+            pcurcpy.execute("DROP TABLE IF EXISTS "+wcs+"."+table+"_diff CASCADE")
 
             sql = """CREATE TABLE {wcs}.{table}_diff as SELECT * FROM {wcs}.{table} WHERE 1=2""".format(
                 wcs=wcs, table=table)
@@ -819,17 +850,24 @@ class pgVersioningLocal(object):
                 """.format(table_schema=table_schema, table=table))
             history_columns = [pkey]
             cols = ""
+            coli = ""
             allcols = pcur.fetchall()
             for [col] in allcols:
                 if col not in history_columns:
                     cols = quote_ident(col)+", "+cols
+                    coli = quote_ident(col)+", "+coli
+                else:
+                    coli = quote_ident(col)+", "+coli
+                    cols = "(SELECT max({pkey}) FROM {table_schema}.{table}) + row_number() over() as ".format(table_schema=table_schema,
+                                                           table=table, pkey=pkey)+quote_ident(pkey)+", "+cols
+                    
             cols = cols[:-2] # remove last coma and space
-
+            coli = coli[:-2]
             # insert inserted and modified
-            sql = """INSERT INTO {table_schema}.{table} ({cols}) 
+            sql = """INSERT INTO {table_schema}.{table} ({coli}) 
                 SELECT {cols} FROM {diff_schema}.{table}_diff 
                 WHERE {branch}_rev_begin = {rev}""".format(table_schema=table_schema,
-                                                           table=table, cols=cols, diff_schema=diff_schema, branch=branch, rev=str(rev+1))
+                                                           table=table, coli=coli, cols=cols, diff_schema=diff_schema, branch=branch, rev=str(rev+1))
             if DEBUG:
                 print(sql)
             pcur.execute(sql)

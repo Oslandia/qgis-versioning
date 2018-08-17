@@ -158,6 +158,7 @@ Branching involves the creation of a new schema in the database.  The new schema
 
 .. note::
    Even though branches are to hold independent versioning histories, they still result in a "commit" in the *revisions* table.
+   The branch name must not contain an underscore see `issue #82 <https://github.com/Oslandia/qgis-versioning/issues/82>`_ 
 
 Archiving
 *********

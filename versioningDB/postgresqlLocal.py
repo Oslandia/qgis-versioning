@@ -843,7 +843,7 @@ class pgVersioningLocal(object):
                 
             pkey = pg_pk( pcur, table_schema, table )
             pcur.execute("""
-                SELECT column_name
+                SELECT column_name, data_type
                 FROM information_schema.columns
                 WHERE table_schema = '{table_schema}'
                 AND table_name = '{table}'
@@ -852,9 +852,13 @@ class pgVersioningLocal(object):
             cols = ""
             coli = ""
             allcols = pcur.fetchall()
-            for [col] in allcols:
+            for col, dtype in allcols:
                 if col not in history_columns:
-                    cols = quote_ident(col)+", "+cols
+                    # Workaround for uuid type
+                    if dtype == 'uuid':
+                        cols = 'uuid('+quote_ident(col)+')'+", "+cols
+                    else:
+                        cols = quote_ident(col)+", "+cols
                     coli = quote_ident(col)+", "+coli
                 else:
                     coli = quote_ident(col)+", "+coli

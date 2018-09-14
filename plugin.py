@@ -416,6 +416,11 @@ class Plugin(QObject):
             ret = self.is_pgDistant(layer)
             if ret:
                 try:
+                    if not self.versioning: 
+                        out = self.selectDatabase()
+                        (pg_conn_info_out, conn_dict) = self.get_conn_from_settings(out)
+                        self.versioning = versioning.pgLocal(
+                            pg_conn_info_out, uri.schema(), self.get_conn_from_uri(uri))
                     rev = self.versioning.revision()
                     selection_type = 'working copy'
                     self.info.setText(uri.database()+' '+uri.schema()
@@ -438,6 +443,10 @@ class Plugin(QObject):
                     # check if it's a working copy
                     rev = 0
                     try:
+                        if not self.versioning:
+                            self.versioning = versioning.pgServer(
+                                self.pg_conn_info(), uri.schema())
+                        
                         rev = self.versioning.revision()
                         selection_type = 'working copy'
                         self.info.setText(uri.database()+' '+uri.schema()

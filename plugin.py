@@ -395,6 +395,9 @@ class Plugin(QObject):
         if layer.providerType() == "spatialite":
             rev = 0
             try:
+                if not self.versioning:
+                    self.versioning = versioning.spatialite(
+                        uri.database(), self.pg_conn_info())
                 rev = self.versioning.revision()
             except:
                 self.current_layers = []

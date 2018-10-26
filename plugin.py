@@ -1218,7 +1218,7 @@ class Plugin(QObject):
             new_uri = QgsDataSourceURI(layer.source())
             new_uri.setDataSource(working_copy_schema,
                                   new_uri.table()+"_view",
-                                  'wkb_geometry',
+                                  'geom',
                                   new_uri.sql(),
                                   new_uri.keyColumn())
             # TODO: IT'S UGLY

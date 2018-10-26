@@ -421,6 +421,7 @@ class Plugin(QObject):
                         (pg_conn_info_out, conn_dict) = self.get_conn_from_settings(out)
                         self.versioning = versioning.pgLocal(
                             pg_conn_info_out, uri.schema(), self.get_conn_from_uri(uri))
+                        self._pg_conn_info = pg_conn_info_out
                     rev = self.versioning.revision()
                     selection_type = 'working copy'
                     self.info.setText(uri.database()+' '+uri.schema()

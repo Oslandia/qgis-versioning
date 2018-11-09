@@ -10,10 +10,8 @@ addons:
       - postgresql-9.6-postgis-2.3
 
 before_install:
-  - sudo apt search gdal
-  - sudo apt search libproj
-  - sudo apt search spatialite
-  - sudo apt-get install -y gdal-bin python-pyspatialite libspatialite5
+  - sudo apt search gdal libspatialite
+  - sudo apt-get install -y gdal-bin python-pyspatialite python-psycopg2 python-pip libspatialite5
 
 before_script:
   - psql -U postgres -c "create extension postgis"

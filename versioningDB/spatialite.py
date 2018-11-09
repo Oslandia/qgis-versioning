@@ -1,18 +1,18 @@
 # -*- coding: utf-8 -*-
 
 from __future__ import absolute_import
-from .versioningAbc import AbstractVersioning
 from .utils import *
 from itertools import izip_longest
 
 import os
 DEBUG=False
 
-class spVersioning(AbstractVersioning):
+class spVersioning(object):
     
     def revision(self, connection ):
+        sqlite_filename = connection[0]
         """returns the revision the working copy was created from plus one"""
-        scur = Db(dbapi2.connect(connection))
+        scur = Db(dbapi2.connect(sqlite_filename))
         scur.execute("SELECT rev "+ "FROM initial_revision")
         rev = 0
         for [res] in scur.fetchall():
@@ -321,8 +321,8 @@ class spVersioning(AbstractVersioning):
         scur.close()
         
     
-    def checkout(self, pg_conn_info, pg_table_names, working_source, selected_feature_lists = []):
-        sqlite_filename = working_source
+    def checkout(self, connection, pg_table_names, selected_feature_lists = []):
+        (sqlite_filename, pg_conn_info) = connection
         """create working copy from versioned database tables
         pg_table_names must be complete schema.table names
         the schema name must end with _branch_rev_head
@@ -550,9 +550,7 @@ class spVersioning(AbstractVersioning):
         scur.close()
         return found
     
-    # commit(self, sqlite_filename, commit_msg, pg_conn_info, commit_pg_user = ''):
     def commit(self, connection, commit_msg, commit_user = ''):
-        (sqlite_filename, pg_conn_info) = connection
         """merge modifications into database
         returns the number of updated layers"""
         # get the target revision from the spatialite db
@@ -561,7 +559,7 @@ class spVersioning(AbstractVersioning):
         # detect conflicts
         # merge changes and update target_revision
         # delete diff
-    
+        (sqlite_filename, pg_conn_info) = connection
         unresolved = self.unresolved_conflicts([sqlite_filename])
         if unresolved:
             raise RuntimeError("There are unresolved conflicts in "

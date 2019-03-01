@@ -14,6 +14,6 @@ before_install:
   - sudo apt-get install -y gdal-bin python-pyspatialite python-psycopg2 python-pip libspatialite5
 
 script:
-  - python --version
+  - python3 --version
   - cd test
-  - python ./tests.py 127.0.0.1 postgres -v
+  - python3 ./tests.py 127.0.0.1 postgres -v

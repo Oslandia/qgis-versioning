@@ -24,6 +24,7 @@ def prtHid( cur, tab ):
     for [r] in cur.fetchall(): print(r)
 
 def test(host, pguser):
+
     pg_conn_info = "dbname=epanet_test_db host=" + host + " user=" + pguser
     pg_conn_info_cpy = "dbname=epanet_test_copy_db host=" + host + " user=" + pguser
     test_data_dir = os.path.dirname(os.path.realpath(__file__))
@@ -45,13 +46,11 @@ def test(host, pguser):
     pgversioning = versioning.pgLocal(pg_conn_info, 'epanet_trunk_rev_head', pg_conn_info_cpy)
     pgversioning.checkout(tables)
     
-    
     pcurcpy = versioning.Db(psycopg2.connect(pg_conn_info_cpy))
     pcur = versioning.Db(psycopg2.connect(pg_conn_info))
 
-
-    pcurcpy.execute("INSERT INTO epanet_trunk_rev_head.pipes_view(id, start_node, end_node, wkb_geometry) VALUES ('2','1','2',ST_GeometryFromText('LINESTRING(1 1,0 1)',2154))")
-    pcurcpy.execute("INSERT INTO epanet_trunk_rev_head.pipes_view(id, start_node, end_node, wkb_geometry) VALUES ('3','1','2',ST_GeometryFromText('LINESTRING(1 -1,0 1)',2154))")
+    pcurcpy.execute("INSERT INTO epanet_trunk_rev_head.pipes_view(id, start_node, end_node, geom) VALUES ('2','1','2',ST_GeometryFromText('LINESTRING(1 1,0 1)',2154))")
+    pcurcpy.execute("INSERT INTO epanet_trunk_rev_head.pipes_view(id, start_node, end_node, geom) VALUES ('3','1','2',ST_GeometryFromText('LINESTRING(1 -1,0 1)',2154))")
     pcurcpy.commit()
 
 
@@ -90,8 +89,10 @@ def test(host, pguser):
     spversioning1 = versioning.spatialite(sqlite_test_filename1, pg_conn_info)
     spversioning1.checkout( ['epanet_trunk_rev_head.pipes','epanet_trunk_rev_head.junctions'] )
     scon = dbapi2.connect(sqlite_test_filename1)
+    scon.enable_load_extension(True)
+    scon.execute("SELECT load_extension('mod_spatialite')")
     scur = scon.cursor()
-    scur.execute("INSERT INTO pipes_view(id, start_node, end_node, GEOMETRY) VALUES ('4', '10','100',GeomFromText('LINESTRING(2 0, 0 2)',2154))")
+    scur.execute("INSERT INTO pipes_view(id, start_node, end_node, geom) VALUES ('4', '10','100',ST_GeometryFromText('LINESTRING(2 0, 0 2)',2154))")
     scon.commit()
     spversioning1.commit("sp commit")
     
@@ -108,12 +109,13 @@ def test(host, pguser):
     
     pcur.execute("SELECT pid FROM epanet_trunk_rev_head.pipes ORDER BY pid")
     ret = pcur.fetchall()
-    assert(list(zip(*ret)[0]) == [3, 4, 5])
+
+    assert([i[0] for i in ret] == [3, 4, 5])
     pcurcpy.execute("SELECT ogc_fid FROM epanet_trunk_rev_head.pipes_view ORDER BY ogc_fid")
     ret = pcurcpy.fetchall()
-    assert(list(zip(*ret)[0]) == [3, 4, 5])
-    
-    pcurcpy.execute("INSERT INTO epanet_trunk_rev_head.pipes_view(id, start_node, end_node, wkb_geometry) VALUES ('4','1','2',ST_GeometryFromText('LINESTRING(3 2,0 1)',2154))")
+    assert([i[0] for i in ret] == [3, 4, 5])
+
+    pcurcpy.execute("INSERT INTO epanet_trunk_rev_head.pipes_view(id, start_node, end_node, geom) VALUES ('4','1','2',ST_GeometryFromText('LINESTRING(3 2,0 1)',2154))")
     pcurcpy.commit()
     pgversioning.commit('INSERT AFTER UPDATE')
     

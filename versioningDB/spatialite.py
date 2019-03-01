@@ -604,7 +604,7 @@ class spVersioning(object):
             scur.execute("SELECT sql FROM sqlite_master "
                 "WHERE tbl_name = '"+table+"' AND type = 'table'")
             [sql] = scur.fetchone()
-            sql = unicode.replace(sql, table, table+"_diff", 1)
+            sql = sql.replace(table, table+"_diff", 1)
             scur.execute(sql)
             geom = (sql.find('GEOMETRY') != -1)
             scur.execute("DELETE FROM geometry_columns "
@@ -758,7 +758,7 @@ class spVersioning(object):
         scur.close()
     
         # cleanup diffs in postgis
-        for schema, conn_info in schema_list.iteritems():
+        for schema, conn_info in schema_list.items():
             pcur = Db(psycopg2.connect(conn_info))
             pcur.execute("DROP SCHEMA "+schema+" CASCADE")
             pcur.commit()

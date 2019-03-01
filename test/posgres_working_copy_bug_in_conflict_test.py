@@ -10,17 +10,17 @@ import shutil
 
 
 def prtTab( cur, tab ):
-    print "--- ",tab," ---"
+    print("--- ",tab," ---")
     cur.execute("SELECT pid, trunk_rev_begin, trunk_rev_end, trunk_parent, trunk_child, length FROM "+tab)
     for r in cur.fetchall():
         t = []
         for i in r: t.append(str(i))
-        print '\t| '.join(t)
+        print('\t| '.join(t))
 
 def prtHid( cur, tab ):
-    print "--- ",tab," ---"
+    print("--- ",tab," ---")
     cur.execute("SELECT pid FROM "+tab)
-    for [r] in cur.fetchall(): print r
+    for [r] in cur.fetchall(): print(r)
 
 def test(host, pguser):
     pg_conn_info = "dbname=epanet_test_db host=" + host + " user=" + pguser
@@ -41,7 +41,7 @@ def test(host, pguser):
         pgversioning2 = versioning.pgServer(pg_conn_info, 'wc2')
         pgversioning1.checkout(tables)
         pgversioning2.checkout(tables)
-        print "checkout done"
+        print("checkout done")
 
         pcur.execute("UPDATE wc1.pipes_view SET length = 4 WHERE pid = 1")
         prtTab( pcur, "wc1.pipes_diff")
@@ -51,12 +51,12 @@ def test(host, pguser):
 
         #pcur = versioning.Db(psycopg2.connect(pg_conn_info))
 
-        print "commited"
+        print("commited")
         pcur.execute("UPDATE wc2.pipes_view SET length = 5 WHERE pid = 1")
         prtTab( pcur, "wc2.pipes_diff")
         pcur.commit()
         pgversioning2.update()
-        print "updated"
+        print("updated")
         prtTab( pcur, "wc2.pipes_diff")
         prtTab( pcur, "wc2.pipes_conflicts")
 

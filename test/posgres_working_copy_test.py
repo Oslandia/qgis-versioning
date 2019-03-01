@@ -10,17 +10,17 @@ import shutil
 
 
 def prtTab( cur, tab ):
-    print "--- ",tab," ---"
+    print("--- ",tab," ---")
     cur.execute("SELECT pid, trunk_rev_begin, trunk_rev_end, trunk_parent, trunk_child, length FROM "+tab)
     for r in cur.fetchall():
         t = []
         for i in r: t.append(str(i))
-        print '\t| '.join(t)
+        print('\t| '.join(t))
 
 def prtHid( cur, tab ):
-    print "--- ",tab," ---"
+    print("--- ",tab," ---")
     cur.execute("SELECT pid FROM "+tab)
-    for [r] in cur.fetchall(): print r
+    for [r] in cur.fetchall(): print(r)
 
 def test(host, pguser):
     pg_conn_info = "dbname=epanet_test_db host=" + host + " user=" + pguser
@@ -83,8 +83,8 @@ def test(host, pguser):
     # modify the second working copy to create conflict
     prtTab(pcur, 'epanet.pipes')
     pcur.execute("SELECT * FROM epanet_working_copy_cflt.initial_revision")
-    print '-- epanet_working_copy_cflt.initial_revision ---'
-    for r in pcur.fetchall(): print r
+    print('-- epanet_working_copy_cflt.initial_revision ---')
+    for r in pcur.fetchall(): print(r)
 
     prtHid(pcur, 'epanet_working_copy_cflt.pipes_view')
     prtTab(pcur, 'epanet_working_copy_cflt.pipes_diff')
@@ -93,7 +93,7 @@ def test(host, pguser):
     prtTab(pcur, 'epanet.pipes')
     prtTab(pcur, 'epanet_working_copy_cflt.pipes_diff')
     pcur.execute("SELECT COUNT(*) FROM epanet_working_copy_cflt.pipes_diff")
-    for l in pcur.con.notices: print l
+    for l in pcur.con.notices: print(l)
     assert( 2 == pcur.fetchone()[0] )
 
 
@@ -124,8 +124,8 @@ def test(host, pguser):
 
 
     pcur.execute("SELECT * FROM epanet_working_copy_cflt.initial_revision")
-    print '-- epanet_working_copy_cflt.initial_revision ---'
-    for r in pcur.fetchall(): print r
+    print('-- epanet_working_copy_cflt.initial_revision ---')
+    for r in pcur.fetchall(): print(r)
 
     prtHid(pcur, 'epanet_working_copy_cflt.pipes_view')
     prtTab(pcur, 'epanet_working_copy_cflt.pipes_diff')

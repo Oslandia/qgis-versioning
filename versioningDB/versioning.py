@@ -250,7 +250,6 @@ def rev_view_str(pg_conn_info, schema, table, branch, rev):
         raise RuntimeError("Revision "+str(rev)+" doesn't exist")
 
     select_str = "SELECT * FROM "+schema+"."+table
-    # print "select_str = " + select_str
     where_str = ("("+branch + "_rev_end IS NULL "
                  "OR "+branch+"_rev_end >= "+str(rev) + ") "
                  "AND "+branch+"_rev_begin <= "+str(rev))

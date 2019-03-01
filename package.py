@@ -35,7 +35,7 @@ def install(install_dir, zip_filename):
     uninstall(install_dir)
     with zipfile.ZipFile(zip_filename, "r") as z:
         z.extractall(install_dir)
-    print "installed in", install_dir
+    print("installed in", install_dir)
 
 def zip_(zip_filename):
     """the zip file include tests"""

@@ -47,7 +47,7 @@ class spVersioning(object):
     def update(self, connection ):
         (sqlite_filename, pg_conn_info) = connection
         """merge modifications since last update into working copy"""
-        if DEBUG: print "update"
+        if DEBUG: print("update")
         if self.unresolved_conflicts([sqlite_filename]):
             raise RuntimeError("There are unresolved conflicts in "
                     +sqlite_filename)
@@ -69,7 +69,7 @@ class spVersioning(object):
                 "WHERE branch = '"+branch+"'")
             [max_rev] = pcur.fetchone()
             if max_rev == rev:
-                if DEBUG: print ("Nothing new in branch "+branch+" in "+table_schema+"."
+                if DEBUG: print("Nothing new in branch "+branch+" in "+table_schema+"."
                     +table+" since last update")
                 pcur.close()
                 continue
@@ -145,7 +145,7 @@ class spVersioning(object):
                     'PG:"'+pg_conn_info+'"',
                     diff_schema+'.'+table+"_diff",
                     '-nln', table+"_diff"]
-            if DEBUG: print ' '.join(cmd)
+            if DEBUG: print(' '.join(cmd))
             os.system(' '.join(cmd))
     
             # cleanup in postgis
@@ -204,7 +204,7 @@ class spVersioning(object):
             scur.execute("SELECT conflict_deleted_fid "
                 "FROM  "+table+"_conflicts_ogc_fid" )
             if scur.fetchone():
-                if DEBUG: print "there are conflicts"
+                if DEBUG: print("there are conflicts")
                 # add layer for conflicts
                 scur.execute("DROP TABLE IF EXISTS "+table+"_conflicts ")
                 scur.execute("CREATE TABLE "+table+"_conflicts AS "
@@ -383,7 +383,7 @@ class spVersioning(object):
                 pcur.execute(view_str)
                 pcur.commit()
     
-                if DEBUG: print ' '.join(cmd)
+                if DEBUG: print(' '.join(cmd))
                 os.system(' '.join(cmd))
     
                 # save target revision in a table
@@ -414,7 +414,7 @@ class spVersioning(object):
                 pcur.execute(view_str)
                 pcur.commit()
     
-                if DEBUG: print ' '.join(cmd)
+                if DEBUG: print(' '.join(cmd))
                 os.system(' '.join(cmd))
     
                 # save target revision in a table if not in there
@@ -542,7 +542,7 @@ class spVersioning(object):
         scur.execute("SELECT tbl_name FROM sqlite_master "
             "WHERE type='table' AND tbl_name LIKE '%_conflicts'")
         for table_conflicts in scur.fetchall():
-            if DEBUG: print 'table_conflicts:', table_conflicts[0]
+            if DEBUG: print('table_conflicts:', table_conflicts[0])
             scur.execute("SELECT * FROM "+table_conflicts[0])
             if scur.fetchone():
                 found.append( table_conflicts[0][:-10] )
@@ -622,7 +622,7 @@ class spVersioning(object):
                     "OR "+branch+"_rev_begin > "+str(rev))
             scur.execute( "SELECT ogc_fid FROM "+table+"_diff")
             there_is_something_to_commit = scur.fetchone()
-            if DEBUG: print "there_is_something_to_commit ", there_is_something_to_commit
+            if DEBUG: print("there_is_something_to_commit ", there_is_something_to_commit)
             scur.commit()
     
             # Better if we could have a QgsDataSourceURI.username()
@@ -659,11 +659,11 @@ class spVersioning(object):
                 cmd.insert(5, '-lco')
                 cmd.insert(6, 'GEOMETRY_NAME='+pgeom)
     
-            if DEBUG: print ' '.join(cmd)
+            if DEBUG: print(' '.join(cmd))
             os.system(' '.join(cmd))
     
             for l in pcur.execute( "select * from geometry_columns").fetchall():
-                if DEBUG: print l
+                if DEBUG: print(l)
     
             # remove dif table and geometry column
             scur.execute("DELETE FROM geometry_columns "
@@ -672,7 +672,7 @@ class spVersioning(object):
     
     
             if not there_is_something_to_commit:
-                if DEBUG: print "nothing to commit for ", table
+                if DEBUG: print("nothing to commit for ", table)
                 pcur.close()
                 continue
     
@@ -681,7 +681,7 @@ class spVersioning(object):
             pcur.execute("SELECT rev FROM "+table_schema+".revisions "
                 "WHERE rev = "+str(rev+1))
             if not pcur.fetchone():
-                if DEBUG: print "inserting rev ", str(rev+1)
+                if DEBUG: print("inserting rev ", str(rev+1))
                 pcur.execute("INSERT INTO "+table_schema+".revisions "
                     "(rev, commit_msg, branch, author) "
                     "VALUES ("+str(rev+1)+", '"+escape_quote(commit_msg)+"', '"+branch+"',"

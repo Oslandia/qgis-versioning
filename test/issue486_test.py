@@ -91,14 +91,14 @@ def test(host, pguser):
     scur.execute("UPDATE junctions_view SET GEOMETRY = GeometryFromText('POINT(3 3)',2154) WHERE OGC_FID = 1")
     scur.commit()
     scur.execute("SELECT * from junctions_view")
-    print "--------------"
-    for res in scur.fetchall(): print res
+    print("--------------")
+    for res in scur.fetchall(): print(res)
     scur.close()
     spversioning.commit( 'moved a junction' )
 
     pcur.execute("SELECT ST_AsText(geometry), ST_AsText(geometry_schematic), printmap FROM epanet_trunk_rev_head.junctions ORDER BY hid DESC")
     res = pcur.fetchall()
-    for r in res: print r
+    for r in res: print(r)
     assert( res[0][0] == 'POINT(3 3)' )
     assert( res[0][1] == 'POLYGON((-1 -1,1 -1,1 1,-1 1,-1 -1))' )
     assert( res[0][2] == [1, 2, 3] )

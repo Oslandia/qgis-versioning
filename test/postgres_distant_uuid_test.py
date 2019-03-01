@@ -11,17 +11,17 @@ import tempfile
 
 
 def prtTab( cur, tab ):
-    print ("--- ",tab," ---")
+    print("--- ",tab," ---")
     cur.execute("SELECT ogc_fid, trunk_rev_begin, trunk_rev_end, trunk_parent, trunk_child, length FROM "+tab)
     for r in cur.fetchall():
         t = []
         for i in r: t.append(str(i))
-        print ('\t| '.join(t))
+        print('\t| '.join(t))
 
 def prtHid( cur, tab ):
-    print ("--- ",tab," ---")
+    print("--- ",tab," ---")
     cur.execute("SELECT ogc_fid FROM "+tab)
-    for [r] in cur.fetchall(): print (r)
+    for [r] in cur.fetchall(): print(r)
 
 def test(host, pguser):
     pg_conn_info = "dbname=epanet_test_db host=" + host + " user=" + pguser

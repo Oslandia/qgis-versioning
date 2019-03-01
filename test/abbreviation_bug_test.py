@@ -63,7 +63,7 @@ def test(host, pguser):
 
     pcur.execute("select jid, id from epanet_trunk_rev_head.junctions")
     for row in pcur:
-        print row
+        print(row)
         if row[0] > 8:
             assert row[1].find('this_is_another_edited_very_long_name_that should_be_trunctated_if_buggy') != -1\
                 or row[1].find('newly inserted with long name') != -1

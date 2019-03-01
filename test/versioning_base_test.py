@@ -117,7 +117,7 @@ def test(host, pguser):
     pcur.execute(select_str)
     res = pcur.fetchall()
     assert(res[0][0] == 'u')
-    #print "fetchall 1 vs 2 = " + str(res)
+    #print("fetchall 1 vs 2 = " + str(res))
     #fetchall 1 vs 2 = [
     #('u', 3, '1', 8.0, None, None, '01010000206A0800000000000000000000000000000000F03F', 2, 2, 2, 4)]
 
@@ -126,7 +126,7 @@ def test(host, pguser):
     res = pcur.fetchall()
     assert(res[0][0] == 'u')
     assert(res[1][0] == 'i')
-    #print "fetchall 1 vs 3 = " + str(res)
+    #print("fetchall 1 vs 3 = " + str(res))
     #fetchall 1 vs 3 = [
     #('u', 4, '1', 22.0, None, None, '01010000206A0800000000000000000000000000000000F03F', 3, None, 3, None),
     #('i', 3, '1', 8.0, None, None, '01010000206A0800000000000000000000000000000000F03F', 2, 2, 2, 4)]
@@ -138,7 +138,7 @@ def test(host, pguser):
     assert(res[1][0] == 'i')
     assert(res[2][0] == 'a')
     assert(res[3][0] == 'i') # object is in intermediate state; will be deleted in rev 5
-    #print "fetchall 1 vs 4 = " + str(res)
+    #print("fetchall 1 vs 4 = " + str(res))
     #fetchall 1 vs 4 = [
     #('u', 4, '1', 22.0, None, None, '01010000206A0800000000000000000000000000000000F03F', 3, None, 3, None),
     #('i', 3, '1', 8.0, None, None, '01010000206A0800000000000000000000000000000000F03F', 2, 2, 2, 4),
@@ -152,7 +152,7 @@ def test(host, pguser):
     assert(res[1][0] == 'i')
     assert(res[2][0] == 'a')
     assert(res[3][0] == 'd')
-    #print "fetchall 1 vs 5 = " + str(res)
+    #print("fetchall 1 vs 5 = " + str(res))
     #fetchall 1 vs 5 = [
     #('u', 4, '1', 22.0, None, None, '01010000206A0800000000000000000000000000000000F03F', 3, None, 3, None),
     #('i', 3, '1', 8.0, None, None, '01010000206A0800000000000000000000000000000000F03F', 2, 2, 2, 4),

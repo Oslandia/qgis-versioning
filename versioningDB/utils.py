@@ -23,7 +23,7 @@
 import platform
 import re
 import psycopg2
-from pyspatialite import dbapi2
+from sqlite3 import dbapi2
 import getpass
 import sys
 import traceback

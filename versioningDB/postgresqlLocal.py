@@ -7,7 +7,7 @@ import psycopg2
 import tempfile
 import os
 
-from itertools import izip_longest
+from itertools import zip_longest
 
 DEBUG = False
 

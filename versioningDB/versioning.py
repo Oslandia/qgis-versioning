@@ -7,7 +7,6 @@ from __future__ import absolute_import
 
 import re
 import os
-from pyspatialite import dbapi2
 import psycopg2
 import platform
 from . import utils

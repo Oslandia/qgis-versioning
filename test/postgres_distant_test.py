@@ -4,7 +4,7 @@ import sys
 sys.path.insert(0, '..')
 
 from versioningDB import versioning 
-from pyspatialite import dbapi2
+from sqlite3 import dbapi2
 import psycopg2
 import os
 import tempfile

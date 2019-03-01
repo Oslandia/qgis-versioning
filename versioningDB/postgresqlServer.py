@@ -4,7 +4,7 @@ from __future__ import absolute_import
 from .utils import *
 import psycopg2
 
-from itertools import izip_longest
+from itertools import zip_longest
 
 DEBUG=False
 

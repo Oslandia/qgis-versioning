@@ -323,7 +323,7 @@ class pgVersioningServer(object):
         pcur.execute("CREATE SCHEMA "+wcs)
     
         first_table = True
-        for pg_table_name, feature_list in list(izip_longest(pg_table_names, selected_feature_lists)):
+        for pg_table_name, feature_list in list(zip_longest(pg_table_names, selected_feature_lists)):
             [schema, table] = pg_table_name.split('.')
             [schema, sep, branch] = schema[:-9].rpartition('_')
             del sep

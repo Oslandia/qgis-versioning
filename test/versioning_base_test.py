@@ -60,6 +60,8 @@ def test(host, pguser):
     # edit one table and commit changes; rev = 2
 
     scon = dbapi2.connect(sqlite_test_filename1)
+    scon.enable_load_extension(True)
+    scon.execute("SELECT load_extension('mod_spatialite')")
     scur = scon.cursor()
     scur.execute("UPDATE junctions_view SET elevation = '8' WHERE id = '1'")
     scon.commit()
@@ -79,6 +81,8 @@ def test(host, pguser):
     spversioning2.checkout(["epanet_trunk_rev_head.junctions"])
 
     scon = dbapi2.connect(sqlite_test_filename2)
+    scon.enable_load_extension(True)
+    scon.execute("SELECT load_extension('mod_spatialite')")
     scur = scon.cursor()
     scur.execute("UPDATE junctions_view SET elevation = '22' WHERE id = '1'")
     scon.commit()
@@ -92,8 +96,10 @@ def test(host, pguser):
     spversioning3.checkout(["epanet_trunk_rev_head.junctions"])
 
     scon = dbapi2.connect(sqlite_test_filename3)
+    scon.enable_load_extension(True)
+    scon.execute("SELECT load_extension('mod_spatialite')")
     scur = scon.cursor()
-    scur.execute("INSERT INTO junctions_view(id, elevation, GEOMETRY) VALUES ('10','100',GeomFromText('POINT(2 0)',2154))")
+    scur.execute("INSERT INTO junctions_view(id, elevation, geom) VALUES ('10','100',GeomFromText('POINT(2 0)',2154))")
     scon.commit()
     #scur.execute("SELECT COUNT(*) FROM junctions")
     #assert( scur.fetchone()[0] == 3 )
@@ -165,6 +171,8 @@ def test(host, pguser):
 
     scon = dbapi2.connect(sqlite_test_filename5)
     scur = scon.cursor()
+    scon.enable_load_extension(True)
+    scon.execute("SELECT load_extension('mod_spatialite')")
     scur.execute("UPDATE junctions_view SET elevation = '22' WHERE id = '1'")
     scur.execute("DELETE FROM junctions_view WHERE id = '1'")
     scon.commit()

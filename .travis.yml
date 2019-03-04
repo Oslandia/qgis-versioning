@@ -1,4 +1,4 @@
-dist: trusty
+dist: buster
 
 services:
   - postgresql
@@ -10,7 +10,7 @@ addons:
       - postgresql-9.6-postgis-2.3
 
 before_install:
-  - sudo apt-get install -y gdal-bin python3-psycopg2 libspatialite5
+  - sudo apt-get install -y gdal-bin python3-psycopg2 libspatialite5 libsqlite3-mod-spatialite
 
 script:
   - python3 --version

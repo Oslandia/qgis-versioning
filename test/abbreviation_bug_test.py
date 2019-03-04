@@ -48,6 +48,8 @@ def test(host, pguser):
     assert( os.path.isfile(sqlite_test_filename) and "sqlite file must exist at this point" )
 
     scon = dbapi2.connect(sqlite_test_filename)
+    scon.enable_load_extension(True)
+    scon.execute("SELECT load_extension('mod_spatialite')")
     scur = scon.cursor()
     scur.execute("SELECT * from junctions")
     for rec in scur:
@@ -56,7 +58,7 @@ def test(host, pguser):
 
     scur.execute("update junctions_view set id='this_is_another_edited_very_long_name_that should_be_trunctated_if_buggy' where ogc_fid > 8")
 
-    scur.execute("insert into junctions_view(id, elevation, geometry) select 'newly inserted with long name', elevation, geometry from junctions_view where ogc_fid=4")
+    scur.execute("insert into junctions_view(id, elevation, geom) select 'newly inserted with long name', elevation, geom from junctions_view where ogc_fid=4")
     scon.commit()
 
     spversioning.commit('a commit msg')

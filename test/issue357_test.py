@@ -33,8 +33,8 @@ def test(host, pguser):
     scur = []
     for f in wc: scur.append(versioning.Db( dbapi2.connect( f ) ))
 
-    scur[0].execute("INSERT INTO pipes_view(id, start_node, end_node, GEOMETRY) VALUES ('2','1','2',GeomFromText('LINESTRING(1 1,0 1)',2154))")
-    scur[0].execute("INSERT INTO pipes_view(id, start_node, end_node, GEOMETRY) VALUES ('3','1','2',GeomFromText('LINESTRING(1 -1,0 1)',2154))")
+    scur[0].execute("INSERT INTO pipes_view(id, start_node, end_node, geom) VALUES ('2','1','2',GeomFromText('LINESTRING(1 1,0 1)',2154))")
+    scur[0].execute("INSERT INTO pipes_view(id, start_node, end_node, geom) VALUES ('3','1','2',GeomFromText('LINESTRING(1 -1,0 1)',2154))")
     scur[0].commit()
 
 

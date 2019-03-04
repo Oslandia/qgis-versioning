@@ -20,8 +20,7 @@ def printTab(pcur, schema, table):
     pcur.execute("""SELECT column_name FROM information_schema.columns WHERE
                     table_schema = '{schema}' AND table_name = '{table}'""".format(schema=schema,
                     table=table))
-    lcols = pcur.fetchall()
-    cols = ', '.join(list(zip(*lcols)[0]))
+    cols = ",".join([i[0] for i in pcur.fetchall()])
     print(cols)
     
     pcur.execute("""SELECT * FROM {schema}.{table} ORDER BY {pk}""".format(schema=schema, table=table, pk=pk))
@@ -103,15 +102,13 @@ def test(host, pguser):
     [ret] = pcur.fetchone()
     assert(ret == 9)
     pcur.execute("SELECT pid FROM epanet.pipes ORDER BY pid")
-    ret = pcur.fetchall()
-    assert(list(zip(*ret)[0]) == [1, 2, 4, 6, 7, 8, 9, 10, 11])
+    assert([i[0] for i in pcur.fetchall()] == [1, 2, 4, 6, 7, 8, 9, 10, 11])
     printTab(pcur, 'epanet_archive', 'pipes')
     pcur.execute("SELECT count(*) FROM epanet_archive.pipes")
     [ret] = pcur.fetchone()
     assert(ret == 2)
     pcur.execute("SELECT pid FROM epanet_archive.pipes ORDER BY pid")
-    ret = pcur.fetchall()
-    assert(list(zip(*ret)[0]) == [3, 5])
+    assert([i[0] for i in pcur.fetchall()] == [3, 5])
     
     versioning.archive(pg_conn_info, 'epanet', 11)
     printTab(pcur, 'epanet', 'pipes')
@@ -119,15 +116,13 @@ def test(host, pguser):
     [ret] = pcur.fetchone()
     assert(ret == 7)
     pcur.execute("SELECT pid FROM epanet.pipes ORDER BY pid")
-    ret = pcur.fetchall()
-    assert(list(zip(*ret)[0]) == [2, 4, 6, 8, 9, 10, 11])
+    assert([i[0] for i in pcur.fetchall()] == [2, 4, 6, 8, 9, 10, 11])
     printTab(pcur, 'epanet_archive', 'pipes')
     pcur.execute("SELECT count(*) FROM epanet_archive.pipes")
     [ret] = pcur.fetchone()
     assert(ret == 4)
     pcur.execute("SELECT pid FROM epanet_archive.pipes ORDER BY pid")
-    ret = pcur.fetchall()
-    assert(list(zip(*ret)[0]) == [1, 3, 5, 7])
+    assert([i[0] for i in pcur.fetchall()] == [1, 3, 5, 7])
     
     # view
     printTab(pcur, 'epanet_archive', 'pipes_all')

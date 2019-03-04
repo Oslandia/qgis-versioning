@@ -137,14 +137,15 @@ class spVersioning(object):
     
             # import the diff to spatialite
             cmd = ['ogr2ogr',
-                    '-preserve_fid',
-                    '-lco', 'FID=ogc_fid',
-                    '-f', 'SQLite',
-                    '-update',
-                    '"' + sqlite_filename + '"',
-                    'PG:"'+pg_conn_info+'"',
-                    diff_schema+'.'+table+"_diff",
-                    '-nln', table+"_diff"]
+                   '-preserve_fid',
+                   '-lco', 'FID=ogc_fid',
+                   '-lco', 'GEOMETRY_NAME={}'.format(pgeom),
+                   '-f', 'SQLite',
+                   '-update',
+                   '"' + sqlite_filename + '"',
+                   'PG:"'+pg_conn_info+'"',
+                   diff_schema+'.'+table+"_diff",
+                   '-nln', table+"_diff"]
             if DEBUG: print(' '.join(cmd))
             os.system(' '.join(cmd))
     
@@ -361,10 +362,12 @@ class spVersioning(object):
             temp_view_name = schema+"."+table+"_checkout_temp_view"
             temp_view_names.append(temp_view_name)
             # use ogr2ogr to create spatialite db
+            pgeom = pg_geom(pcur, schema, table)
             if first_table:
                 first_table = False
                 cmd = ['ogr2ogr',
                         '-f', 'SQLite',
+                       '-lco', 'GEOMETRY_NAME={}'.format(pgeom),
                         '-dsco', 'SPATIALITE=yes',
                         '"' + sqlite_filename + '"',
                         'PG:"'+pg_conn_info+'"', temp_view_name,
@@ -399,11 +402,12 @@ class spVersioning(object):
     
             else:
                 cmd = ['ogr2ogr',
-                            '-f', 'SQLite',
-                            '-update',
-                            '"' + sqlite_filename + '"',
-                            'PG:"'+pg_conn_info+'"', temp_view_name,
-                            '-nln', table]
+                       '-f', 'SQLite',
+                       '-lco', 'GEOMETRY_NAME={}'.format(pgeom),
+                       '-update',
+                       '"' + sqlite_filename + '"',
+                       'PG:"'+pg_conn_info+'"', temp_view_name,
+                       '-nln', table]
                 # Same comments as in 'if feature_list' above
                 pcur.execute("SELECT column_name FROM information_schema.columns WHERE table_schema = \'"+schema+"\' AND table_name   = \'"+table+"\'")
                 column_list = pcur.fetchall()
@@ -646,6 +650,7 @@ class spVersioning(object):
             pcur.commit()
             cmd = ['ogr2ogr',
                     '-preserve_fid',
+                   '-lco', 'GEOMETRY_NAME={}'.format(pgeom),
                     '-f',
                     'PostgreSQL',
                     'PG:"'+pg_conn_info+'"',
@@ -654,10 +659,6 @@ class spVersioning(object):
                     '"' + sqlite_filename + '"',
                     table+"_diff",
                     '-nln', diff_schema+'.'+table+"_diff"]
-            geoms = pg_geoms( pcur, table_schema, table )
-            if len(pg_geoms( pcur, table_schema, table ))==1:
-                cmd.insert(5, '-lco')
-                cmd.insert(6, 'GEOMETRY_NAME='+pgeom)
     
             if DEBUG: print(' '.join(cmd))
             os.system(' '.join(cmd))

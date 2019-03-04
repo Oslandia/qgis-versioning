@@ -44,7 +44,9 @@ class Db(object):
         self.con = con
         if isinstance(con, dbapi2.Connection):
             self.db_type = 'sp : '
-        else :
+            self.con.enable_load_extension(True)
+            self.con.execute("SELECT load_extension('mod_spatialite')")
+        else:
             self.db_type = 'pg : '
         self.cur = self.con.cursor()
         if filename :

@@ -378,9 +378,9 @@ class Plugin(QObject):
                             pg_conn_info_out, uri.schema(), self.get_conn_from_uri(uri))
                         self._pg_conn_info = pg_conn_info_out
                     rev = self.versioning.revision()
-                    return ('working copy', False)
                     self.info.setText(uri.database()+' '+uri.schema()
                                       + ' <b>working rev</b>='+str(rev))
+                    return ('working copy', False)
                 except:
                     self.info.setText(
                         'Versioning : the selected group is not a working copy')
@@ -404,9 +404,9 @@ class Plugin(QObject):
                                 self.pg_conn_info(), uri.schema())
                         
                         rev = self.versioning.revision()
-                        return ('working copy', False)
                         self.info.setText(uri.database()+' '+uri.schema()
                                           + ' <b>working rev</b>='+str(rev))
+                        return ('working copy', False)
                     except:
                         self.info.setText('Versioning : unversioned schema')
                         return ('unversioned', False)
@@ -964,8 +964,6 @@ class Plugin(QObject):
         uri = None
         conn_info = ''
         schema = ''
-        print("layers={}".format(self.current_layers))
-        return
         for layer in self.current_layers:
             uri = QgsDataSourceUri(layer.source())
             if not conn_info:

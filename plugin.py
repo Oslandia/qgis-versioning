@@ -41,7 +41,7 @@ from qgis.gui import QgsMessageBar
 from qgis.utils import showPluginHelp
 from qgis.core import QgsCredentials, QgsDataSourceUri, QgsProject, \
     QgsFeatureRequest, QgsWkbTypes, QgsFeature, QgsGeometry, QgsPoint, QgsSymbol, \
-    QgsRuleBasedRenderer, QgsLayerTreeNode, QgsVectorLayer
+    QgsRuleBasedRenderer, QgsLayerTreeNode, QgsVectorLayer, Qgis
 
 from .versioningDB import versioning
 
@@ -145,7 +145,7 @@ class Plugin(QObject):
                 self.q_view_dlg.diffmode_chk.setCheckState(Qt.Unchecked)
                 self.iface.messageBar().pushMessage("Warning",
                                                     "Selected revisions cannot be compared because they are not on "
-                                                    "the same branch.", level=QgsMessageBar.WARNING, duration=5)
+                                                    "the same branch.", level=Qgis.Warning, duration=5)
                 # Highlight branch items in table
                 # Ideally, find a way to temporarily highlight
                 self.q_view_dlg.tblw.item(
@@ -712,8 +712,7 @@ class Plugin(QObject):
         progress.setMaximum(len(rows))
         progress.setAlignment(Qt.AlignLeft | Qt.AlignVCenter)
         progressMessageBar.layout().addWidget(progress)
-        self.iface.messageBar().pushWidget(
-            progressMessageBar, self.iface.messageBar().INFO)
+        self.iface.messageBar().pushWidget(progressMessageBar, Qgis.Info)
         progress.setValue(0)
 
         # if diffmode, create one layer with feature differences between the
@@ -857,7 +856,7 @@ class Plugin(QObject):
             print("No layers in layer group")
             self.iface.messageBar().pushMessage("Notice",
                                                 "No layers will be shown; deleted the \"" + grp_name + "\" layer group",
-                                                level=QgsMessageBar.WARNING, duration=15)
+                                                level=Qgis.Warning, duration=15)
         elif empty_layers:
             print("Empty layers")
             self.iface.messageBar().pushMessage("Notice",
@@ -866,7 +865,7 @@ class Plugin(QObject):
                                                 "and " +
                                                 str(rev_end)+" for layer(s) " +
                                                 str(empty_layers)+". ",
-                                                level=QgsMessageBar.WARNING, duration=15)
+                                                level=Qgis.Warning, duration=15)
 
     def unresolved_conflicts(self):
         """check for unresolved conflicts, add conflict layers if any"""

@@ -266,18 +266,20 @@ class Plugin(QObject):
         conn_dict = {}
         qs.beginGroup(CONN + '/' + dbname)
         pg_conn_info = None
-        if len(qs.value('service')) != 0:
+        if qs.value('service') :
             conn_dict['service'] = qs.value('service')
             pg_conn_info = "service={}".format(conn_dict['service'])
         else:
-            conn_dict['database'] = qs.value('database')
-            conn_dict['username'] = qs.value('username')
-            conn_dict['host'] = qs.value('host')
-            conn_dict['port'] = qs.value('port')
-            conn_dict['password'] = qs.value('password')
-            pg_conn_info = "dbname='{}' user='{}' host='{}' port='{}' password='{}'".format(qs.value(
-                'database'), qs.value('username'), qs.value('host'), qs.value('port'), qs.value('password'))
-
+            conn_dict['database'] = qs.value('database', dbname)
+            conn_dict['username'] = qs.value('username', "postgres")
+            print("username={}".format(conn_dict['username']))
+            conn_dict['host'] = qs.value('host', "127.0.0.1")
+            conn_dict['port'] = qs.value('port', 5432)
+            conn_dict['password'] = qs.value('password', '')
+            pg_conn_info = "dbname='{}' user='{}' host='{}' port='{}' password='{}'".format(
+                conn_dict['database'], conn_dict['username'], conn_dict['host'],
+                conn_dict['port'], conn_dict['password'])
+            
         return (pg_conn_info, conn_dict)
 
     def selectDatabase(self):
@@ -1153,7 +1155,6 @@ class Plugin(QObject):
 
         # check if schema already exists
         (pg_conn_info_out, conn_dict) = self.get_conn_from_settings(exportDatabase)
-
         conn = psycopg2.connect(pg_conn_info_out)
         cur = conn.cursor()
 
@@ -1183,7 +1184,7 @@ class Plugin(QObject):
                                   new_uri.sql(),
                                   new_uri.keyColumn())
             # TODO: IT'S UGLY
-            if conn_dict.has_key('service'):
+            if 'service' in conn_dict:
                 new_uri = QgsDataSourceUri(' '.join(["service="+conn_dict['service'],
                                                      "key='ogc_fid'",
                                                      new_uri.uri()[new_uri.uri().rfind('srid'):]]))
@@ -1199,7 +1200,6 @@ class Plugin(QObject):
                                                      new_uri.uri()[new_uri.uri().rfind('srid'):]]))
 
             display_name = layer.name()
-            print("replacing ", display_name)
             src = new_uri.uri().replace('()', '')
             layers += [(src, display_name, 'postgres')]
 

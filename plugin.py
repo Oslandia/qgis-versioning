@@ -455,7 +455,8 @@ class Plugin(QObject):
         self.toolbar = self.iface.addToolBar("QGIS-versioning")
         self.toolbar.setVisible(True)
         
-        self.info = self.toolbar.addAction('Versioning : no group selected')
+        self.info = QLabel('Versioning : no group selected')
+        self.toolbar.addWidget(self.info)
 
         # we could have a checkbox to either replace/add layers
 

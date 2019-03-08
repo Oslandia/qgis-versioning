@@ -29,9 +29,6 @@ import psycopg2
 import platform
 import sys
 
-from qgis.gui import QgsMessageBar
-from qgis.utils import showPluginHelp
-
 from PyQt5 import uic
 from PyQt5.QtWidgets import QAction, QDialog, QDialogButtonBox, \
     QFileDialog, QLabel, QLineEdit, QMessageBox, QTableWidget, \
@@ -39,9 +36,12 @@ from PyQt5.QtWidgets import QAction, QDialog, QDialogButtonBox, \
     QCheckBox, QComboBox
 from PyQt5.QtGui import QIcon, QColor, QDesktopServices
 from PyQt5.QtCore import QSettings, QObject, QUrl
+
+from qgis.gui import QgsMessageBar
+from qgis.utils import showPluginHelp
 from qgis.core import QgsCredentials, QgsDataSourceUri, QgsProject, \
     QgsFeatureRequest, QgsWkbTypes, QgsFeature, QgsGeometry, QgsPoint, QgsSymbol, \
-    QgsRuleBasedRenderer, QgsLayerTreeNode
+    QgsRuleBasedRenderer, QgsLayerTreeNode, QgsVectorLayer
 
 from .versioningDB import versioning
 
@@ -414,15 +414,20 @@ class Plugin(QObject):
     def on_legend_click(self, layer):
         "changes menu when user clicks on legend"
 
+        # Node has to be a group to be versionned
         node = self.iface.layerTreeView().currentNode()
-        self.current_layers = self.__get_layers_from_node(node)
+        if node.nodeType() != QgsLayerTreeNode.NodeGroup:
+            self.info.setText("Versioning : No group selected")
+            selection_type, mergeable = (None, False)
+        else:
+            self.current_group = node
+            self.current_layers = self.__get_layers_from_node(node)
+            selection_type, mergeable = self.__compute_selection_type()
 
         # Reset actions visibility
         for act in self.actions:
             act.setVisible(False)
-
-        selection_type, mergeable = self.__compute_selection_type()
-
+            
         selection_type2actions = {
             'unversioned' : ['historize'],
             'versioned' : ['view', 'branch'],
@@ -449,7 +454,6 @@ class Plugin(QObject):
         self.toolbar.setVisible(True)
         
         self.info = self.toolbar.addAction('Versioning : no group selected')
-        self.actions.append(self.info)
 
         # we could have a checkbox to either replace/add layers
 
@@ -550,14 +554,15 @@ class Plugin(QObject):
         
         self.iface.layerTreeView().clicked.disconnect(self.on_legend_click)
 
-    def __new_group(group_name, layers):
+    def __new_group(self, group_name, layers):
         """
         Create new group with given layers. Each layer is a tuple (layer uri, display name, provider)
         """
+
         grp = QgsProject.instance().layerTreeRoot().addGroup(group_name)
         for uri, display_name, provider in layers:
             layer = QgsVectorLayer(uri, display_name, provider)
-            grp.addLayer(QgsProject.instance().addMapLayer(layer, False, True))
+            grp.addLayer(QgsProject.instance().addMapLayer(layer, addToLegend = False))
 
         return grp
 
@@ -636,7 +641,7 @@ class Plugin(QObject):
                                   new_uri.geometryColumn(),
                                   new_uri.sql(),
                                   new_uri.keyColumn())
-            layers += (new_uri.uri().replace('()', ''), layer.name(), 'postgres')
+            layers += [(new_uri.uri().replace('()', ''), layer.name(), 'postgres')]
 
         self.__new_group(branch+' revision head', layers)
             
@@ -765,8 +770,8 @@ class Plugin(QObject):
                 if mem_uri == "Unknown":
                     return
 
-                new_mem_layer = QgsVectorLayer(mem_uri, display_name + '_diff', 'memory')
-                layers += new_mem_layer
+                layers += [(mem_uri, display_name + '_diff', 'memory')]
+                new_mem_layer = QgsVectorLayer(*layers[-1])
 
                 pr = new_mem_layer.dataProvider()
                 source_layer_features = [f for f in tmp_pg_layer.getFeatures()]
@@ -842,7 +847,7 @@ class Plugin(QObject):
                                           new_uri.keyColumn())
 
                     src = new_uri.uri().replace('()', '')
-                    layers += (src, layer.name(), 'postgres')
+                    layers += [(src, layer.name(), 'postgres')]
                 self.__new_group(grp_name, layers)
                 
         self.iface.messageBar().clearWidgets()
@@ -985,7 +990,7 @@ class Plugin(QObject):
 
         versioning.historize(self.pg_conn_info(), schema)
 
-        grp_name = 'trunk revision head'
+        layers = []
         for layer in reversed(self.current_layers):
             new_uri = QgsDataSourceUri(layer.source())
             new_uri.setDataSource(schema+'_trunk_rev_head',
@@ -994,9 +999,10 @@ class Plugin(QObject):
                                   new_uri.sql(),
                                   new_uri.keyColumn())
             src = new_uri.uri().replace('()', '')
-            layers += (src, layer.name(), 'postgres')
-        self.__new_group(grp_name, layers)
-            
+            layers += [(src, layer.name(), 'postgres')]
+
+        self.__new_group('trunk revision head', layers)
+
         self.current_group.parent().takeChild(self.current_group)
         self.current_layers = []
 
@@ -1075,9 +1081,9 @@ class Plugin(QObject):
             display_name = layer.name()
             print("replacing ", display_name)
             geom = '(GEOMETRY)' if uri.geometryColumn() else ''
-            layers += ("dbname=\""+filename+"\"" +
+            layers += [("dbname=\""+filename+"\"" +
                        " key=\"OGC_FID\" table=\""+table+"_view\" "
-                       + geom, display_name, 'spatialite')
+                       + geom, display_name, 'spatialite')]
 
         self.__new_group(grp_name, layers).setExpanded(True)
 
@@ -1196,7 +1202,7 @@ class Plugin(QObject):
             display_name = layer.name()
             print("replacing ", display_name)
             src = new_uri.uri().replace('()', '')
-            layers += (src, display_name, 'postgres')
+            layers += [(src, display_name, 'postgres')]
 
         self.__new_group(working_copy_schema, layers)
         
@@ -1301,7 +1307,7 @@ class Plugin(QObject):
             display_name = layer.name()
             print("replacing ", display_name)
             src = new_uri.uri().replace('()', '')
-            layers += (src, display_name, 'postgres')
+            layers += [(src, display_name, 'postgres')]
         self.__new_group(working_copy_schema, layers)
 
     def commit(self):

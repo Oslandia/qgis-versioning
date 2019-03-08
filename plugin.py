@@ -35,7 +35,7 @@ from PyQt5.QtWidgets import QAction, QDialog, QDialogButtonBox, \
     QTreeView, QTreeWidget, QVBoxLayout, QTableWidgetItem, QProgressBar,\
     QCheckBox, QComboBox
 from PyQt5.QtGui import QIcon, QColor, QDesktopServices
-from PyQt5.QtCore import QSettings, QObject, QUrl
+from PyQt5.QtCore import QSettings, QObject, QUrl, Qt
 
 from qgis.gui import QgsMessageBar
 from qgis.utils import showPluginHelp

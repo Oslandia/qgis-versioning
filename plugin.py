@@ -1055,8 +1055,9 @@ class Plugin(QObject):
             table = uri.schema()+"."+uri.table()
             tables_for_conninfo.append(table)
 
-        filename = QFileDialog.getSaveFileName(self.iface.mainWindow(),
-                                               'Save Versioned Layers As', '.', '*.sqlite')
+        filename, _ = QFileDialog.getSaveFileName(self.iface.mainWindow(),
+                                                  'Save Versioned Layers As', '.', '*.sqlite')
+
         if not filename:
             print("aborted")
             return
@@ -1078,8 +1079,7 @@ class Plugin(QObject):
             uri = QgsDataSourceUri(layer.source())
             table = uri.table()
             display_name = layer.name()
-            print("replacing ", display_name)
-            geom = '(GEOMETRY)' if uri.geometryColumn() else ''
+            geom = '({})'.format(uri.geometryColumn()) if uri.geometryColumn() else ''
             layers += [("dbname=\""+filename+"\"" +
                        " key=\"OGC_FID\" table=\""+table+"_view\" "
                        + geom, display_name, 'spatialite')]

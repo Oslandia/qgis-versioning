@@ -458,12 +458,12 @@ class spVersioning(object):
     
             scur.execute("DELETE FROM views_geometry_columns "
                 "WHERE view_name = '"+table+"_view'")
-            if 'GEOMETRY' in cols:
-                scur.execute("INSERT INTO views_geometry_columns "
-                        "(view_name, view_geometry, view_rowid, "
-                            "f_table_name, f_geometry_column, read_only) "
-                        "VALUES"+"('"+table+"_view', 'geometry', 'rowid', '"
-                        +table+"', 'geometry', 0)")
+
+            if pgeom in cols:
+                scur.execute("""INSERT INTO views_geometry_columns
+                (view_name, view_geometry, view_rowid, 
+                f_table_name, f_geometry_column, read_only)
+                VALUES ('{0}_view', '{1}', 'rowid', '{0}', '{1}', 0)""".format(table, pgeom))
     
             # when we edit something old, we insert and update parent
             scur.execute(

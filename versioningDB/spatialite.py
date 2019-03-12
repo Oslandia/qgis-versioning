@@ -610,7 +610,6 @@ class spVersioning(object):
             [sql] = scur.fetchone()
             sql = sql.replace(table, table+"_diff", 1)
             scur.execute(sql)
-            geom = (sql.find('GEOMETRY') != -1)
             scur.execute("DELETE FROM geometry_columns "
                 "WHERE f_table_name = '"+table+"_diff'")
             scur.execute("""

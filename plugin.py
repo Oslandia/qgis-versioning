@@ -893,8 +893,7 @@ class Plugin(QObject):
             for cflt in unresolved:
                 table = cflt+"_conflicts"
                 if not QgsProject.instance().mapLayersByName(table):
-                    # TODO detect if there is a geometry column
-                    geom = '(GEOMETRY)'  # if uri.geometryColumn() else ''
+                    geom = '({})'.format(uri.geometryColumn()) if uri.geometryColumn() else ''
                     self.iface.addVectorLayer(
                         "dbname=\""+uri.database()+"\"" +
                         " key=\"OGC_FID\" table=\""+table+"\" " +

@@ -49,21 +49,18 @@ gdal_mac_path = "/Library/Frameworks/GDAL.framework/Programs"
 if any(platform.mac_ver()) and gdal_mac_path not in os.environ["PATH"]:
     os.environ["PATH"] += ":"+gdal_mac_path
 
+sql_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "sql")
 
 def historize(pg_conn_info, schema):
     """Create historisation for the given schema"""
     if not schema:
         raise RuntimeError("no schema specified")
+
     pcur = utils.Db(psycopg2.connect(pg_conn_info))
 
-    pcur.execute("""
-        CREATE TABLE {schema}.revisions (
-            rev serial PRIMARY KEY,
-            commit_msg varchar,
-            branch varchar DEFAULT 'trunk',
-            date timestamp DEFAULT current_timestamp,
-            author varchar)
-            """.format(schema=schema))
+    sql = open(os.path.join(sql_path, 'historize.sql'), 'r').read()
+    pcur.execute(sql.format(schema=schema))
+
     pcur.commit()
     pcur.close()
     add_branch(pg_conn_info, schema, 'trunk', 'initial commit')
@@ -121,27 +118,16 @@ def add_branch( pg_conn_info, schema, branch, commit_msg,
                  "WHERE table_schema = '"+schema+"' "
                  "AND table_type = 'BASE TABLE'")
     for [table] in pcur.fetchall():
-        if table == 'revisions':
+        if table in ('revisions', 'versioning_constraints'):
             continue
 
-        try:
-            pkey = utils.pg_pk(pcur, schema, table)
-        except:
-            if 'VERSIONING_NO_PK' in os.environ and os.environ['VERSIONING_NO_PK'] == 'skip':
-                if DEBUG:
-                    print(schema+'.'+table+' has no primary key, skipping')
-            else:
-                raise RuntimeError(schema+'.'+table+' has no primary key')
+        pcur.execute("""ALTER TABLE {schema}.{table}
+        ADD COLUMN {branch}_rev_begin integer REFERENCES {schema}.revisions(rev),
+        ADD COLUMN {branch}_rev_end   integer REFERENCES {schema}.revisions(rev),
+        ADD COLUMN {branch}_parent    integer REFERENCES {schema}.{table}(versioning_hid),
+        ADD COLUMN {branch}_child     integer REFERENCES {schema}.{table}(versioning_hid)""".format(
+            schema=schema, branch=branch, table=table))
 
-        pcur.execute("ALTER TABLE "+schema+"."+table+" "
-            "ADD COLUMN "+branch+"_rev_begin integer "
-            "REFERENCES "+schema+".revisions(rev), "
-            "ADD COLUMN "+branch+"_rev_end   integer "
-            "REFERENCES "+schema+".revisions(rev), "
-            "ADD COLUMN "+branch+"_parent    integer "
-            "REFERENCES "+schema+"."+table+"("+pkey+"),"
-            "ADD COLUMN "+branch+"_child     integer "
-            "REFERENCES "+schema+"."+table+"("+pkey+")")
         createIndex(pcur, schema, table, branch)
 
         if branch == 'trunk':  # initial versioning

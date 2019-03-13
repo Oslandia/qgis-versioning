@@ -1,19 +1,10 @@
-dist: trusty
+language: ruby
 
 services:
-  - postgresql
-
-addons:
-  postgresql: "9.6"
-  apt:
-    packages:
-      - postgresql-9.6-postgis-2.3
+  - docker
 
 before_install:
-  - sudo apt search gdal libspatialite
-  - sudo apt-get install -y gdal-bin python-pyspatialite python-psycopg2 python-pip libspatialite5
+  - docker build . -t qgis-versioning-test
 
 script:
-  - python --version
-  - cd test
-  - python ./tests.py 127.0.0.1 postgres -v
+  - docker run qgis-versioning-test

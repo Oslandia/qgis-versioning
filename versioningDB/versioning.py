@@ -7,7 +7,6 @@ from __future__ import absolute_import
 
 import re
 import os
-from pyspatialite import dbapi2
 import psycopg2
 import platform
 from . import utils
@@ -250,7 +249,6 @@ def rev_view_str(pg_conn_info, schema, table, branch, rev):
         raise RuntimeError("Revision "+str(rev)+" doesn't exist")
 
     select_str = "SELECT * FROM "+schema+"."+table
-    # print "select_str = " + select_str
     where_str = ("("+branch + "_rev_end IS NULL "
                  "OR "+branch+"_rev_end >= "+str(rev) + ") "
                  "AND "+branch+"_rev_begin <= "+str(rev))
@@ -359,8 +357,8 @@ def archive(pg_conn_info, schema, revision_end):
                     )
                     SELECT column_name FROM information_schema.columns WHERE
                     table_schema = '{schema}' AND table_name = '{table}' and ordinal_position <= (SELECT ordinal_position FROM pos)""".format(schema=schema, table=table))
-        lcols = pcur.fetchall()
-        colsall = ', '.join(list(zip(*lcols)[0]))
+
+        colsall = ",".join([i[0] for i in pcur.fetchall()])
         
         pcur.execute("""SELECT EXISTS
                      (SELECT 1 
@@ -387,8 +385,7 @@ def archive(pg_conn_info, schema, revision_end):
             )
             SELECT column_name FROM information_schema.columns WHERE
             table_schema = '{schema}' AND table_name = '{table}' and ordinal_position < (SELECT ordinal_position FROM pos)""".format(schema=schema, table=table))
-            lcols = pcur.fetchall()
-            colswithoutvcols = ', '.join(list(zip(*lcols)[0]))
+            colswithoutvcols = ",".join([i[0] for i in pcur.fetchall()])
             
             pcur.execute("""CREATE VIEW {schemaarc}.{table}_all as (WITH un as (
                         SELECT {colsall} FROM {schema}.{table}

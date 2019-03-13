@@ -1,10 +1,10 @@
-#!/usr/bin/env python2
+#!/usr/bin/env python3
 from __future__ import absolute_import
 import sys
 sys.path.insert(0, '..')
 
 from versioningDB import versioning 
-from pyspatialite import dbapi2
+from sqlite3 import dbapi2
 import psycopg2
 import os
 import shutil
@@ -34,8 +34,8 @@ def test(host, pguser):
     scur = []
     for f in wc: scur.append(versioning.Db( dbapi2.connect( f ) ))
 
-    scur[0].execute("INSERT INTO pipes_view(id, start_node, end_node, GEOMETRY) VALUES ('2','1','2',GeomFromText('LINESTRING(1 1,0 1)',2154))")
-    scur[0].execute("INSERT INTO pipes_view(id, start_node, end_node, GEOMETRY) VALUES ('3','1','2',GeomFromText('LINESTRING(1 -1,0 1)',2154))")
+    scur[0].execute("INSERT INTO pipes_view(id, start_node, end_node, geom) VALUES ('2','1','2',GeomFromText('LINESTRING(1 1,0 1)',2154))")
+    scur[0].execute("INSERT INTO pipes_view(id, start_node, end_node, geom) VALUES ('3','1','2',GeomFromText('LINESTRING(1 -1,0 1)',2154))")
     scur[0].commit()
 
 
@@ -50,9 +50,9 @@ def test(host, pguser):
 
     spversioning0.commit( "commit 2 wc0" )
     scur[0].execute("SELECT OGC_FID,length,trunk_rev_begin,trunk_rev_end,trunk_parent,trunk_child FROM pipes")
-    print '################'
+    print('################')
     for r in scur[0].fetchall():
-        print r
+        print(r)
 
     scur[0].execute("UPDATE pipes_view SET length = 2")
     scur[0].execute("DELETE FROM pipes_view WHERE OGC_FID = 6")
@@ -60,24 +60,24 @@ def test(host, pguser):
     spversioning0.commit( "commit 3 wc0" )
 
     scur[0].execute("SELECT OGC_FID,length,trunk_rev_begin,trunk_rev_end,trunk_parent,trunk_child FROM pipes")
-    print '################'
+    print('################')
     for r in scur[0].fetchall():
-        print r
+        print(r)
 
     spversioning1.update(  )
 
     scur[1].execute("SELECT OGC_FID,length,trunk_rev_begin,trunk_rev_end,trunk_parent,trunk_child FROM pipes_diff")
-    print '################ diff'
+    print('################ diff')
     for r in scur[1].fetchall():
-        print r
+        print(r)
 
     scur[1].execute("SELECT conflict_id FROM pipes_conflicts")
     assert( len(scur[1].fetchall()) == 6 ) # there must be conflicts
 
     scur[1].execute("SELECT conflict_id,origin,action,OGC_FID,trunk_parent,trunk_child FROM pipes_conflicts")
-    print '################'
+    print('################')
     for r in scur[1].fetchall():
-        print r
+        print(r)
 
     scur[1].execute("DELETE FROM pipes_conflicts WHERE origin='theirs' AND conflict_id=1")
     scur[1].commit()
@@ -85,9 +85,9 @@ def test(host, pguser):
     assert( len(scur[1].fetchall()) == 4 ) # there must be two removed entries
 
     scur[1].execute("SELECT conflict_id,origin,action,OGC_FID,trunk_parent,trunk_child FROM pipes_conflicts")
-    print '################'
+    print('################')
     for r in scur[1].fetchall():
-        print r
+        print(r)
 
     scur[1].execute("DELETE FROM pipes_conflicts WHERE origin='mine' AND OGC_FID = 11")
     scur[1].execute("DELETE FROM pipes_conflicts WHERE origin='theirs'")
@@ -97,12 +97,12 @@ def test(host, pguser):
 
 
     scur[1].execute("SELECT OGC_FID,length,trunk_rev_begin,trunk_rev_end,trunk_parent,trunk_child FROM pipes")
-    print '################'
+    print('################')
     for r in scur[1].fetchall():
-        print r
+        print(r)
 
 if __name__ == "__main__":
     if len(sys.argv) != 3:
-        print("Usage: python2 versioning_base_test.py host pguser")
+        print("Usage: python3 versioning_base_test.py host pguser")
     else:
         test(*sys.argv[1:])

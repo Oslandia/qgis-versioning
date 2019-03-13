@@ -9,22 +9,19 @@ SET check_function_bodies = false;
 SET client_min_messages = warning;
 
 --
--- Name: epanet; Type: SCHEMA; Schema: -; Owner: vmo
+-- Name: epanet; Type: SCHEMA; Schema: -
 --
 
 CREATE SCHEMA epanet;
 
 
-ALTER SCHEMA epanet OWNER TO vmo;
-
 --
--- Name: epanet_trunk_rev_head; Type: SCHEMA; Schema: -; Owner: vmo
+-- Name: epanet_trunk_rev_head; Type: SCHEMA; Schema: -
 --
 
 CREATE SCHEMA epanet_trunk_rev_head;
 
 
-ALTER SCHEMA epanet_trunk_rev_head OWNER TO vmo;
 
 --
 -- Name: plpgsql; Type: EXTENSION; Schema: -; Owner: 
@@ -61,7 +58,7 @@ SET default_tablespace = '';
 SET default_with_oids = false;
 
 --
--- Name: junctions; Type: TABLE; Schema: epanet; Owner: vmo; Tablespace: 
+-- Name: junctions; Type: TABLE; Schema: epanet; Tablespace: 
 --
 
 CREATE TABLE junctions (
@@ -78,10 +75,8 @@ CREATE TABLE junctions (
 );
 
 
-ALTER TABLE epanet.junctions OWNER TO vmo;
-
 --
--- Name: junctions_hid_seq; Type: SEQUENCE; Schema: epanet; Owner: vmo
+-- Name: junctions_hid_seq; Type: SEQUENCE; Schema: epanet
 --
 
 CREATE SEQUENCE junctions_hid_seq
@@ -92,17 +87,15 @@ CREATE SEQUENCE junctions_hid_seq
     CACHE 1;
 
 
-ALTER TABLE epanet.junctions_hid_seq OWNER TO vmo;
-
 --
--- Name: junctions_hid_seq; Type: SEQUENCE OWNED BY; Schema: epanet; Owner: vmo
+-- Name: junctions_hid_seq; Type: SEQUENCE OWNED BY; Schema: epanet
 --
 
 ALTER SEQUENCE junctions_hid_seq OWNED BY junctions.hid;
 
 
 --
--- Name: pipes; Type: TABLE; Schema: epanet; Owner: vmo; Tablespace: 
+-- Name: pipes; Type: TABLE; Schema: epanet; Tablespace: 
 --
 
 CREATE TABLE pipes (
@@ -114,7 +107,7 @@ CREATE TABLE pipes (
     roughness double precision,
     minor_loss_coefficient double precision,
     status character varying,
-    geom public.geometry(LineString,2154),
+    GEOMETRY public.geometry(LineString,2154),
     hid integer NOT NULL,
     trunk_rev_begin integer,
     trunk_rev_end integer,
@@ -123,10 +116,8 @@ CREATE TABLE pipes (
 );
 
 
-ALTER TABLE epanet.pipes OWNER TO vmo;
-
 --
--- Name: pipes_hid_seq; Type: SEQUENCE; Schema: epanet; Owner: vmo
+-- Name: pipes_hid_seq; Type: SEQUENCE; Schema: epanet
 --
 
 CREATE SEQUENCE pipes_hid_seq
@@ -137,17 +128,15 @@ CREATE SEQUENCE pipes_hid_seq
     CACHE 1;
 
 
-ALTER TABLE epanet.pipes_hid_seq OWNER TO vmo;
-
 --
--- Name: pipes_hid_seq; Type: SEQUENCE OWNED BY; Schema: epanet; Owner: vmo
+-- Name: pipes_hid_seq; Type: SEQUENCE OWNED BY; Schema: epanet
 --
 
 ALTER SEQUENCE pipes_hid_seq OWNED BY pipes.hid;
 
 
 --
--- Name: revisions; Type: TABLE; Schema: epanet; Owner: vmo; Tablespace: 
+-- Name: revisions; Type: TABLE; Schema: epanet; Tablespace: 
 --
 
 CREATE TABLE revisions (
@@ -159,10 +148,8 @@ CREATE TABLE revisions (
 );
 
 
-ALTER TABLE epanet.revisions OWNER TO vmo;
-
 --
--- Name: revisions_rev_seq; Type: SEQUENCE; Schema: epanet; Owner: vmo
+-- Name: revisions_rev_seq; Type: SEQUENCE; Schema: epanet
 --
 
 CREATE SEQUENCE revisions_rev_seq
@@ -173,10 +160,8 @@ CREATE SEQUENCE revisions_rev_seq
     CACHE 1;
 
 
-ALTER TABLE epanet.revisions_rev_seq OWNER TO vmo;
-
 --
--- Name: revisions_rev_seq; Type: SEQUENCE OWNED BY; Schema: epanet; Owner: vmo
+-- Name: revisions_rev_seq; Type: SEQUENCE OWNED BY; Schema: epanet
 --
 
 ALTER SEQUENCE revisions_rev_seq OWNED BY revisions.rev;
@@ -185,50 +170,46 @@ ALTER SEQUENCE revisions_rev_seq OWNED BY revisions.rev;
 SET search_path = epanet_trunk_rev_head, pg_catalog;
 
 --
--- Name: junctions; Type: VIEW; Schema: epanet_trunk_rev_head; Owner: vmo
+-- Name: junctions; Type: VIEW; Schema: epanet_trunk_rev_head
 --
 
 CREATE VIEW junctions AS
     SELECT junctions.hid, junctions.id, junctions.elevation, junctions.base_demand_flow, junctions.demand_pattern_id, junctions.geom FROM epanet.junctions WHERE ((junctions.trunk_rev_end IS NULL) AND (junctions.trunk_rev_begin IS NOT NULL));
 
 
-ALTER TABLE epanet_trunk_rev_head.junctions OWNER TO vmo;
-
 --
--- Name: pipes; Type: VIEW; Schema: epanet_trunk_rev_head; Owner: vmo
+-- Name: pipes; Type: VIEW; Schema: epanet_trunk_rev_head
 --
 
 CREATE VIEW pipes AS
-    SELECT pipes.hid, pipes.id, pipes.start_node, pipes.end_node, pipes.length, pipes.diameter, pipes.roughness, pipes.minor_loss_coefficient, pipes.status, pipes.geom FROM epanet.pipes WHERE ((pipes.trunk_rev_end IS NULL) AND (pipes.trunk_rev_begin IS NOT NULL));
+    SELECT pipes.hid, pipes.id, pipes.start_node, pipes.end_node, pipes.length, pipes.diameter, pipes.roughness, pipes.minor_loss_coefficient, pipes.status, pipes.GEOMETRY FROM epanet.pipes WHERE ((pipes.trunk_rev_end IS NULL) AND (pipes.trunk_rev_begin IS NOT NULL));
 
-
-ALTER TABLE epanet_trunk_rev_head.pipes OWNER TO vmo;
 
 SET search_path = epanet, pg_catalog;
 
 --
--- Name: hid; Type: DEFAULT; Schema: epanet; Owner: vmo
+-- Name: hid; Type: DEFAULT; Schema: epanet
 --
 
 ALTER TABLE ONLY junctions ALTER COLUMN hid SET DEFAULT nextval('junctions_hid_seq'::regclass);
 
 
 --
--- Name: hid; Type: DEFAULT; Schema: epanet; Owner: vmo
+-- Name: hid; Type: DEFAULT; Schema: epanet
 --
 
 ALTER TABLE ONLY pipes ALTER COLUMN hid SET DEFAULT nextval('pipes_hid_seq'::regclass);
 
 
 --
--- Name: rev; Type: DEFAULT; Schema: epanet; Owner: vmo
+-- Name: rev; Type: DEFAULT; Schema: epanet
 --
 
 ALTER TABLE ONLY revisions ALTER COLUMN rev SET DEFAULT nextval('revisions_rev_seq'::regclass);
 
 
 --
--- Data for Name: junctions; Type: TABLE DATA; Schema: epanet; Owner: vmo
+-- Data for Name: junctions; Type: TABLE DATA; Schema: epanet
 --
 
 COPY junctions (id, elevation, base_demand_flow, demand_pattern_id, geom, hid, trunk_rev_begin, trunk_rev_end, trunk_parent, trunk_child) FROM stdin;
@@ -238,17 +219,17 @@ COPY junctions (id, elevation, base_demand_flow, demand_pattern_id, geom, hid, t
 
 
 --
--- Name: junctions_hid_seq; Type: SEQUENCE SET; Schema: epanet; Owner: vmo
+-- Name: junctions_hid_seq; Type: SEQUENCE SET; Schema: epanet
 --
 
 SELECT pg_catalog.setval('junctions_hid_seq', 2, true);
 
 
 --
--- Data for Name: pipes; Type: TABLE DATA; Schema: epanet; Owner: vmo
+-- Data for Name: pipes; Type: TABLE DATA; Schema: epanet
 --
 
-COPY pipes (id, start_node, end_node, length, diameter, roughness, minor_loss_coefficient, status, geom, hid, trunk_rev_begin, trunk_rev_end, trunk_parent, trunk_child) FROM stdin;
+COPY pipes (id, start_node, end_node, length, diameter, roughness, minor_loss_coefficient, status, GEOMETRY, hid, trunk_rev_begin, trunk_rev_end, trunk_parent, trunk_child) FROM stdin;
 4	2	3	\N	\N	\N	\N	\N	01020000206A08000002000000B411C210B508D9BF1B0E49744D1DE53F9C84E785AEE3E53F4EA96C73A15FDDBF	4	3	\N	\N	\N
 0	0	1	1	2	\N	\N	\N	01020000206A08000002000000BC139FE342F9DC3F56F191C62EFEE3BF2276308E5E83E1BF541DDC72A203D83F	5	3	\N	1	\N
 0	0	1	1	2	\N	\N	\N	01020000206A08000002000000F8F3853CA84AF83FA6A0C22CC87CD83FF0E70B795095E03F2AA8300B321FF63F	3	2	2	1	5
@@ -258,14 +239,14 @@ COPY pipes (id, start_node, end_node, length, diameter, roughness, minor_loss_co
 
 
 --
--- Name: pipes_hid_seq; Type: SEQUENCE SET; Schema: epanet; Owner: vmo
+-- Name: pipes_hid_seq; Type: SEQUENCE SET; Schema: epanet
 --
 
 SELECT pg_catalog.setval('pipes_hid_seq', 5, true);
 
 
 --
--- Data for Name: revisions; Type: TABLE DATA; Schema: epanet; Owner: vmo
+-- Data for Name: revisions; Type: TABLE DATA; Schema: epanet
 --
 
 COPY revisions (rev, commit_msg, branch, date, author) FROM stdin;
@@ -277,7 +258,7 @@ COPY revisions (rev, commit_msg, branch, date, author) FROM stdin;
 
 
 --
--- Name: revisions_rev_seq; Type: SEQUENCE SET; Schema: epanet; Owner: vmo
+-- Name: revisions_rev_seq; Type: SEQUENCE SET; Schema: epanet
 --
 
 SELECT pg_catalog.setval('revisions_rev_seq', 1, false);
@@ -286,7 +267,7 @@ SELECT pg_catalog.setval('revisions_rev_seq', 1, false);
 SET search_path = public, pg_catalog;
 
 --
--- Data for Name: spatial_ref_sys; Type: TABLE DATA; Schema: public; Owner: vmo
+-- Data for Name: spatial_ref_sys; Type: TABLE DATA; Schema: public
 --
 
 COPY spatial_ref_sys (srid, auth_name, auth_srid, srtext, proj4text) FROM stdin;
@@ -296,7 +277,7 @@ COPY spatial_ref_sys (srid, auth_name, auth_srid, srtext, proj4text) FROM stdin;
 SET search_path = epanet, pg_catalog;
 
 --
--- Name: junctions_pkey; Type: CONSTRAINT; Schema: epanet; Owner: vmo; Tablespace: 
+-- Name: junctions_pkey; Type: CONSTRAINT; Schema: epanet; Tablespace: 
 --
 
 ALTER TABLE ONLY junctions
@@ -304,7 +285,7 @@ ALTER TABLE ONLY junctions
 
 
 --
--- Name: pipes_pkey; Type: CONSTRAINT; Schema: epanet; Owner: vmo; Tablespace: 
+-- Name: pipes_pkey; Type: CONSTRAINT; Schema: epanet; Tablespace: 
 --
 
 ALTER TABLE ONLY pipes
@@ -312,7 +293,7 @@ ALTER TABLE ONLY pipes
 
 
 --
--- Name: revisions_pkey; Type: CONSTRAINT; Schema: epanet; Owner: vmo; Tablespace: 
+-- Name: revisions_pkey; Type: CONSTRAINT; Schema: epanet; Tablespace: 
 --
 
 ALTER TABLE ONLY revisions
@@ -320,7 +301,7 @@ ALTER TABLE ONLY revisions
 
 
 --
--- Name: junctions_trunk_child_fkey; Type: FK CONSTRAINT; Schema: epanet; Owner: vmo
+-- Name: junctions_trunk_child_fkey; Type: FK CONSTRAINT; Schema: epanet
 --
 
 ALTER TABLE ONLY junctions
@@ -328,7 +309,7 @@ ALTER TABLE ONLY junctions
 
 
 --
--- Name: junctions_trunk_parent_fkey; Type: FK CONSTRAINT; Schema: epanet; Owner: vmo
+-- Name: junctions_trunk_parent_fkey; Type: FK CONSTRAINT; Schema: epanet
 --
 
 ALTER TABLE ONLY junctions
@@ -336,7 +317,7 @@ ALTER TABLE ONLY junctions
 
 
 --
--- Name: junctions_trunk_rev_begin_fkey; Type: FK CONSTRAINT; Schema: epanet; Owner: vmo
+-- Name: junctions_trunk_rev_begin_fkey; Type: FK CONSTRAINT; Schema: epanet
 --
 
 ALTER TABLE ONLY junctions
@@ -344,7 +325,7 @@ ALTER TABLE ONLY junctions
 
 
 --
--- Name: junctions_trunk_rev_end_fkey; Type: FK CONSTRAINT; Schema: epanet; Owner: vmo
+-- Name: junctions_trunk_rev_end_fkey; Type: FK CONSTRAINT; Schema: epanet
 --
 
 ALTER TABLE ONLY junctions
@@ -352,7 +333,7 @@ ALTER TABLE ONLY junctions
 
 
 --
--- Name: pipes_trunk_child_fkey; Type: FK CONSTRAINT; Schema: epanet; Owner: vmo
+-- Name: pipes_trunk_child_fkey; Type: FK CONSTRAINT; Schema: epanet
 --
 
 ALTER TABLE ONLY pipes
@@ -360,7 +341,7 @@ ALTER TABLE ONLY pipes
 
 
 --
--- Name: pipes_trunk_parent_fkey; Type: FK CONSTRAINT; Schema: epanet; Owner: vmo
+-- Name: pipes_trunk_parent_fkey; Type: FK CONSTRAINT; Schema: epanet
 --
 
 ALTER TABLE ONLY pipes
@@ -368,7 +349,7 @@ ALTER TABLE ONLY pipes
 
 
 --
--- Name: pipes_trunk_rev_begin_fkey; Type: FK CONSTRAINT; Schema: epanet; Owner: vmo
+-- Name: pipes_trunk_rev_begin_fkey; Type: FK CONSTRAINT; Schema: epanet
 --
 
 ALTER TABLE ONLY pipes
@@ -376,7 +357,7 @@ ALTER TABLE ONLY pipes
 
 
 --
--- Name: pipes_trunk_rev_end_fkey; Type: FK CONSTRAINT; Schema: epanet; Owner: vmo
+-- Name: pipes_trunk_rev_end_fkey; Type: FK CONSTRAINT; Schema: epanet
 --
 
 ALTER TABLE ONLY pipes

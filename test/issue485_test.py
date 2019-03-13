@@ -1,10 +1,10 @@
-#!/usr/bin/env python2
+#!/usr/bin/env python3
 from __future__ import absolute_import
 import sys
 sys.path.insert(0, '..')
 
 from versioningDB import versioning 
-from pyspatialite import dbapi2
+from sqlite3 import dbapi2
 import psycopg2
 import os
 import shutil
@@ -103,11 +103,11 @@ def test(host, pguser):
     ##assert( len(pcur.fetchall()) == 1 )
 
     select_and_where_str =  versioning.rev_view_str( pg_conn_info, 'epanet', 'junctions','mybranch', 2)
-    print select_and_where_str[0] + " WHERE " + select_and_where_str[1]
+    print(select_and_where_str[0] + " WHERE " + select_and_where_str[1])
     pcur.execute(select_and_where_str[0] + " WHERE " + select_and_where_str[1])
     assert( len(pcur.fetchall()) == 2 )
     select_and_where_str =  versioning.rev_view_str( pg_conn_info, 'epanet', 'pipes','mybranch', 2)
-    print select_and_where_str[0] + " WHERE " + select_and_where_str[1]
+    print(select_and_where_str[0] + " WHERE " + select_and_where_str[1])
     pcur.execute(select_and_where_str[0] + " WHERE " + select_and_where_str[1])
     assert( len(pcur.fetchall()) == 1 )
 
@@ -132,7 +132,7 @@ def test(host, pguser):
 
     pcur.execute("SELECT ST_AsText(geometry), ST_AsText(geometry_schematic) FROM epanet_trunk_rev_head.junctions ORDER BY hid DESC")
     res = pcur.fetchall()
-    for r in res: print r
+    for r in res: print(r)
     assert( res[0][0] == 'POINT(3 3)' )
     assert( res[0][1] == 'POLYGON((-1 -1,1 -1,1 1,-1 1,-1 -1))' )
 
@@ -143,7 +143,7 @@ def test(host, pguser):
 
     pcur = versioning.Db(psycopg2.connect(pg_conn_info))
     pcur.execute("SELECT hid, trunk_rev_begin, trunk_rev_end, b1_rev_begin, b1_rev_end FROM epanet.junctions ORDER BY hid")
-    for r in pcur.fetchall(): print r
+    for r in pcur.fetchall(): print(r)
     pcur.close()
 
     # edit a little with a new wc
@@ -154,20 +154,20 @@ def test(host, pguser):
     scur.execute("UPDATE junctions_view SET GEOMETRY = GeometryFromText('POINT(4 4)',2154) WHERE OGC_FID = 3")
     scur.commit()
     scur.execute("PRAGMA table_info(junctions_view)")
-    print "-----------------"
-    for r in scur.fetchall(): print r
+    print("-----------------")
+    for r in scur.fetchall(): print(r)
     scur.close()
 
     spversioning.commit( 'moved a junction')
 
     pcur = versioning.Db(psycopg2.connect(pg_conn_info))
     pcur.execute("SELECT hid, trunk_rev_begin, trunk_rev_end, b1_rev_begin, b1_rev_end FROM epanet.junctions ORDER BY hid")
-    print "-----------------"
-    for r in pcur.fetchall(): print r
+    print("-----------------")
+    for r in pcur.fetchall(): print(r)
     pcur.close()
 
 if __name__ == "__main__":
     if len(sys.argv) != 3:
-        print("Usage: python2 versioning_base_test.py host pguser")
+        print("Usage: python3 versioning_base_test.py host pguser")
     else:
         test(*sys.argv[1:])

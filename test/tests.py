@@ -24,7 +24,7 @@ def test(host, pguser, verbose=True):
         if child.returncode:
             sys.stdout.write("failed\n")
             if verbose:
-                sys.stdout.write(err)
+                sys.stdout.write(err.decode("utf-8"))
             failed += 1
         else:
             sys.stdout.write("ok\n")
@@ -41,7 +41,7 @@ def test(host, pguser, verbose=True):
 
 if __name__=="__main__":
     if len(sys.argv) <= 2 or len(sys.argv) > 4:
-        print("Usage: python2 tests.py HOST PGUSER [-v]")
+        print("Usage: python3 tests.py HOST PGUSER [-v]")
         exit(0)
         
     verbose = False

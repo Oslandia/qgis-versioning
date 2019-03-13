@@ -1,10 +1,10 @@
-#!/usr/bin/env python2
+#!/usr/bin/env python3
 from __future__ import absolute_import
 import sys
 sys.path.insert(0, '..')
 
 from versioningDB import versioning 
-from pyspatialite import dbapi2
+from sqlite3 import dbapi2
 import psycopg2
 import os
 import shutil
@@ -104,11 +104,11 @@ def test(host, pguser):
     ##assert( len(pcur.fetchall()) == 1 )
 
     select_and_where_str =  versioning.rev_view_str( pg_conn_info, 'epanet', 'junctions','mybranch', 2)
-    #print select_and_where_str[0] + " WHERE " + select_and_where_str[1]
+    #print(select_and_where_str[0] + " WHERE " + select_and_where_str[1])
     pcur.execute(select_and_where_str[0] + " WHERE " + select_and_where_str[1])
     assert( len(pcur.fetchall()) == 2 )
     select_and_where_str =  versioning.rev_view_str( pg_conn_info, 'epanet', 'pipes','mybranch', 2)
-    #print select_and_where_str[0] + " WHERE " + select_and_where_str[1]
+    #print(select_and_where_str[0] + " WHERE " + select_and_where_str[1])
     pcur.execute(select_and_where_str[0] + " WHERE " + select_and_where_str[1])
     assert( len(pcur.fetchall()) == 1 )
 
@@ -134,13 +134,13 @@ def test(host, pguser):
 
     pcur.execute("SELECT ST_AsText(geometry), ST_AsText(geometry_schematic) FROM epanet_trunk_rev_head.junctions")
     res = pcur.fetchall()
-    for r in res: print r
+    for r in res: print(r)
     assert( res[0][0] == 'POINT(3 3)' )
     assert( res[1][1] == 'POLYGON((0 0,2 0,2 2,0 2,0 0))' )
     pcur.close()
 
 if __name__ == "__main__":
     if len(sys.argv) != 3:
-        print("Usage: python2 versioning_base_test.py host pguser")
+        print("Usage: python3 versioning_base_test.py host pguser")
     else:
         test(*sys.argv[1:])

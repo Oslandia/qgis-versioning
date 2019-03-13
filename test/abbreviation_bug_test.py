@@ -1,10 +1,10 @@
-#!/usr/bin/env python2
+#!/usr/bin/env python3
 from __future__ import absolute_import
 import sys
 sys.path.insert(0, '..')
 
 from versioningDB import versioning
-from pyspatialite import dbapi2
+from sqlite3 import dbapi2
 import psycopg2
 import os
 import shutil
@@ -48,6 +48,8 @@ def test(host, pguser):
     assert( os.path.isfile(sqlite_test_filename) and "sqlite file must exist at this point" )
 
     scon = dbapi2.connect(sqlite_test_filename)
+    scon.enable_load_extension(True)
+    scon.execute("SELECT load_extension('mod_spatialite')")
     scur = scon.cursor()
     scur.execute("SELECT * from junctions")
     for rec in scur:
@@ -56,21 +58,21 @@ def test(host, pguser):
 
     scur.execute("update junctions_view set id='this_is_another_edited_very_long_name_that should_be_trunctated_if_buggy' where ogc_fid > 8")
 
-    scur.execute("insert into junctions_view(id, elevation, geometry) select 'newly inserted with long name', elevation, geometry from junctions_view where ogc_fid=4")
+    scur.execute("insert into junctions_view(id, elevation, geom) select 'newly inserted with long name', elevation, geom from junctions_view where ogc_fid=4")
     scon.commit()
 
     spversioning.commit('a commit msg')
 
     pcur.execute("select jid, id from epanet_trunk_rev_head.junctions")
     for row in pcur:
-        print row
+        print(row)
         if row[0] > 8:
             assert row[1].find('this_is_another_edited_very_long_name_that should_be_trunctated_if_buggy') != -1\
                 or row[1].find('newly inserted with long name') != -1
 
 if __name__ == "__main__":
     if len(sys.argv) != 3:
-        print("Usage: python2 versioning_base_test.py host pguser")
+        print("Usage: python3 versioning_base_test.py host pguser")
     else:
         test(*sys.argv[1:])
 

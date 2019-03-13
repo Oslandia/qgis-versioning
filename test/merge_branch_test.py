@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 
-#!/usr/bin/env python2
+#!/usr/bin/env python3
 from __future__ import absolute_import
 import sys
 sys.path.insert(0, '..')
@@ -69,6 +69,6 @@ def test(host, pguser):
 
 if __name__ == "__main__":
     if len(sys.argv) != 3:
-        print("Usage: python2 merge_branch_test.py host pguser")
+        print("Usage: python3 merge_branch_test.py host pguser")
     else:
         test(*sys.argv[1:])

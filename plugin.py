@@ -29,19 +29,19 @@ import psycopg2
 import platform
 import sys
 
+from PyQt5 import uic
+from PyQt5.QtWidgets import QAction, QDialog, QDialogButtonBox, \
+    QFileDialog, QLabel, QLineEdit, QMessageBox, QTableWidget, \
+    QTreeView, QTreeWidget, QVBoxLayout, QTableWidgetItem, QProgressBar,\
+    QCheckBox, QComboBox
+from PyQt5.QtGui import QIcon, QColor, QDesktopServices
+from PyQt5.QtCore import QSettings, QObject, QUrl, Qt
+
 from qgis.gui import QgsMessageBar
 from qgis.utils import showPluginHelp
-
-from PyQt4 import uic
-from PyQt4.QtGui import QAction, QDialog, QDialogButtonBox, \
-    QFileDialog, QIcon, QLabel, QLineEdit, QMessageBox, QTableWidget, \
-    QTreeView, QTreeWidget, QVBoxLayout, QTableWidgetItem, QColor, QProgressBar,\
-    QCheckBox, QComboBox, QDesktopServices
-from PyQt4.QtCore import QSettings
-from qgis.core import QgsCredentials, QgsDataSourceURI, QgsMapLayerRegistry, \
-    QgsFeatureRequest, QGis, QgsFeature, QgsGeometry, QgsPoint, QgsSymbolV2, \
-    QgsRuleBasedRendererV2
-from PyQt4.QtCore import *
+from qgis.core import QgsCredentials, QgsDataSourceUri, QgsProject, \
+    QgsFeatureRequest, QgsWkbTypes, QgsFeature, QgsGeometry, QgsPoint, QgsSymbol, \
+    QgsRuleBasedRenderer, QgsLayerTreeNode, QgsVectorLayer, Qgis
 
 from .versioningDB import versioning
 
@@ -90,21 +90,13 @@ class Plugin(QObject):
         self.q_view_dlg = uic.loadUi(self.plugin_dir+"/revision_dialog.ui")
 
         self.current_layers = []
+        self.toolbar = None
         self.actions = []
         self._pg_conn_info = ''
-        self.current_group_idx = -1
-        self.info = QLabel()
+        self.current_group = None
+        self.info = None
 
-        # this is not really nice since this is hidden in the interface
-        # but nothing else is available to get a selected group in the legend
-        self.legend = self.iface.mainWindow().findChild(QTreeWidget,
-                                                        'theMapLegend')
-        if self.legend:  # qgis 2.2
-            self.legend.itemClicked.connect(self.on_legend_click)
-            self.legend.itemChanged.connect(self.on_legend_click)
-        else:  # qgis 2.4
-            self.legend = self.iface.mainWindow().findChild(QTreeView, 'theLayerTreeView')
-            self.legend.clicked.connect(self.on_legend_click)
+        self.iface.layerTreeView().clicked.connect(self.on_legend_click)
 
         self.versioning = None
 
@@ -116,7 +108,7 @@ class Plugin(QObject):
         revisions != 2, then it is unchecked and disabled.
         Intended use in : versioning.view
         '''
-        # print "in enable_diffmode"
+        # print("in enable_diffmode")
         nb_checked_revs = 0
         for i in range(self.q_view_dlg.tblw.rowCount()):
             # check if tblw.item(0,0) is not None (bug with Qt slots ?)
@@ -137,23 +129,23 @@ class Plugin(QObject):
         Both revisions must be on the same branch for comparison to happen.  If
         that is not the case, branch names of the revision items are highlighted.
         '''
-        # print "in check_branches"
+        # print("in check_branches")
         if self.q_view_dlg.diffmode_chk.isChecked():
-            # print "Checkbox is checked"
+            # print("Checkbox is checked")
             branches = []
             indexes = []
             for i in range(self.q_view_dlg.tblw.rowCount()):
                 if self.q_view_dlg.tblw.item(i, 0).checkState():
                     branches.append(self.q_view_dlg.tblw.item(i, 3).text())
                     indexes.append(i)
-            # print "Compared branches are " + branches[0] + ", " + branches[1]
+            # print("Compared branches are " + branches[0] + ", " + branches[1])
 
             if branches[0] != branches[1]:
-                print "Branches are not equal"
+                print("Branches are not equal")
                 self.q_view_dlg.diffmode_chk.setCheckState(Qt.Unchecked)
                 self.iface.messageBar().pushMessage("Warning",
                                                     "Selected revisions cannot be compared because they are not on "
-                                                    "the same branch.", level=QgsMessageBar.WARNING, duration=5)
+                                                    "the same branch.", level=Qgis.Warning, duration=5)
                 # Highlight branch items in table
                 # Ideally, find a way to temporarily highlight
                 self.q_view_dlg.tblw.item(
@@ -170,29 +162,29 @@ class Plugin(QObject):
         Intended use in : versioning.view
         '''
         mem_uri = 'Unknown'
-        srid = str(QgsDataSourceURI(pg_layer.source()).srid())
-        if pg_layer.wkbType() == QGis.WKBPoint:
-            # print "Layer \"" + pg_layer.name()+ "\" is a point layer"
+        srid = str(QgsDataSourceUri(pg_layer.source()).srid())
+        if pg_layer.wkbType() == QgsWkbTypes.Point:
+            # print("Layer \"" + pg_layer.name()+ "\" is a point layer")
             mem_uri = "Point?crs=epsg:" + srid + "&" + \
                 versioning.mem_field_names_types(pg_layer) + "&index=yes"
-        if pg_layer.wkbType() == QGis.WKBLineString:
-            # print "Layer \"" + pg_layer.name()+ "\" is a linestring layer"
+        if pg_layer.wkbType() == QgsWkbTypes.LineString:
+            # print("Layer \"" + pg_layer.name()+ "\" is a linestring layer")
             mem_uri = "LineString?crs=epsg:" + srid + "&" + \
                 versioning.mem_field_names_types(pg_layer) + "&index=yes"
-        if pg_layer.wkbType() == QGis.WKBPolygon:
-            # print "Layer \"" + pg_layer.name()+ "\" is a polygon layer"
+        if pg_layer.wkbType() == QgsWkbTypes.Polygon:
+            # print("Layer \"" + pg_layer.name()+ "\" is a polygon layer")
             mem_uri = "Polygon?crs=epsg:" + srid + "&" + \
                 versioning.mem_field_names_types(pg_layer) + "&index=yes"
-        if pg_layer.wkbType() == QGis.WKBMultiPoint:
-            # print "Layer \"" + pg_layer.name()+ "\" is a multi-point layer"
+        if pg_layer.wkbType() == QgsWkbTypes.MultiPoint:
+            # print("Layer \"" + pg_layer.name()+ "\" is a multi-point layer")
             mem_uri = "MultiPoint?crs=epsg:" + srid + "&" + \
                 versioning.mem_field_names_types(pg_layer) + "&index=yes"
-        if pg_layer.wkbType() == QGis.WKBMultiLineString:
-            # print "Layer \"" + pg_layer.name()+ "\" is a multi-linestring layer"
+        if pg_layer.wkbType() == QgsWkbTypes.MultiLineString:
+            # print("Layer \"" + pg_layer.name()+ "\" is a multi-linestring layer")
             mem_uri = "MultiLineString?crs=epsg:" + srid + "&" + \
                 versioning.mem_field_names_types(pg_layer) + "&index=yes"
-        if pg_layer.wkbType() == QGis.WKBMultiPolygon:
-            # print "Layer \"" + pg_layer.name()+ "\" is a multi-polygon layer"
+        if pg_layer.wkbType() == QgsWkbTypes.MultiPolygon:
+            # print("Layer \"" + pg_layer.name()+ "\" is a multi-polygon layer")
             mem_uri = "MultiPolygon?crs=epsg:" + srid + "&" + \
                 versioning.mem_field_names_types(pg_layer) + "&index=yes"
         return mem_uri
@@ -206,9 +198,9 @@ class Plugin(QObject):
             # We then request credentials if necessary
 
             conn_info = ''
-            for layer in self.iface.legendInterface().layers():
+            for layer in QgsProject.instance().mapLayers().values():
                 if layer.providerType() == "postgres":
-                    cni = QgsDataSourceURI(layer.source()).connectionInfo()
+                    cni = QgsDataSourceUri(layer.source()).connectionInfo()
                     if not conn_info:
                         conn_info = cni
                     elif conn_info != cni:
@@ -216,14 +208,14 @@ class Plugin(QObject):
             if conn_info == 'heterogeneous':
                 assert(False)  # TODO request connection
 
-            uri = QgsDataSourceURI(conn_info)
+            uri = QgsDataSourceUri(conn_info)
             conn = None
             try:
                 conn = psycopg2.connect(conn_info)
             except:
                 conn = None
             if not conn:
-                # print "Case when the pass/user are not saved in the project"
+                # print("Case when the pass/user are not saved in the project")
                 (success, user, passwd) = QgsCredentials.instance().get(
                     conn_info, None, None)
                 if success:
@@ -237,14 +229,14 @@ class Plugin(QObject):
     def get_pg_users_list(self):
         # get list of pg users to populate combobox used in commit msg dialog
         pg_users_list = versioning.get_pg_users_list(self.pg_conn_info())
-        # print "pg_users_list = " + str(pg_users_list)
+        # print("pg_users_list = " + str(pg_users_list))
         self.q_commit_msg_dlg.pg_users_combobox.addItems(pg_users_list)
 
     def is_pgDistant(self, layer):
         if layer.providerType() != 'postgres':
             return False
 
-        uri = QgsDataSourceURI(layer.source())
+        uri = QgsDataSourceUri(layer.source())
         con = psycopg2.connect(self.get_conn_from_uri(uri))
         cur = con.cursor()
         cur.execute("""SELECT table_name FROM information_schema.tables WHERE table_schema = '{schema}' and table_name='wcs_con'""".format(
@@ -274,18 +266,20 @@ class Plugin(QObject):
         conn_dict = {}
         qs.beginGroup(CONN + '/' + dbname)
         pg_conn_info = None
-        if len(qs.value('service')) != 0:
+        if qs.value('service') :
             conn_dict['service'] = qs.value('service')
             pg_conn_info = "service={}".format(conn_dict['service'])
         else:
-            conn_dict['database'] = qs.value('database')
-            conn_dict['username'] = qs.value('username')
-            conn_dict['host'] = qs.value('host')
-            conn_dict['port'] = qs.value('port')
-            conn_dict['password'] = qs.value('password')
-            pg_conn_info = "dbname='{}' user='{}' host='{}' port='{}' password='{}'".format(qs.value(
-                'database'), qs.value('username'), qs.value('host'), qs.value('port'), qs.value('password'))
-
+            conn_dict['database'] = qs.value('database', dbname)
+            conn_dict['username'] = qs.value('username', "postgres")
+            print("username={}".format(conn_dict['username']))
+            conn_dict['host'] = qs.value('host', "127.0.0.1")
+            conn_dict['port'] = qs.value('port', 5432)
+            conn_dict['password'] = qs.value('password', '')
+            pg_conn_info = "dbname='{}' user='{}' host='{}' port='{}' password='{}'".format(
+                conn_dict['database'], conn_dict['username'], conn_dict['host'],
+                conn_dict['port'], conn_dict['password'])
+            
         return (pg_conn_info, conn_dict)
 
     def selectDatabase(self):
@@ -312,86 +306,50 @@ class Plugin(QObject):
 
         return connectionBox.currentText()
 
-    def on_legend_click(self, current, column=0):
-        "changes menu when user clicks on legend"
-        self.current_group_idx = -1
-        name = ''
-        self.current_layers = []
-        self.info.setText('Versioning : no group selected')
-        for act in self.actions:
-            if act.text() in ['checkout',
-                              'update',
-                              'commit',
-                              'view',
-                              'branch',
-                              'historize',
-                              'archive',
-                              'merge']:
-                act.setVisible(False)
-        if current:
-            try:  # qgis 2.2
-                name = current.text(0)
-            except:  # qgis 2.4
-                name = current.data()
-        # we could look if we have something in selected layers
-        # but we prefer impose grouping, otherwise it'll be easy to make errors
 
-        # need to get all layers including subgroups
-        rel_map = {}
-        for grp, lay in self.iface.legendInterface().groupLayerRelationship():
-            rel_map[grp] = lay
+    def __get_layers_from_node(self, node):
+        """
+        Recursively get layers from given node and return them
+        """
 
-        if not name or name not in rel_map:  # not a group
-            return
-        # if group is empty
-        if not(rel_map[name]):
-            self.info.setText('Versioning : empty group')
-            return
+        if node.nodeType() == QgsLayerTreeNode.NodeLayer :
+            return [node.layer()]
+        
+        else :
+            nodes = []
+            for child in node.children():
+                nodes += self.__get_layers_from_node(child)
 
-        group_idx = [i for i, x in
-                     enumerate(self.iface.legendInterface().groups()) if x == name]
-        if len(group_idx) != 1:
-            self.info.setText(
-                "Versioning : more than one group with this name")
-            self.current_layers = []
-            return
-        [self.current_group_idx] = group_idx
+            return nodes
 
-        replaced = True
-        while replaced:
-            replaced = False
-            for i, item in enumerate(rel_map[name]):
-                if item in rel_map:
-                    rel_map[name][i:i+1] = rel_map[item]
-                    replaced = True
+    def __compute_selection_type(self):
+        """
+        Compute and return a tuple (selection type, mergeable)
+        """
 
-        self.current_layers = rel_map[name]
         # we should check that the selection is homogeneous
         previous_conn = ()
-        for layer_id in self.current_layers:
-            layer = QgsMapLayerRegistry.instance().mapLayer(layer_id)
-            uri = QgsDataSourceURI(layer.source())
+        for layer in self.current_layers:
+            uri = QgsDataSourceUri(layer.source())
             if previous_conn:
                 if (uri.database(), uri.schema()) != previous_conn:
                     self.current_layers = []
                     self.info.setText(
                         "Versioning : layers don't share db and schema")
-                    return
+                    return (None, None)
             else:
                 previous_conn = (uri.database(), uri.schema())
 
         if not self.current_layers:
-            return
+            return (None, None)
 
         if not len(previous_conn[0]):
             self.current_layers = []
             self.info.setText("Versioning : not versionable")
-            return
+            return (None, None)
 
-        layer = QgsMapLayerRegistry.instance().mapLayer(
-            self.current_layers[0])
-        uri = QgsDataSourceURI(layer.source())
-        selection_type = ''
+        layer = self.current_layers[0]
+        uri = QgsDataSourceUri(layer.source())
         if layer.providerType() == "spatialite":
             rev = 0
             try:
@@ -403,14 +361,13 @@ class Plugin(QObject):
                 self.current_layers = []
                 self.info.setText(
                     "Versioning : the selected group is not a working copy")
-                return
-            # We can split on "/" irrespective of OS because QgsDataSourceURI
+                return (None, None)
+            # We can split on "/" irrespective of OS because QgsDataSourceUri
             # normalises the path separator to "/"
             self.info.setText(uri.database().split(
                 "/")[-1] + ' <b>working rev</b>='+str(rev))
-            selection_type = 'working copy'
+            return ('working copy', False)
 
-        mergeable = False
         if layer.providerType() == "postgres":
             # IF schema contain table wcs_con is a pg distant versioning
             ret = self.is_pgDistant(layer)
@@ -423,23 +380,23 @@ class Plugin(QObject):
                             pg_conn_info_out, uri.schema(), self.get_conn_from_uri(uri))
                         self._pg_conn_info = pg_conn_info_out
                     rev = self.versioning.revision()
-                    selection_type = 'working copy'
                     self.info.setText(uri.database()+' '+uri.schema()
                                       + ' <b>working rev</b>='+str(rev))
+                    return ('working copy', False)
                 except:
                     self.info.setText(
                         'Versioning : the selected group is not a working copy')
-                    selection_type = 'unversioned'
+                    return ('unversioned', False)
             else:
                 mtch = re.match(r'(.+)_([^_]+)_rev_(head|\d+)', uri.schema())
                 if mtch:
                     self.info.setText(uri.database()+' '+mtch.group(1)
                                       + ' branch='+mtch.group(2)+' rev='+mtch.group(3))
-                    if mtch.group(3) == 'head':
-                        selection_type = 'head'
-                    else:
-                        selection_type = 'versioned'
                     mergeable = mtch.group(2) != 'trunk'
+                    if mtch.group(3) == 'head':
+                        return ('head', mergeable)
+                    else:
+                        return ('versioned', mergeable)
                 else:
                     # check if it's a working copy
                     rev = 0
@@ -449,41 +406,57 @@ class Plugin(QObject):
                                 self.pg_conn_info(), uri.schema())
                         
                         rev = self.versioning.revision()
-                        selection_type = 'working copy'
                         self.info.setText(uri.database()+' '+uri.schema()
                                           + ' <b>working rev</b>='+str(rev))
+                        return ('working copy', False)
                     except:
                         self.info.setText('Versioning : unversioned schema')
-                        selection_type = 'unversioned'
+                        return ('unversioned', False)
+        
+    def on_legend_click(self, layer):
+        "changes menu when user clicks on legend"
 
-        # refresh the available commands
-        assert(selection_type)
-        if selection_type == 'unversioned':
-            for act in self.actions:
-                if act.text() == 'historize':
-                    act.setVisible(True)
-        elif selection_type == 'versioned':
-            for act in self.actions:
-                if act.text() in ['view', 'branch']:
-                    act.setVisible(True)
-        elif selection_type == 'head':
-            for act in self.actions:
-                if act.text() in ['checkout', 'view', 'branch', 'archive']:
-                    act.setVisible(True)
-        elif selection_type == 'working copy':
-            for act in self.actions:
-                if act.text() in ['update', 'commit']:
-                    act.setVisible(True)
+        # Node has to be a group to be versionned
+        node = self.iface.layerTreeView().currentNode()
+        if node.nodeType() != QgsLayerTreeNode.NodeGroup:
+            self.info.setText("Versioning : No group selected")
+            selection_type, mergeable = (None, False)
+        else:
+            self.current_group = node
+            self.current_layers = self.__get_layers_from_node(node)
+            selection_type, mergeable = self.__compute_selection_type()
+
+        # Reset actions visibility
+        for act in self.actions:
+            act.setVisible(False)
+            
+        selection_type2actions = {
+            'unversioned' : ['historize'],
+            'versioned' : ['view', 'branch'],
+            'head' : ['checkout', 'view', 'branch', 'archive'],
+            'working copy' : ['update', 'commit']
+        }
+
+        if selection_type not in selection_type2actions:
+            return
+
+        possible_actions = selection_type2actions[selection_type]
         if mergeable:
-            for act in self.actions:
-                if act.text() in ['merge']:
-                    act.setVisible(True)
+            possible_actions += 'merge'
 
+        # Update actions visibility
+        for act in self.actions:
+            if act.text() in possible_actions:
+                act.setVisible(True)
+        
     def initGui(self):
         """Called once QGIS gui is loaded, before project is loaded"""
 
-        self.info.setText('Versioning : no group selected')
-        self.actions.append(self.iface.addToolBarWidget(self.info))
+        self.toolbar = self.iface.addToolBar("QGIS-versioning")
+        self.toolbar.setVisible(True)
+        
+        self.info = QLabel('Versioning : no group selected')
+        self.toolbar.addWidget(self.info)
 
         # we could have a checkbox to either replace/add layers
 
@@ -572,24 +545,34 @@ class Plugin(QObject):
 
         # add actions in menus
         for act in self.actions:
-            self.iface.addToolBarIcon(act)
+            self.toolbar.addAction(act)
 
     def unload(self):
         """called when plugin is unloaded"""
         # Remove the plugin menu item and icon
-        for act in self.actions:
-            self.iface.removeToolBarIcon(act)
-        try:  # qgis 2.2
-            self.legend.itemClicked.disconnect(self.on_legend_click)
-            self.legend.itemChanged.disconnect(self.on_legend_click)
-        except:  # qgis 2.4
-            self.legend.clicked.disconnect(self.on_legend_click)
+
+        self.toolbar = None
+        self.actions = None
+        self.info = None
+        
+        self.iface.layerTreeView().clicked.disconnect(self.on_legend_click)
+
+    def __new_group(self, group_name, layers):
+        """
+        Create new group with given layers. Each layer is a tuple (layer uri, display name, provider)
+        """
+
+        grp = QgsProject.instance().layerTreeRoot().addGroup(group_name)
+        for uri, display_name, provider in layers:
+            layer = QgsVectorLayer(uri, display_name, provider)
+            grp.addLayer(QgsProject.instance().addMapLayer(layer, addToLegend = False))
+
+        return grp
 
     def merge(self):
         """merge branch into trunk"""
-        layer = QgsMapLayerRegistry.instance().mapLayer(
-            self.current_layers[0])
-        uri = QgsDataSourceURI(layer.source())
+        layer = self.current_layers[0]
+        uri = QgsDataSourceUri(layer.source())
         mtch = re.match(r'(.+)_([^_]+)_rev_(head|\d+)', uri.schema())
         schema = mtch.group(1)
         base_branch = mtch.group(2)
@@ -602,9 +585,8 @@ class Plugin(QObject):
 
     def branch(self):
         """create branch and import layers"""
-        layer = QgsMapLayerRegistry.instance().mapLayer(
-            self.current_layers[0])
-        uri = QgsDataSourceURI(layer.source())
+        layer = self.current_layers[0]
+        uri = QgsDataSourceUri(layer.source())
         mtch = re.match(r'(.+)_([^_]+)_rev_(head|\d+)', uri.schema())
         schema = mtch.group(1)
         base_branch = mtch.group(2)
@@ -627,7 +609,7 @@ class Plugin(QObject):
         branch = line_edit.text()
 
         if not branch:
-            print 'aborted'
+            print('aborted')
             return
 
         pcur = versioning.Db(psycopg2.connect(self.pg_conn_info()))
@@ -650,31 +632,26 @@ class Plugin(QObject):
         if not commit_msg:
             QMessageBox.warning(self.iface.mainWindow(), "Warning",
                                 "No commit message, aborting commit")
-            print "aborted"
+            print("aborted")
             return
         versioning.add_branch(uri.connectionInfo(),
                               schema, branch, commit_msg, base_branch, base_rev)
-        grp_name = branch+' revision head'
-        grp_idx = self.iface.legendInterface().addGroup(grp_name)
-        for layer_id in reversed(self.current_layers):
-            layer = QgsMapLayerRegistry.instance().mapLayer(layer_id)
-            new_uri = QgsDataSourceURI(layer.source())
+        layers = []
+        for layer in reversed(self.current_layers):
+            new_uri = QgsDataSourceUri(layer.source())
             new_uri.setDataSource(schema+'_'+branch+'_rev_head',
                                   new_uri.table(),
                                   new_uri.geometryColumn(),
                                   new_uri.sql(),
                                   new_uri.keyColumn())
-            display_name = QgsMapLayerRegistry.instance().mapLayer(layer_id).name()
+            layers += [(new_uri.uri().replace('()', ''), layer.name(), 'postgres')]
 
-            new_layer = self.iface.addVectorLayer(new_uri.uri().replace('()', ''),
-                                                  display_name, 'postgres')
-            self.iface.legendInterface().moveLayer(new_layer, grp_idx)
-
+        self.__new_group(branch+' revision head', layers)
+            
     def view(self):
         """create view and import layers"""
-        layer = QgsMapLayerRegistry.instance().mapLayer(
-            self.current_layers[0])
-        uri = QgsDataSourceURI(layer.source())
+        layer = self.current_layers[0]
+        uri = QgsDataSourceUri(layer.source())
         mtch = re.match(r'(.+)_([^_]+)_rev_(head|\d+)', uri.schema())
         schema = mtch.group(1)
         assert(schema)
@@ -683,11 +660,11 @@ class Plugin(QObject):
         # The first time this function is called will throw an error because no
         # previous connections to the slots were made
         try:
-            # print "Disconnecting ..."
+            # print("Disconnecting ...")
             self.q_view_dlg.tblw.itemChanged.disconnect()
             self.q_view_dlg.diffmode_chk.stateChanged.disconnect()
         except:
-            # print "Failed disconnection"
+            # print("Failed disconnection")
             pass
 
         # Make sure combobox is initalized correctly
@@ -726,7 +703,7 @@ class Plugin(QObject):
 
         for i in range(len(revs)):
             if self.q_view_dlg.tblw.item(i, 0).checkState():
-                print "Revision " + self.q_view_dlg.tblw.item(i, 0).text() + " will be fetched"
+                print("Revision " + self.q_view_dlg.tblw.item(i, 0).text() + " will be fetched")
                 revision_number_list.append(
                     int(self.q_view_dlg.tblw.item(i, 0).text()))
                 branches.append(self.q_view_dlg.tblw.item(i, 3).text())
@@ -738,8 +715,7 @@ class Plugin(QObject):
         progress.setMaximum(len(rows))
         progress.setAlignment(Qt.AlignLeft | Qt.AlignVCenter)
         progressMessageBar.layout().addWidget(progress)
-        self.iface.messageBar().pushWidget(
-            progressMessageBar, self.iface.messageBar().INFO)
+        self.iface.messageBar().pushWidget(progressMessageBar, Qgis.Info)
         progress.setValue(0)
 
         # if diffmode, create one layer with feature differences between the
@@ -751,7 +727,7 @@ class Plugin(QObject):
         grp_name = ''
 
         if self.q_view_dlg.diffmode_chk.isChecked():
-            print "Diffmode checked"
+            print("Diffmode checked")
             # revision_number_list necessarily has only two items in diffmode
             rev_begin = revision_number_list[0]
             rev_end = revision_number_list[1]
@@ -759,23 +735,19 @@ class Plugin(QObject):
                 rev_begin, rev_end = rev_end, rev_begin
             # if the two revisions are not on the same branch, exit
             if revs[rev_begin - 1][3] != revs[rev_end - 1][3]:
-                print "Revisions are not on the same branch, exiting"
-                # print "Rev_begin " +  str(rev_begin) + " is on " + revs[rev_begin - 1][3]
-                # print "Rev_end " + str(rev_end) + " is on " + revs[rev_end - 1][3]
+                print("Revisions are not on the same branch, exiting")
+                # print("Rev_begin " +  str(rev_begin) + " is on " + revs[rev_begin - 1][3])
+                # print("Rev_end " + str(rev_end) + " is on " + revs[rev_end - 1][3])
                 return
             else:
-                print "Revisions are on the same branch"
-                # print "Rev_begin " + str(rev_begin) + " is on " + revs[rev_begin - 1][3]
-                # print "Rev_end " +str(rev_end) + " is on " + revs[rev_end - 1][3]
+                print("Revisions are on the same branch")
+                # print("Rev_begin " + str(rev_begin) + " is on " + revs[rev_begin - 1][3])
+                # print("Rev_end " +str(rev_end) + " is on " + revs[rev_end - 1][3])
 
-            grp_name = "Compare revisions " + \
-                str(rev_begin)+" vs " + str(rev_end)
-            grp_idx = self.iface.legendInterface().addGroup(grp_name)
-
-            for i, layer_id in enumerate(reversed(self.current_layers)):
+            layers = []
+            for i, layer in enumerate(reversed(self.current_layers)):
                 progress.setValue(i+1)
-                layer = QgsMapLayerRegistry.instance().mapLayer(layer_id)
-                new_uri = QgsDataSourceURI(layer.source())
+                new_uri = QgsDataSourceUri(layer.source())
                 select_str = versioning.diff_rev_view_str(uri.connectionInfo(),
                                                           schema, new_uri.table(), branches[0], rev_begin, rev_end)
                 # change data source uri to point to select sql
@@ -785,30 +757,31 @@ class Plugin(QObject):
                                       new_uri.geometryColumn(),
                                       new_uri.sql(),
                                       new_uri.keyColumn())
-                display_name = QgsMapLayerRegistry.instance().mapLayer(layer_id).name()
-                # print "new_uri.uri() = " + new_uri.uri()
-                tmp_pg_layer = self.iface.addVectorLayer(new_uri.uri(),
-                                                         display_name, 'postgres')
-                # print "Number of features in layer " + display_name + " = " + str(tmp_pg_layer.featureCount())
+                display_name = layer.name()
+                # print("new_uri.uri() = " + new_uri.uri())
+                tmp_pg_layer = QgsVectorLayer(new_uri.uri(), display_name, 'postgres')
+                # print("Number of features in layer " + display_name + " = " + str(tmp_pg_layer.featureCount()))
                 # if layer has no feature, delete tmp layer and resume for loop
                 if not(tmp_pg_layer.featureCount()):
-                    QgsMapLayerRegistry.instance().removeMapLayer(tmp_pg_layer.id())
                     empty_layers.append(str(display_name))
                     continue
+
                 mem_uri = self.mem_layer_uri(tmp_pg_layer)
 
-                # print "mem_uri = " + mem_uri
+                # print("mem_uri = " + mem_uri)
                 if mem_uri == "Unknown":
                     return
-                new_mem_layer = self.iface.addVectorLayer(mem_uri,
-                                                          display_name + '_diff', 'memory')
+
+                layers += [(mem_uri, display_name + '_diff', 'memory')]
+                new_mem_layer = QgsVectorLayer(*layers[-1])
+
                 pr = new_mem_layer.dataProvider()
                 source_layer_features = [f for f in tmp_pg_layer.getFeatures()]
-                # print "Got features from source vector layer"
-                QgsMapLayerRegistry.instance().removeMapLayer(tmp_pg_layer.id())
-                # print "Removed tmp layer"
+                # print("Got features from source vector layer")
+                QgsProject.instance().removeMapLayer(tmp_pg_layer.id())
+                # print("Removed tmp layer")
                 pr.addFeatures(source_layer_features)
-                # print "Copied source features to mem layer"
+                # print("Copied source features to mem layer")
                 # Style layer to show features as a function of whether they were
                 # - added/created ('a')
                 # - updated ('u')
@@ -824,9 +797,9 @@ class Plugin(QObject):
                     ('Updated', '"diff_status" LIKE \'u\'', 'sandybrown', 3.0, None),
                     ('Deleted', '"diff_status" LIKE \'d\'', 'red', 3.0, None),)
 
-                symbol = QgsSymbolV2.defaultSymbol(
+                symbol = QgsSymbol.defaultSymbol(
                     new_mem_layer.geometryType())
-                renderer = QgsRuleBasedRendererV2(symbol)
+                renderer = QgsRuleBasedRenderer(symbol)
                 root_rule = renderer.rootRule()
                 for label, expression, color_name, size, scale in modification_type_rules:
                     # create a clone (i.e. a copy) of the default rule
@@ -848,19 +821,20 @@ class Plugin(QObject):
                 new_mem_layer.setRendererV2(renderer)
                 # refresh map and legend
                 self.iface.mapCanvas().refresh()
-                self.iface.legendInterface().refreshLayerSymbology(new_mem_layer)
-                self.iface.legendInterface().moveLayer(new_mem_layer, grp_idx)
+
+            if layers:
+                grp_name = "Compare revisions " + str(rev_begin)+" vs " + str(rev_end)
+                self.__new_group(grp_name, layers)
         else:
-            print "Diffmode unchecked"
+            print("Diffmode unchecked")
+            layers = []
             for i, row in enumerate(rows):
                 progress.setValue(i+1)
                 branch = revs[row][3]
                 rev = revs[row][0]
                 grp_name = branch+' revision '+str(rev)
-                grp_idx = self.iface.legendInterface().addGroup(grp_name)
-                for layer_id in reversed(self.current_layers):
-                    layer = QgsMapLayerRegistry.instance().mapLayer(layer_id)
-                    new_uri = QgsDataSourceURI(layer.source())
+                for layer in reversed(self.current_layers):
+                    new_uri = QgsDataSourceUri(layer.source())
                     select_str, where_str = versioning.rev_view_str(
                         self.pg_conn_info(),
                         schema,
@@ -874,35 +848,32 @@ class Plugin(QObject):
                                           new_uri.sql(),
                                           new_uri.keyColumn())
 
-                    display_name = QgsMapLayerRegistry.instance().mapLayer(layer_id).name()
                     src = new_uri.uri().replace('()', '')
-                    new_layer = self.iface.addVectorLayer(src,
-                                                          display_name, 'postgres')
-                    self.iface.legendInterface().moveLayer(new_layer, grp_idx)
+                    layers += [(src, layer.name(), 'postgres')]
+                self.__new_group(grp_name, layers)
+                
         self.iface.messageBar().clearWidgets()
-        # print "len (self.current_layers) = " + str(len (self.current_layers))
-        # print "len(empty_layers) = " + str(len(empty_layers))
+        # print("len (self.current_layers) = " + str(len (self.current_layers)))
+        # print("len(empty_layers) = " + str(len(empty_layers)))
         if empty_layers and len(empty_layers) == len(self.current_layers):
-            print "No layers in layer group"
+            print("No layers in layer group")
             self.iface.messageBar().pushMessage("Notice",
                                                 "No layers will be shown; deleted the \"" + grp_name + "\" layer group",
-                                                level=QgsMessageBar.WARNING, duration=15)
-            self.iface.legendInterface().removeGroup(grp_idx)
+                                                level=Qgis.Warning, duration=15)
         elif empty_layers:
-            print "Empty layers"
+            print("Empty layers")
             self.iface.messageBar().pushMessage("Notice",
                                                 "No modified features between revisions " +
                                                 str(rev_begin)+" "
                                                 "and " +
                                                 str(rev_end)+" for layer(s) " +
                                                 str(empty_layers)+". ",
-                                                level=QgsMessageBar.WARNING, duration=15)
+                                                level=Qgis.Warning, duration=15)
 
     def unresolved_conflicts(self):
         """check for unresolved conflicts, add conflict layers if any"""
-        layer = QgsMapLayerRegistry.instance().mapLayer(
-            self.current_layers[0])
-        uri = QgsDataSourceURI(layer.source())
+        layer = self.current_layers[0]
+        uri = QgsDataSourceUri(layer.source())
 
         if layer.providerType() == 'spatialite':
             self.versioning = versioning.spatialite(
@@ -921,9 +892,8 @@ class Plugin(QObject):
         if layer.providerType() == "spatialite":
             for cflt in unresolved:
                 table = cflt+"_conflicts"
-                if not QgsMapLayerRegistry.instance().mapLayersByName(table):
-                    # TODO detect if there is a geometry column
-                    geom = '(GEOMETRY)'  # if uri.geometryColumn() else ''
+                if not QgsProject.instance().mapLayersByName(table):
+                    geom = '({})'.format(uri.geometryColumn()) if uri.geometryColumn() else ''
                     self.iface.addVectorLayer(
                         "dbname=\""+uri.database()+"\"" +
                         " key=\"OGC_FID\" table=\""+table+"\" " +
@@ -931,9 +901,9 @@ class Plugin(QObject):
         else:  # postgres
             for cflt in unresolved:
                 table = cflt+"_conflicts"
-                if not QgsMapLayerRegistry.instance().mapLayersByName(table):
-                    new_uri = QgsDataSourceURI(uri.connectionInfo())
-                    print new_uri.uri()
+                if not QgsProject.instance().mapLayersByName(table):
+                    new_uri = QgsDataSourceUri(uri.connectionInfo())
+                    print(new_uri.uri())
                     new_uri.setDataSource(uri.schema(),
                                           table,
                                           uri.geometryColumn(),
@@ -958,12 +928,11 @@ class Plugin(QObject):
 
     def update(self):
         """merge modifiactions since last update into working copy"""
-        print "update"
+        print("update")
         if self.unresolved_conflicts():
             return
-        layer = QgsMapLayerRegistry.instance().mapLayer(
-            self.current_layers[0])
-        uri = QgsDataSourceURI(layer.source())
+        layer = self.current_layers[0]
+        uri = QgsDataSourceUri(layer.source())
 
         late_by = self.versioning.late()
 
@@ -1001,9 +970,8 @@ class Plugin(QObject):
         uri = None
         conn_info = ''
         schema = ''
-        for layer_id in self.current_layers:
-            layer = QgsMapLayerRegistry.instance().mapLayer(layer_id)
-            uri = QgsDataSourceURI(layer.source())
+        for layer in self.current_layers:
+            uri = QgsDataSourceUri(layer.source())
             if not conn_info:
                 conn_info = uri.connectionInfo()
             else:
@@ -1018,27 +986,25 @@ class Plugin(QObject):
                                                  + schema +
                                                  " (i.e. even to tables not in this project)",
                                                  QMessageBox.Ok, QMessageBox.Cancel):
-            print "aborted"
+            print("aborted")
             return
 
         versioning.historize(self.pg_conn_info(), schema)
 
-        grp_name = 'trunk revision head'
-        grp_idx = self.iface.legendInterface().addGroup(grp_name)
-        for layer_id in reversed(self.current_layers):
-            layer = QgsMapLayerRegistry.instance().mapLayer(layer_id)
-            new_uri = QgsDataSourceURI(layer.source())
+        layers = []
+        for layer in reversed(self.current_layers):
+            new_uri = QgsDataSourceUri(layer.source())
             new_uri.setDataSource(schema+'_trunk_rev_head',
                                   new_uri.table(),
                                   new_uri.geometryColumn(),
                                   new_uri.sql(),
                                   new_uri.keyColumn())
-            display_name = QgsMapLayerRegistry.instance().mapLayer(layer_id).name()
             src = new_uri.uri().replace('()', '')
-            new_layer = self.iface.addVectorLayer(
-                src, display_name, 'postgres')
-            self.iface.legendInterface().moveLayer(new_layer, grp_idx)
-        self.iface.legendInterface().removeGroup(self.current_group_idx)
+            layers += [(src, layer.name(), 'postgres')]
+
+        self.__new_group('trunk revision head', layers)
+
+        self.current_group.parent().takeChild(self.current_group)
         self.current_layers = []
 
     def checkout(self):
@@ -1051,14 +1017,13 @@ class Plugin(QObject):
         user_selected_features = []
         uri = None
         conn_info = ''
-        for layer_id in self.current_layers:
-            layer = QgsMapLayerRegistry.instance().mapLayer(layer_id)
-            uri = QgsDataSourceURI(layer.source())
+        for layer in self.current_layers:
+            uri = QgsDataSourceUri(layer.source())
 
             # Get actual PK fror corresponding table
             actual_table_pk = versioning.get_actual_pk(
                 uri, self.pg_conn_info())
-            # print "Actual table pk = " + actual_table_pk
+            # print("Actual table pk = " + actual_table_pk)
 
             layer_selected_features_ids = [
                 f[actual_table_pk] for f in layer.selectedFeatures()]
@@ -1092,36 +1057,36 @@ class Plugin(QObject):
             table = uri.schema()+"."+uri.table()
             tables_for_conninfo.append(table)
 
-        filename = QFileDialog.getSaveFileName(self.iface.mainWindow(),
-                                               'Save Versioned Layers As', '.', '*.sqlite')
+        filename, _ = QFileDialog.getSaveFileName(self.iface.mainWindow(),
+                                                  'Save Versioned Layers As', '.', '*.sqlite')
+
         if not filename:
-            print "aborted"
+            print("aborted")
             return
 
         if os.path.isfile(filename):
             os.remove(filename)
 
-        print "checking out ", tables_for_conninfo, " from ", uri.connectionInfo()
+        print("checking out ", tables_for_conninfo, " from ", uri.connectionInfo())
         self.versioning = versioning.spatialite(filename, self.pg_conn_info())
         self.versioning.checkout(tables_for_conninfo, user_selected_features)
 
         # add layers from offline version
         grp_name = 'working copy'
-        if grp_name in self.iface.legendInterface().groups():
+        if grp_name in QgsProject.instance().mapLayers():
             grp_name = filename
-        grp_idx = self.iface.legendInterface().addGroup(grp_name)
-        for layer_id in reversed(self.current_layers):
-            layer = QgsMapLayerRegistry.instance().mapLayer(layer_id)
-            uri = QgsDataSourceURI(layer.source())
+
+        layers = []
+        for layer in reversed(self.current_layers):
+            uri = QgsDataSourceUri(layer.source())
             table = uri.table()
             display_name = layer.name()
-            print "replacing ", display_name
-            geom = '(GEOMETRY)' if uri.geometryColumn() else ''
-            new_layer = self.iface.addVectorLayer("dbname=\""+filename+"\"" +
-                                                  " key=\"OGC_FID\" table=\""+table+"_view\" "
-                                                  + geom, display_name, 'spatialite')
-            self.iface.legendInterface().moveLayer(new_layer, grp_idx)
-        self.iface.legendInterface().setGroupExpanded(grp_idx, True)
+            geom = '({})'.format(uri.geometryColumn()) if uri.geometryColumn() else ''
+            layers += [("dbname=\""+filename+"\"" +
+                       " key=\"OGC_FID\" table=\""+table+"_view\" "
+                       + geom, display_name, 'spatialite')]
+
+        self.__new_group(grp_name, layers).setExpanded(True)
 
     def checkout_pg_distant(self):
         """create postgres working copy (schema) from versioned
@@ -1134,14 +1099,13 @@ class Plugin(QObject):
         user_selected_features = []
         uri = None
         conn_info = ''
-        for layer_id in self.current_layers:
-            layer = QgsMapLayerRegistry.instance().mapLayer(layer_id)
-            uri = QgsDataSourceURI(layer.source())
+        for layer in self.current_layers:
+            uri = QgsDataSourceUri(layer.source())
 
             # Get actual PK fror corresponding table
             actual_table_pk = versioning.get_actual_pk(
                 uri, self.pg_conn_info())
-            # print "Actual table pk = " + actual_table_pk
+            # print("Actual table pk = " + actual_table_pk)
 
             layer_selected_features_ids = [
                 f[actual_table_pk] for f in layer.selectedFeatures()]
@@ -1180,9 +1144,8 @@ class Plugin(QObject):
         if not exportDatabase:
             return
 
-        layer_id = self.current_layers[0]
-        layer = QgsMapLayerRegistry.instance().mapLayer(layer_id)
-        uri = QgsDataSourceURI(layer.source())
+        layer = self.current_layers[0]
+        uri = QgsDataSourceUri(layer.source())
 
         pg_conn_info = self.get_conn_from_uri(uri)
 
@@ -1192,7 +1155,6 @@ class Plugin(QObject):
 
         # check if schema already exists
         (pg_conn_info_out, conn_dict) = self.get_conn_from_settings(exportDatabase)
-
         conn = psycopg2.connect(pg_conn_info_out)
         cur = conn.cursor()
 
@@ -1213,22 +1175,21 @@ class Plugin(QObject):
         self.versioning.checkout(tables_for_conninfo, user_selected_features)
 
         # add layers from offline version
-        grp_idx = self.iface.legendInterface().addGroup(working_copy_schema)
-        for layer_id in reversed(self.current_layers):
-            layer = QgsMapLayerRegistry.instance().mapLayer(layer_id)
-            new_uri = QgsDataSourceURI(layer.source())
+        layers = []
+        for layer in reversed(self.current_layers):
+            new_uri = QgsDataSourceUri(layer.source())
             new_uri.setDataSource(working_copy_schema,
                                   new_uri.table()+"_view",
                                   'geom',
                                   new_uri.sql(),
                                   new_uri.keyColumn())
             # TODO: IT'S UGLY
-            if conn_dict.has_key('service'):
-                new_uri = QgsDataSourceURI(' '.join(["service="+conn_dict['service'],
+            if 'service' in conn_dict:
+                new_uri = QgsDataSourceUri(' '.join(["service="+conn_dict['service'],
                                                      "key='ogc_fid'",
                                                      new_uri.uri()[new_uri.uri().rfind('srid'):]]))
             else:
-                new_uri = QgsDataSourceURI(' '.join(["dbname="+conn_dict['database'],
+                new_uri = QgsDataSourceUri(' '.join(["dbname="+conn_dict['database'],
                                                      "host="+conn_dict['host'],
                                                      "port="+conn_dict['port'],
                                                      "user='" +
@@ -1238,14 +1199,12 @@ class Plugin(QObject):
                                                      "key='ogc_fid'",
                                                      new_uri.uri()[new_uri.uri().rfind('srid'):]]))
 
-            display_name = QgsMapLayerRegistry.instance().mapLayer(layer_id).name()
-            print "replacing ", display_name
+            display_name = layer.name()
             src = new_uri.uri().replace('()', '')
-            print(src)
-            new_layer = self.iface.addVectorLayer(
-                src, display_name, 'postgres')
-            self.iface.legendInterface().moveLayer(new_layer, grp_idx)
+            layers += [(src, display_name, 'postgres')]
 
+        self.__new_group(working_copy_schema, layers)
+        
     def checkout_pg(self):
         """create postgres working copy (schema) from versioned
         database layers"""
@@ -1254,14 +1213,13 @@ class Plugin(QObject):
         user_selected_features = []
         uri = None
         conn_info = ''
-        for layer_id in self.current_layers:
-            layer = QgsMapLayerRegistry.instance().mapLayer(layer_id)
-            uri = QgsDataSourceURI(layer.source())
+        for layer in self.current_layers:
+            uri = QgsDataSourceUri(layer.source())
 
             # Get actual PK fror corresponding table
             actual_table_pk = versioning.get_actual_pk(
                 uri, self.pg_conn_info())
-            # print "Actual table pk = " + actual_table_pk
+            # print("Actual table pk = " + actual_table_pk)
 
             layer_selected_features_ids = [
                 f[actual_table_pk] for f in layer.selectedFeatures()]
@@ -1311,57 +1269,54 @@ class Plugin(QObject):
             return
         working_copy_schema = line_edit.text()
         if not working_copy_schema:
-            print "Name not provided; aborted"
+            print("Name not provided; aborted")
             self.iface.messageBar().pushMessage("Warning",
                                                 "Please provide a schema name.", duration=5)
             return
         # Check if name is valid for a PG object; only characters and max length
         # are checked; use of reserved words is not checked
         if len(working_copy_schema) > 63:
-            print "Name too long; aborted"
+            print("Name too long; aborted")
             self.iface.messageBar().pushMessage("Warning",
                                                 "\""+working_copy_schema+"\" is "+str(len(working_copy_schema)) +
                                                 " characters long;  maximum is 63.", duration=5)
             return
         valid_name = re.match('^[a-z_][a-z_0-9$]*$', str(working_copy_schema))
         if not(valid_name):
-            print "Not a valid name"
+            print("Not a valid name")
             self.iface.messageBar().pushMessage("Warning",
                                                 "\""+working_copy_schema+"\" is not valid; first character must be "
                                                 "<b>lowercase</b> letter or underscore; other characters may be "
                                                 "<b>lowercase</b> letters, underscore or digits.", duration=10)
             return
-        print "checking out ", tables_for_conninfo, " from ", uri.connectionInfo()
+        print("checking out ", tables_for_conninfo, " from ", uri.connectionInfo())
         self.versioning = versioning.pgServer(
             self.pg_conn_info(), working_copy_schema)
         self.versioning.checkout(tables_for_conninfo, user_selected_features)
 
         # add layers from offline version
-        grp_idx = self.iface.legendInterface().addGroup(working_copy_schema)
-        for layer_id in reversed(self.current_layers):
-            layer = QgsMapLayerRegistry.instance().mapLayer(layer_id)
-            new_uri = QgsDataSourceURI(layer.source())
+        layers = []
+        for layer in reversed(self.current_layers):
+            new_uri = QgsDataSourceUri(layer.source())
             new_uri.setDataSource(working_copy_schema,
                                   new_uri.table()+"_view",
                                   new_uri.geometryColumn(),
                                   new_uri.sql(),
                                   new_uri.keyColumn())
-            display_name = QgsMapLayerRegistry.instance().mapLayer(layer_id).name()
-            print "replacing ", display_name
+            display_name = layer.name()
+            print("replacing ", display_name)
             src = new_uri.uri().replace('()', '')
-            new_layer = self.iface.addVectorLayer(
-                src, display_name, 'postgres')
-            self.iface.legendInterface().moveLayer(new_layer, grp_idx)
+            layers += [(src, display_name, 'postgres')]
+        self.__new_group(working_copy_schema, layers)
 
     def commit(self):
         """merge modifications into database"""
-        print "commit"
+        print("commit")
         if self.unresolved_conflicts():
             return
 
-        layer = QgsMapLayerRegistry.instance().mapLayer(
-            self.current_layers[0])
-        uri = QgsDataSourceURI(layer.source())
+        layer = self.current_layers[0]
+        uri = QgsDataSourceUri(layer.source())
 
         late_by = self.versioning.late()
 
@@ -1370,7 +1325,7 @@ class Plugin(QObject):
                                 "This working copy is not up to date (late by "
                                 + str(late_by)+" commit(s)).\n\n"
                                 "Please update before committing your modifications")
-            print "aborted"
+            print("aborted")
             return
 
         # Make sure the combobox is visible; could be made invisible by a
@@ -1381,7 +1336,7 @@ class Plugin(QObject):
         nb_items_in_list = self.q_commit_msg_dlg.pg_users_combobox.count()
         if not(nb_items_in_list):
             self.get_pg_users_list()
-        # Better if we could have a QgsDataSourceURI.username() but no such
+        # Better if we could have a QgsDataSourceUri.username() but no such
         # thing in spatialite.  Next block is for the case the username cannot
         # be found in the connection info string (mainly for plugin tests)
         try:
@@ -1405,7 +1360,7 @@ class Plugin(QObject):
         if not commit_msg:
             QMessageBox.warning(self.iface.mainWindow(), "Warning",
                                 "No commit message, aborting commit")
-            print "aborted"
+            print("aborted")
             return
 
         nb_of_updated_layer = 0
@@ -1434,9 +1389,8 @@ class Plugin(QObject):
                                     "There was no modification to commit")
 
     def archive(self):
-        layer = QgsMapLayerRegistry.instance().mapLayer(
-            self.current_layers[0])
-        uri = QgsDataSourceURI(layer.source())
+        layer = self.current_layers[0]
+        uri = QgsDataSourceUri(layer.source())
         mtch = re.match(r'(.+)_([^_]+)_rev_(head|\d+)', uri.schema())
         schema = mtch.group(1)
         base_branch = mtch.group(2)

@@ -1,4 +1,4 @@
-#!/usr/bin/env python2
+#!/usr/bin/env python3
 from __future__ import absolute_import
 import sys
 sys.path.insert(0, '..')
@@ -10,17 +10,17 @@ import shutil
 
 
 def prtTab( cur, tab ):
-    print "--- ",tab," ---"
+    print("--- ",tab," ---")
     cur.execute("SELECT pid, trunk_rev_begin, trunk_rev_end, trunk_parent, trunk_child, length FROM "+tab)
     for r in cur.fetchall():
         t = []
         for i in r: t.append(str(i))
-        print '\t| '.join(t)
+        print('\t| '.join(t))
 
 def prtHid( cur, tab ):
-    print "--- ",tab," ---"
+    print("--- ",tab," ---")
     cur.execute("SELECT pid FROM "+tab)
-    for [r] in cur.fetchall(): print r
+    for [r] in cur.fetchall(): print(r)
 
 def test(host, pguser):
     pg_conn_info = "dbname=epanet_test_db host=" + host + " user=" + pguser
@@ -48,6 +48,6 @@ def test(host, pguser):
 
 if __name__ == "__main__":
     if len(sys.argv) != 3:
-        print("Usage: python2 versioning_base_test.py host pguser")
+        print("Usage: python3 versioning_base_test.py host pguser")
     else:
         test(*sys.argv[1:])

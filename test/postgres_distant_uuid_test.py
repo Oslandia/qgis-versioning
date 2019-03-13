@@ -1,27 +1,26 @@
-#!/usr/bin/env python2
+#!/usr/bin/env python3
 from __future__ import absolute_import
 import sys
 sys.path.insert(0, '..')
 
 from versioningDB import versioning 
-from pyspatialite import dbapi2
 import psycopg2
 import os
 import tempfile
 
 
 def prtTab( cur, tab ):
-    print ("--- ",tab," ---")
+    print("--- ",tab," ---")
     cur.execute("SELECT ogc_fid, trunk_rev_begin, trunk_rev_end, trunk_parent, trunk_child, length FROM "+tab)
     for r in cur.fetchall():
         t = []
         for i in r: t.append(str(i))
-        print ('\t| '.join(t))
+        print('\t| '.join(t))
 
 def prtHid( cur, tab ):
-    print ("--- ",tab," ---")
+    print("--- ",tab," ---")
     cur.execute("SELECT ogc_fid FROM "+tab)
-    for [r] in cur.fetchall(): print (r)
+    for [r] in cur.fetchall(): print(r)
 
 def test(host, pguser):
     pg_conn_info = "dbname=epanet_test_db host=" + host + " user=" + pguser
@@ -50,8 +49,8 @@ def test(host, pguser):
     pcur = versioning.Db(psycopg2.connect(pg_conn_info))
 
 
-    pcurcpy.execute("INSERT INTO epanet_trunk_rev_head.pipes_view(id, start_node, end_node, wkb_geometry) VALUES ('2','1','2',ST_GeometryFromText('LINESTRING(1 1,0 1)',2154))")
-    pcurcpy.execute("INSERT INTO epanet_trunk_rev_head.pipes_view(id, start_node, end_node, wkb_geometry) VALUES ('3','1','2',ST_GeometryFromText('LINESTRING(1 -1,0 1)',2154))")
+    pcurcpy.execute("INSERT INTO epanet_trunk_rev_head.pipes_view(id, start_node, end_node, geom) VALUES ('2','1','2',ST_GeometryFromText('LINESTRING(1 1,0 1)',2154))")
+    pcurcpy.execute("INSERT INTO epanet_trunk_rev_head.pipes_view(id, start_node, end_node, geom) VALUES ('3','1','2',ST_GeometryFromText('LINESTRING(1 -1,0 1)',2154))")
     pcurcpy.commit()
 
 
@@ -80,6 +79,6 @@ def test(host, pguser):
     
 if __name__ == "__main__":
     if len(sys.argv) != 3:
-        print("Usage: python2 postgres_distant_uuid_test.py host pguser")
+        print("Usage: python3 postgres_distant_uuid_test.py host pguser")
     else:
         test(*sys.argv[1:])

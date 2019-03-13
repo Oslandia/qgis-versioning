@@ -1,4 +1,4 @@
-#!/usr/bin/env python2
+#!/usr/bin/env python3
 from __future__ import absolute_import
 import sys
 sys.path.insert(0, '..')
@@ -6,7 +6,7 @@ sys.path.insert(0, '..')
 from versioningDB.versioning import diff_rev_view_str
 
 from versioningDB import versioning 
-from pyspatialite import dbapi2
+from sqlite3 import dbapi2
 import psycopg2
 import os
 import tempfile
@@ -60,6 +60,8 @@ def test(host, pguser):
     # edit one table and commit changes; rev = 2
 
     scon = dbapi2.connect(sqlite_test_filename1)
+    scon.enable_load_extension(True)
+    scon.execute("SELECT load_extension('mod_spatialite')")
     scur = scon.cursor()
     scur.execute("UPDATE junctions_view SET elevation = '8' WHERE id = '1'")
     scon.commit()
@@ -79,6 +81,8 @@ def test(host, pguser):
     spversioning2.checkout(["epanet_trunk_rev_head.junctions"])
 
     scon = dbapi2.connect(sqlite_test_filename2)
+    scon.enable_load_extension(True)
+    scon.execute("SELECT load_extension('mod_spatialite')")
     scur = scon.cursor()
     scur.execute("UPDATE junctions_view SET elevation = '22' WHERE id = '1'")
     scon.commit()
@@ -92,8 +96,10 @@ def test(host, pguser):
     spversioning3.checkout(["epanet_trunk_rev_head.junctions"])
 
     scon = dbapi2.connect(sqlite_test_filename3)
+    scon.enable_load_extension(True)
+    scon.execute("SELECT load_extension('mod_spatialite')")
     scur = scon.cursor()
-    scur.execute("INSERT INTO junctions_view(id, elevation, GEOMETRY) VALUES ('10','100',GeomFromText('POINT(2 0)',2154))")
+    scur.execute("INSERT INTO junctions_view(id, elevation, geom) VALUES ('10','100',GeomFromText('POINT(2 0)',2154))")
     scon.commit()
     #scur.execute("SELECT COUNT(*) FROM junctions")
     #assert( scur.fetchone()[0] == 3 )
@@ -117,7 +123,7 @@ def test(host, pguser):
     pcur.execute(select_str)
     res = pcur.fetchall()
     assert(res[0][0] == 'u')
-    #print "fetchall 1 vs 2 = " + str(res)
+    #print("fetchall 1 vs 2 = " + str(res))
     #fetchall 1 vs 2 = [
     #('u', 3, '1', 8.0, None, None, '01010000206A0800000000000000000000000000000000F03F', 2, 2, 2, 4)]
 
@@ -126,7 +132,7 @@ def test(host, pguser):
     res = pcur.fetchall()
     assert(res[0][0] == 'u')
     assert(res[1][0] == 'i')
-    #print "fetchall 1 vs 3 = " + str(res)
+    #print("fetchall 1 vs 3 = " + str(res))
     #fetchall 1 vs 3 = [
     #('u', 4, '1', 22.0, None, None, '01010000206A0800000000000000000000000000000000F03F', 3, None, 3, None),
     #('i', 3, '1', 8.0, None, None, '01010000206A0800000000000000000000000000000000F03F', 2, 2, 2, 4)]
@@ -138,7 +144,7 @@ def test(host, pguser):
     assert(res[1][0] == 'i')
     assert(res[2][0] == 'a')
     assert(res[3][0] == 'i') # object is in intermediate state; will be deleted in rev 5
-    #print "fetchall 1 vs 4 = " + str(res)
+    #print("fetchall 1 vs 4 = " + str(res))
     #fetchall 1 vs 4 = [
     #('u', 4, '1', 22.0, None, None, '01010000206A0800000000000000000000000000000000F03F', 3, None, 3, None),
     #('i', 3, '1', 8.0, None, None, '01010000206A0800000000000000000000000000000000F03F', 2, 2, 2, 4),
@@ -152,7 +158,7 @@ def test(host, pguser):
     assert(res[1][0] == 'i')
     assert(res[2][0] == 'a')
     assert(res[3][0] == 'd')
-    #print "fetchall 1 vs 5 = " + str(res)
+    #print("fetchall 1 vs 5 = " + str(res))
     #fetchall 1 vs 5 = [
     #('u', 4, '1', 22.0, None, None, '01010000206A0800000000000000000000000000000000F03F', 3, None, 3, None),
     #('i', 3, '1', 8.0, None, None, '01010000206A0800000000000000000000000000000000F03F', 2, 2, 2, 4),
@@ -165,6 +171,8 @@ def test(host, pguser):
 
     scon = dbapi2.connect(sqlite_test_filename5)
     scur = scon.cursor()
+    scon.enable_load_extension(True)
+    scon.execute("SELECT load_extension('mod_spatialite')")
     scur.execute("UPDATE junctions_view SET elevation = '22' WHERE id = '1'")
     scur.execute("DELETE FROM junctions_view WHERE id = '1'")
     scon.commit()
@@ -176,6 +184,6 @@ def test(host, pguser):
 
 if __name__ == "__main__":
     if len(sys.argv) != 3:
-        print("Usage: python2 versioning_base_test.py host pguser")
+        print("Usage: python3 versioning_base_test.py host pguser")
     else:
         test(*sys.argv[1:])

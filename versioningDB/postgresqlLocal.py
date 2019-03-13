@@ -7,7 +7,7 @@ import psycopg2
 import tempfile
 import os
 
-from itertools import izip_longest
+from itertools import zip_longest
 
 DEBUG = False
 
@@ -176,10 +176,12 @@ class pgVersioningLocal(object):
             pcurcpy.commit()
 
             # import the diff to postgresql
+            pgeom = pg_geom(pcur, table_schema, table)
             cmd = ['ogr2ogr',
                    '-preserve_fid',
                    '-lco', 'FID=ogc_fid',
                    '-lco', 'schema=' + wcs,
+                   '-lco', 'GEOMETRY_NAME={}'.format(pgeom),
                    '-f', 'PostgreSQL',
                    '-update',
                    'PG:"'+pg_conn_info_copy+'"',
@@ -420,7 +422,7 @@ class pgVersioningLocal(object):
 
         temp_view_names = []
         first_table = True
-        for pg_table_name, feature_list in list(izip_longest(pg_table_names, selected_feature_lists)):
+        for pg_table_name, feature_list in list(zip_longest(pg_table_names, selected_feature_lists)):
             [schema, table] = pg_table_name.split('.')
             [schema, sep, branch] = schema[:-9].rpartition('_')
             del sep
@@ -461,15 +463,18 @@ class pgVersioningLocal(object):
                 pcur.execute(view_str)
                 pcur.commit()
 
+                pgeom = pg_geom(pcur, schema, table)
                 cmd = ['ogr2ogr',
                        '-lco', 'schema=' + wcs,
                        '-lco', 'DROP_TABLE=OFF',
+                       '-lco', 'GEOMETRY_NAME={}'.format(pgeom),
                        '-f', 'PGDump',
                        '"' + tmp_dump + '"',
                        'PG:"'+pg_conn_info+' tables=' + wcs + '.' + table + '"', temp_view_name,
                        '-nln', table]
 
                 print(' '.join(cmd))
+                
                 os.system(' '.join(cmd))
                 pcurcpy = Db(psycopg2.connect(pg_conn_info_copy))
                 pcurcpy.execute(open(tmp_dump, "r").read().replace(
@@ -501,9 +506,11 @@ class pgVersioningLocal(object):
                 pcur.execute(view_str)
                 pcur.commit()
 
+                pgeom = pg_geom(pcur, schema, table)
                 cmd = ['ogr2ogr',
                        '-lco', 'schema=' + wcs,
                        '-lco', 'DROP_TABLE=OFF',
+                       '-lco', 'GEOMETRY_NAME={}'.format(pgeom),
                        '-f', 'PGDump',
                        '"' + tmp_dump + '"',
                        'PG:"'+pg_conn_info+' tables=' + wcs + '.' + table + '"', temp_view_name,
@@ -792,15 +799,11 @@ class pgVersioningLocal(object):
                    '-f',
                    'PostgreSQL',
                    'PG:"'+pg_conn_info+'"',
-                   '-lco',
-                   'FID='+pkey,
+                   '-lco', 'FID='+pkey,
+                   '-lco', 'GEOMETRY_NAME={}'.format(pgeom),
                    'PG:"'+pg_conn_info_copy+'"',
                    wcs+"."+table+"_diff",
                    '-nln', diff_schema+'.'+table+"_diff"]
-            geoms = pg_geoms(pcur, table_schema, table)
-            if len(pg_geoms(pcur, table_schema, table)) == 1:
-                cmd.insert(5, '-lco')
-                cmd.insert(6, 'GEOMETRY_NAME='+pgeom)
 
             if DEBUG:
                 print(' '.join(cmd))
@@ -912,7 +915,7 @@ class pgVersioningLocal(object):
         pcurcpy.close()
 
         # cleanup diffs in postgis
-        for schema, conn_info in schema_list.iteritems():
+        for schema, conn_info in schema_list.items():
             pcur = Db(psycopg2.connect(conn_info))
             pcur.execute("DROP SCHEMA "+schema+" CASCADE")
             pcur.commit()

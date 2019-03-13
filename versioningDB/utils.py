@@ -23,7 +23,7 @@
 import platform
 import re
 import psycopg2
-from pyspatialite import dbapi2
+from sqlite3 import dbapi2
 import getpass
 import sys
 import traceback
@@ -44,7 +44,9 @@ class Db(object):
         self.con = con
         if isinstance(con, dbapi2.Connection):
             self.db_type = 'sp : '
-        else :
+            self.con.enable_load_extension(True)
+            self.con.execute("SELECT load_extension('mod_spatialite')")
+        else:
             self.db_type = 'pg : '
         self.cur = self.con.cursor()
         if filename :
@@ -58,7 +60,7 @@ class Db(object):
     def hasrow(self):
         """Test if previous execute returned rows"""
         if self._verbose:
-            print self.db_type, self.cur.rowcount, ' rows returned'
+            print(self.db_type, self.cur.rowcount, ' rows returned')
         return self.cur.rowcount > 0
 
     def verbose(self, verbose):
@@ -70,11 +72,11 @@ class Db(object):
         if not self.begun:
             self.begun = True
             if self._verbose:
-                print self.db_type, 'BEGIN;'
+                print(self.db_type, 'BEGIN;')
             if self.log :
                 self.log.write( 'BEGIN;\n')
         if self._verbose:
-            print self.db_type, sql, ';'
+            print(self.db_type, sql, ';')
         if self.log :
             self.log.write(sql+';\n')
         try:
@@ -96,7 +98,7 @@ class Db(object):
     def commit(self):
         """Commit previous SQL command to DB, not necessary for SELECT"""
         if self._verbose:
-            print self.db_type, 'END;'
+            print(self.db_type, 'END;')
         if self.log :
             self.log.write('END;\n')
         self.begun = False
@@ -106,7 +108,7 @@ class Db(object):
         """Close DB connection"""
         if self.begun :
             if self._verbose:
-                print self.db_type, 'END;'
+                print(self.db_type, 'END;')
             if self.log :
                 self.log.write('END;\n')
         if self.log :
@@ -213,7 +215,7 @@ def mem_field_names_types(pg_layer):
     for i in range(len(field_list)):
         concatenated_field_str += "field=" + field_list[i] +'&'
 
-    #print "concatenated_field_str = " + concatenated_field_str +"\n"
+    #print("concatenated_field_str = " + concatenated_field_str +"\n")
 
     rep = {'float8': 'double', 'int4': 'integer', 'text': 'string',
         'varchar': 'string'}
@@ -221,7 +223,7 @@ def mem_field_names_types(pg_layer):
     temp_str = pattern.sub(
         lambda m: rep[re.escape(m.group(0))],concatenated_field_str )
     final_str = temp_str[:-1]
-    #print "\n" + "final_str = " + final_str +"\n"
+    #print("\n" + "final_str = " + final_str +"\n")
     return final_str
 
 

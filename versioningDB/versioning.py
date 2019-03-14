@@ -34,7 +34,6 @@ pg_geoms = utils.pg_geoms
 pg_geom = utils.pg_geom
 pg_branches = utils.pg_branches
 pg_array_elem_type = utils.pg_array_elem_type
-mem_field_names_types = utils.mem_field_names_types
 get_pg_users_list = utils.get_pg_users_list
 get_actual_pk = utils.get_actual_pk
 preserve_fid = utils.preserve_fid

@@ -39,6 +39,7 @@ def test(host, pguser):
     os.system("psql -h " + host + " -U "+pguser+" epanet_test_db -c 'CREATE EXTENSION postgis'")
     os.system("psql -h " + host + " -U "+pguser+" epanet_test_copy_db -c 'CREATE EXTENSION postgis'")
     os.system("psql -h " + host + " -U "+pguser+" epanet_test_db -f "+test_data_dir+"/epanet_test_db.sql")
+    versioning.historize("dbname=epanet_test_db host={} user={}".format(host,pguser), "epanet")
 
     # chechout
     #tables = ['epanet_trunk_rev_head.junctions','epanet_trunk_rev_head.pipes']
@@ -64,7 +65,7 @@ def test(host, pguser):
     pcur.execute("SELECT * FROM epanet.pipes")
     assert( len(pcur.fetchall()) == 3 )
 
-    pcurcpy.execute("UPDATE epanet_trunk_rev_head.pipes_view SET start_node = '2' WHERE id = '0'")
+    pcurcpy.execute("UPDATE epanet_trunk_rev_head.pipes_view SET start_node = '2' WHERE id = '1'")
     pcurcpy.commit()
     pcurcpy.execute("SELECT * FROM epanet_trunk_rev_head.pipes_view")
     assert( len(pcurcpy.fetchall())  == 3 )
@@ -107,7 +108,7 @@ def test(host, pguser):
     pcurcpy.execute("SELECT * FROM epanet_trunk_rev_head.pipes_view")
     assert( len(pcurcpy.fetchall())  == 3 )
     
-    pcur.execute("SELECT pid FROM epanet_trunk_rev_head.pipes ORDER BY pid")
+    pcur.execute("SELECT versioning_hid FROM epanet_trunk_rev_head.pipes ORDER BY versioning_hid")
     ret = pcur.fetchall()
 
     assert([i[0] for i in ret] == [3, 4, 5])

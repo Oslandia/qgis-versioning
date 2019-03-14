@@ -26,7 +26,7 @@ def test(host, pguser):
     os.system("dropdb --if-exists -h " + host + " -U "+pguser+" epanet_test_db")
     os.system("createdb -h " + host + " -U "+pguser+" epanet_test_db")
     os.system("psql -h " + host + " -U "+pguser+" epanet_test_db -c 'CREATE EXTENSION postgis'")
-    os.system("psql -h " + host + " -U "+pguser+" epanet_test_db -f "+test_data_dir+"/epanet_test_db_unversioned.sql")
+    os.system("psql -h " + host + " -U "+pguser+" epanet_test_db -f "+test_data_dir+"/epanet_test_db.sql")
     
 
     pcon = psycopg2.connect(pg_conn_info)
@@ -38,7 +38,7 @@ def test(host, pguser):
                 VALUES
                 ('{id}', {elev}, ST_GeometryFromText('POINT({x} {y})',2154));
             """.format(
-                id=i+2,
+                id=i+3,
                 elev=float(i),
                 x=float(i+1),
                 y=float(i+1)

@@ -2,7 +2,7 @@
 
 SCRIPT_DIR=$(dirname $(readlink -f $0))
 
-for db in epanet_test_db epanet_test_db_copy;
+for db in epanet_test_db ;
 do
     dropdb --if-exists -h 127.0.01 -U postgres $db
     createdb -h 127.0.01 -U postgres $db

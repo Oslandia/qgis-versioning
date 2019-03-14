@@ -18,6 +18,7 @@ def test(host, pguser):
     os.system("createdb -h " + host + " -U "+pguser+" epanet_test_db")
     os.system("psql -h " + host + " -U "+pguser+" epanet_test_db -c 'CREATE EXTENSION postgis'")
     os.system("psql -h " + host + " -U "+pguser+" epanet_test_db -f "+test_data_dir+"/epanet_test_db.sql")
+    versioning.historize("dbname=epanet_test_db host={} user={}".format(host,pguser), "epanet")
 
     # try the update
     wc = tmp_dir+"/issue358_wc.sqlite"

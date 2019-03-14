@@ -11,7 +11,7 @@ import shutil
 
 def prtTab( cur, tab ):
     print("--- ",tab," ---")
-    cur.execute("SELECT pid, trunk_rev_begin, trunk_rev_end, trunk_parent, trunk_child, length FROM "+tab)
+    cur.execute("SELECT versioning_hid, trunk_rev_begin, trunk_rev_end, trunk_parent, trunk_child, length FROM "+tab)
     for r in cur.fetchall():
         t = []
         for i in r: t.append(str(i))
@@ -19,7 +19,7 @@ def prtTab( cur, tab ):
 
 def prtHid( cur, tab ):
     print("--- ",tab," ---")
-    cur.execute("SELECT pid FROM "+tab)
+    cur.execute("SELECT versioning_hid FROM "+tab)
     for [r] in cur.fetchall(): print(r)
 
 def test(host, pguser):
@@ -33,6 +33,7 @@ def test(host, pguser):
         os.system("createdb -h " + host + " -U "+pguser+" epanet_test_db")
         os.system("psql -h " + host + " -U "+pguser+" epanet_test_db -c 'CREATE EXTENSION postgis'")
         os.system("psql -h " + host + " -U "+pguser+" epanet_test_db -f "+test_data_dir+"/epanet_test_db.sql")
+        versioning.historize("dbname=epanet_test_db host={} user={}".format(host,pguser), "epanet")
 
         pcur = versioning.Db(psycopg2.connect(pg_conn_info))
 
@@ -43,7 +44,7 @@ def test(host, pguser):
         pgversioning2.checkout(tables)
         print("checkout done")
 
-        pcur.execute("UPDATE wc1.pipes_view SET length = 4 WHERE pid = 1")
+        pcur.execute("UPDATE wc1.pipes_view SET length = 4 WHERE versioning_hid = 1")
         prtTab( pcur, "wc1.pipes_diff")
         pcur.commit()
         #pcur.close()
@@ -52,7 +53,7 @@ def test(host, pguser):
         #pcur = versioning.Db(psycopg2.connect(pg_conn_info))
 
         print("commited")
-        pcur.execute("UPDATE wc2.pipes_view SET length = 5 WHERE pid = 1")
+        pcur.execute("UPDATE wc2.pipes_view SET length = 5 WHERE versioning_hid = 1")
         prtTab( pcur, "wc2.pipes_diff")
         pcur.commit()
         pgversioning2.update()

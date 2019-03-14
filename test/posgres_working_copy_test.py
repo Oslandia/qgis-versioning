@@ -11,7 +11,7 @@ import shutil
 
 def prtTab( cur, tab ):
     print("--- ",tab," ---")
-    cur.execute("SELECT pid, trunk_rev_begin, trunk_rev_end, trunk_parent, trunk_child, length FROM "+tab)
+    cur.execute("SELECT versioning_hid, trunk_rev_begin, trunk_rev_end, trunk_parent, trunk_child, length FROM "+tab)
     for r in cur.fetchall():
         t = []
         for i in r: t.append(str(i))
@@ -19,7 +19,7 @@ def prtTab( cur, tab ):
 
 def prtHid( cur, tab ):
     print("--- ",tab," ---")
-    cur.execute("SELECT pid FROM "+tab)
+    cur.execute("SELECT versioning_hid FROM "+tab)
     for [r] in cur.fetchall(): print(r)
 
 def test(host, pguser):
@@ -32,6 +32,7 @@ def test(host, pguser):
     os.system("createdb -h " + host + " -U "+pguser+" epanet_test_db")
     os.system("psql -h " + host + " -U "+pguser+" epanet_test_db -c 'CREATE EXTENSION postgis'")
     os.system("psql -h " + host + " -U "+pguser+" epanet_test_db -f "+test_data_dir+"/epanet_test_db.sql")
+    versioning.historize("dbname=epanet_test_db host={} user={}".format(host,pguser), "epanet")
 
     # chechout
     #tables = ['epanet_trunk_rev_head.junctions','epanet_trunk_rev_head.pipes']
@@ -52,29 +53,29 @@ def test(host, pguser):
 
     prtHid(pcur, 'epanet_working_copy.pipes_view')
 
-    pcur.execute("SELECT pid FROM epanet_working_copy.pipes_view")
+    pcur.execute("SELECT versioning_hid FROM epanet_working_copy.pipes_view")
     assert( len(pcur.fetchall()) == 3 )
-    pcur.execute("SELECT pid FROM epanet_working_copy.pipes_diff")
+    pcur.execute("SELECT versioning_hid FROM epanet_working_copy.pipes_diff")
     assert( len(pcur.fetchall()) == 2 )
-    pcur.execute("SELECT pid FROM epanet.pipes")
+    pcur.execute("SELECT versioning_hid FROM epanet.pipes")
     assert( len(pcur.fetchall()) == 1 )
 
 
     prtTab(pcur, 'epanet.pipes')
     prtTab(pcur, 'epanet_working_copy.pipes_diff')
-    pcur.execute("UPDATE epanet_working_copy.pipes_view SET length = 4 WHERE pid = 1")
+    pcur.execute("UPDATE epanet_working_copy.pipes_view SET length = 4 WHERE versioning_hid = 1")
     prtTab(pcur, 'epanet_working_copy.pipes_diff')
-    pcur.execute("UPDATE epanet_working_copy.pipes_view SET length = 5 WHERE pid = 4")
+    pcur.execute("UPDATE epanet_working_copy.pipes_view SET length = 5 WHERE versioning_hid = 4")
     prtTab(pcur, 'epanet_working_copy.pipes_diff')
 
-    pcur.execute("DELETE FROM epanet_working_copy.pipes_view WHERE pid = 4")
+    pcur.execute("DELETE FROM epanet_working_copy.pipes_view WHERE versioning_hid = 4")
     prtTab(pcur, 'epanet_working_copy.pipes_diff')
     pcur.commit()
 
     pgversioning1.commit("test commit msg")
     prtTab(pcur, 'epanet.pipes')
 
-    pcur.execute("SELECT trunk_rev_end FROM epanet.pipes WHERE pid = 1")
+    pcur.execute("SELECT trunk_rev_end FROM epanet.pipes WHERE versioning_hid = 1")
     assert( 1 == pcur.fetchone()[0] )
     pcur.execute("SELECT COUNT(*) FROM epanet.pipes WHERE trunk_rev_begin = 2")
     assert( 2 == pcur.fetchone()[0] )
@@ -88,7 +89,7 @@ def test(host, pguser):
 
     prtHid(pcur, 'epanet_working_copy_cflt.pipes_view')
     prtTab(pcur, 'epanet_working_copy_cflt.pipes_diff')
-    pcur.execute("UPDATE epanet_working_copy_cflt.pipes_view SET length = 8 WHERE pid = 1")
+    pcur.execute("UPDATE epanet_working_copy_cflt.pipes_view SET length = 8 WHERE versioning_hid = 1")
     pcur.commit()
     prtTab(pcur, 'epanet.pipes')
     prtTab(pcur, 'epanet_working_copy_cflt.pipes_diff')

@@ -188,28 +188,37 @@ def diff_rev_view_str(pg_conn_info, schema, table, branch, rev_begin, rev_end):
         pcur.close()
         raise RuntimeError("Revision 2 (end) "+rev_end+" doesn't exist")
 
-    select_str = ("SELECT "
-                  "CASE WHEN "
-                  + schema+"."+table+"."+branch+"_rev_begin > "+rev_begin + " "
-                  "AND " + schema+"."+table+"."+branch+"_rev_begin <= "+rev_end + " "
-                  "AND " + schema+"."+table+"."+branch+"_parent IS NULL THEN 'a' "
-                  "WHEN (" + schema+"."+table+"."+branch +
-                  "_rev_begin > "+rev_begin + " "
-                  "AND " + schema+"."+table+"."+branch+"_rev_end IS NULL "
-                  "AND " + schema+"."+table+"."+branch+"_parent IS NOT NULL) "
-                  "OR ("+schema+"."+table+"."+branch+"_rev_end >= "+rev_end+" "
-                  "AND "+schema+"."+table+"."+branch+"_child IS NOT NULL) "
-                  "THEN 'u' "
-                  "WHEN " + schema+"."+table+"."+branch+"_rev_end > "+rev_begin + " "
-                  "AND " + schema+"."+table+"."+branch+"_rev_end < "+rev_end + " "
-                  "AND " + schema+"."+table+"."+branch+"_child IS NULL THEN 'd' ELSE 'i' END "
-                  "as diff_status, * FROM "+schema+"."+table + " "
-                  "WHERE (" + schema+"."+table+"."+branch +
-                  "_rev_begin > "+rev_begin + " "
-                  "AND " + schema+"."+table+"."+branch+"_rev_begin <= "+rev_end+") "
-                  "OR (" + schema+"."+table+"."+branch +
-                  "_rev_end > "+rev_begin + " "
-                  "AND " + schema+"."+table+"."+branch+"_rev_end <= "+rev_end + " )")
+    select_str = """SELECT CASE
+
+    -- Added/Created
+    WHEN t.{branch}_rev_begin > {rev_begin}
+    AND t.{branch}_rev_begin <= {rev_end}
+    AND t.{branch}_parent IS NULL THEN 'a'
+
+    -- Updated
+    WHEN (t.{branch}_rev_begin > {rev_begin}
+    AND t.{branch}_rev_end IS NULL
+    AND t.{branch}_parent IS NOT NULL)
+    OR (t.{branch}_rev_end >= {rev_end}
+    AND t.{branch}_child IS NOT NULL) THEN 'u'
+
+    -- Deleted
+    WHEN t.{branch}_rev_end > {rev_begin}
+    AND t.{branch}_rev_end < {rev_end}
+    AND t.{branch}_child IS NULL THEN 'd'
+
+    -- Intermediate
+    ELSE 'i'
+    END
+
+    as diff_status, * FROM {schema}.{table} t
+    WHERE (t.{branch}_rev_begin > {rev_begin}
+    AND t.{branch}_rev_begin <= {rev_end})
+    OR (t.{branch}_rev_end > {rev_begin}
+    AND t.{branch}_rev_end <= {rev_end} )
+    ORDER BY versioning_hid""".format(
+        schema=schema, table=table, branch=branch,
+        rev_begin=rev_begin, rev_end=rev_end)
 
     pcur.close()
     return select_str
@@ -286,7 +295,7 @@ def add_revision_view(pg_conn_info, schema, branch, rev):
                  "AND table_type = 'BASE TABLE'")
 
     for [table] in pcur.fetchall():
-        if table == 'revisions':
+        if table in ('revisions', 'versioning_constraints'):
             continue
         pcur.execute("SELECT column_name "
                      "FROM information_schema.columns "
@@ -331,7 +340,7 @@ def archive(pg_conn_info, schema, revision_end):
         "AND table_type = 'BASE TABLE'")
     
     for [table] in pcur.fetchall():
-        if table == 'revisions': 
+        if table in ('revisions', 'versioning_constraints'):
             continue
         
         pk = utils.pg_pk(pcur, schema, table)
@@ -413,8 +422,9 @@ def merge(pg_conn_info, schema, branch_name):
 
     total = 0
     for [table] in pcur.fetchall():
-        if table == 'revisions':
+        if table in ('revisions', 'versioning_constraints'):
             continue
+        
         pcur.execute("""SELECT count(*) FROM {schema}.{table} WHERE 
                      trunk_rev_begin IS NULL OR 
                      (trunk_rev_end IS NULL and {branche}_rev_end IS NOT NULL)""".format(

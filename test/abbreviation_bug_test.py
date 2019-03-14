@@ -24,19 +24,19 @@ def test(host, pguser):
     os.system("dropdb --if-exists -h " + host + " -U "+pguser+" epanet_test_db")
     os.system("createdb -h " + host + " -U "+pguser+" epanet_test_db")
     os.system("psql -h " + host + " -U "+pguser+" epanet_test_db -c 'CREATE EXTENSION postgis'")
-    os.system("psql -h " + host + " -U "+pguser+" epanet_test_db -f "+test_data_dir+"/epanet_test_db_unversioned.sql")
-    
+    os.system("psql -h " + host + " -U "+pguser+" epanet_test_db -f "+test_data_dir+"/epanet_test_db.sql")
 
+    # delete existing data
     pcon = psycopg2.connect(pg_conn_info)
     pcur = pcon.cursor()
     for i in range(10):
         pcur.execute("""
             INSERT INTO epanet.junctions
-                (id, elevation, geom)
+                (demand_pattern_id, elevation, geom)
                 VALUES
-                ('{id}', {elev}, ST_GeometryFromText('POINT({x} {y})',2154));
+                ('{demand_pattern_id}', {elev}, ST_GeometryFromText('POINT({x} {y})',2154));
             """.format(
-                id=str(i+2)+'_this_is_a_very_long_name_that should_be_trunctated_if_buggy',
+                demand_pattern_id=str(i+2)+'_this_is_a_very_long_name_that should_be_trunctated_if_buggy',
                 elev=float(i),
                 x=float(i+1),
                 y=float(i+1)
@@ -44,6 +44,7 @@ def test(host, pguser):
     pcon.commit()
     versioning.historize(pg_conn_info, 'epanet')
 
+    
     spversioning.checkout(["epanet_trunk_rev_head.junctions","epanet_trunk_rev_head.pipes"])
     assert( os.path.isfile(sqlite_test_filename) and "sqlite file must exist at this point" )
 
@@ -51,19 +52,20 @@ def test(host, pguser):
     scon.enable_load_extension(True)
     scon.execute("SELECT load_extension('mod_spatialite')")
     scur = scon.cursor()
-    scur.execute("SELECT * from junctions")
+    scur.execute("SELECT id, demand_pattern_id from junctions")
+
     for rec in scur:
         if rec[0] > 2:
             assert rec[1].find('_this_is_a_very_long_name_that should_be_trunctated_if_buggy') != -1
 
-    scur.execute("update junctions_view set id='this_is_another_edited_very_long_name_that should_be_trunctated_if_buggy' where ogc_fid > 8")
+    scur.execute("update junctions_view set demand_pattern_id='this_is_another_edited_very_long_name_that should_be_trunctated_if_buggy' where ogc_fid > 8")
 
-    scur.execute("insert into junctions_view(id, elevation, geom) select 'newly inserted with long name', elevation, geom from junctions_view where ogc_fid=4")
+    scur.execute("insert into junctions_view(id, demand_pattern_id, elevation, geom) select 10, 'newly inserted with long name', elevation, geom from junctions_view where ogc_fid=4")
     scon.commit()
 
     spversioning.commit('a commit msg')
 
-    pcur.execute("select jid, id from epanet_trunk_rev_head.junctions")
+    pcur.execute("select versioning_hid, demand_pattern_id from epanet_trunk_rev_head.junctions")
     for row in pcur:
         print(row)
         if row[0] > 8:

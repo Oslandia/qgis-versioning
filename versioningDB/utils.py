@@ -197,36 +197,6 @@ def pg_array_elem_type( cur, schema, table, column ):
     [res] = cur.fetchone()
     return res
 
-def mem_field_names_types(pg_layer):
-    '''String massaging to get field names and types in memory layer uri
-    format.  The provider supports string, int and double fields.  Types
-    returned by pg_layer need to be cast as follows :
-    int4    => integer
-    float8  => double
-    varchar => string
-    text => string
-    Intended use in : versioning.mem_layer_uri
-    To do : check for field type not supported and exit
-    '''
-    name_type_lst = [(str(f.name()), ':', str(f.typeName())) for f
-        in pg_layer.pendingFields().toList()]
-    field_list = [''.join(tuples) for tuples in name_type_lst]
-    concatenated_field_str = ''
-    for i in range(len(field_list)):
-        concatenated_field_str += "field=" + field_list[i] +'&'
-
-    #print("concatenated_field_str = " + concatenated_field_str +"\n")
-
-    rep = {'float8': 'double', 'int4': 'integer', 'text': 'string',
-        'varchar': 'string'}
-    pattern = re.compile("|".join(rep.keys()))
-    temp_str = pattern.sub(
-        lambda m: rep[re.escape(m.group(0))],concatenated_field_str )
-    final_str = temp_str[:-1]
-    #print("\n" + "final_str = " + final_str +"\n")
-    return final_str
-
-
 def get_pg_users_list(pg_conn_info):
     pcur = Db(psycopg2.connect(pg_conn_info))
     pcur.execute("select usename from pg_user order by usename ASC")

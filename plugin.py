@@ -154,41 +154,6 @@ class Plugin(QObject):
                     indexes[1], 3).setBackground(QColor(255, 255, 0))
         return
 
-    def mem_layer_uri(self, pg_layer):
-        '''Final string concatenation to get a proper memory layer uri.  Example:
-        "Point?crs=epsg:4326&field=id:integer&field=name:string(20)&index=yes"
-        Geometry identifiers supported in memory layers :
-        Point, LineString, Polygon, MultiPoint, MultiLineString, MultiPolygon
-        Intended use in : versioning.view
-        '''
-        mem_uri = 'Unknown'
-        srid = str(QgsDataSourceUri(pg_layer.source()).srid())
-        if pg_layer.wkbType() == QgsWkbTypes.Point:
-            # print("Layer \"" + pg_layer.name()+ "\" is a point layer")
-            mem_uri = "Point?crs=epsg:" + srid + "&" + \
-                versioning.mem_field_names_types(pg_layer) + "&index=yes"
-        if pg_layer.wkbType() == QgsWkbTypes.LineString:
-            # print("Layer \"" + pg_layer.name()+ "\" is a linestring layer")
-            mem_uri = "LineString?crs=epsg:" + srid + "&" + \
-                versioning.mem_field_names_types(pg_layer) + "&index=yes"
-        if pg_layer.wkbType() == QgsWkbTypes.Polygon:
-            # print("Layer \"" + pg_layer.name()+ "\" is a polygon layer")
-            mem_uri = "Polygon?crs=epsg:" + srid + "&" + \
-                versioning.mem_field_names_types(pg_layer) + "&index=yes"
-        if pg_layer.wkbType() == QgsWkbTypes.MultiPoint:
-            # print("Layer \"" + pg_layer.name()+ "\" is a multi-point layer")
-            mem_uri = "MultiPoint?crs=epsg:" + srid + "&" + \
-                versioning.mem_field_names_types(pg_layer) + "&index=yes"
-        if pg_layer.wkbType() == QgsWkbTypes.MultiLineString:
-            # print("Layer \"" + pg_layer.name()+ "\" is a multi-linestring layer")
-            mem_uri = "MultiLineString?crs=epsg:" + srid + "&" + \
-                versioning.mem_field_names_types(pg_layer) + "&index=yes"
-        if pg_layer.wkbType() == QgsWkbTypes.MultiPolygon:
-            # print("Layer \"" + pg_layer.name()+ "\" is a multi-polygon layer")
-            mem_uri = "MultiPolygon?crs=epsg:" + srid + "&" + \
-                versioning.mem_field_names_types(pg_layer) + "&index=yes"
-        return mem_uri
-
     def pg_conn_info(self):
         """returns current postgis versioned DB connection info
         request credentials if needed"""
@@ -311,7 +276,7 @@ class Plugin(QObject):
         """
         Recursively get layers from given node and return them
         """
-
+        
         if node.nodeType() == QgsLayerTreeNode.NodeLayer :
             return [node.layer()]
         
@@ -418,7 +383,7 @@ class Plugin(QObject):
 
         # Node has to be a group to be versionned
         node = self.iface.layerTreeView().currentNode()
-        if node.nodeType() != QgsLayerTreeNode.NodeGroup:
+        if not node or node.nodeType() != QgsLayerTreeNode.NodeGroup:
             self.info.setText("Versioning : No group selected")
             selection_type, mergeable = (None, False)
         else:
@@ -563,8 +528,7 @@ class Plugin(QObject):
         """
 
         grp = QgsProject.instance().layerTreeRoot().addGroup(group_name)
-        for uri, display_name, provider in layers:
-            layer = QgsVectorLayer(uri, display_name, provider)
+        for layer in layers:
             grp.addLayer(QgsProject.instance().addMapLayer(layer, addToLegend = False))
 
         return grp
@@ -644,7 +608,7 @@ class Plugin(QObject):
                                   new_uri.geometryColumn(),
                                   new_uri.sql(),
                                   new_uri.keyColumn())
-            layers += [(new_uri.uri().replace('()', ''), layer.name(), 'postgres')]
+            layers += [QgsVectorLayer(new_uri.uri().replace('()', ''), layer.name(), 'postgres')]
 
         self.__new_group(branch+' revision head', layers)
             
@@ -750,6 +714,7 @@ class Plugin(QObject):
                 new_uri = QgsDataSourceUri(layer.source())
                 select_str = versioning.diff_rev_view_str(uri.connectionInfo(),
                                                           schema, new_uri.table(), branches[0], rev_begin, rev_end)
+
                 # change data source uri to point to select sql
                 # schema needs to be set to empty
                 new_uri.setDataSource("",
@@ -758,30 +723,15 @@ class Plugin(QObject):
                                       new_uri.sql(),
                                       new_uri.keyColumn())
                 display_name = layer.name()
-                # print("new_uri.uri() = " + new_uri.uri())
-                tmp_pg_layer = QgsVectorLayer(new_uri.uri(), display_name, 'postgres')
-                # print("Number of features in layer " + display_name + " = " + str(tmp_pg_layer.featureCount()))
+                new_mem_layer = QgsVectorLayer(new_uri.uri(), display_name + '_diff', 'postgres')
                 # if layer has no feature, delete tmp layer and resume for loop
-                if not(tmp_pg_layer.featureCount()):
+                if not(new_mem_layer.featureCount()):
                     empty_layers.append(str(display_name))
                     continue
 
-                mem_uri = self.mem_layer_uri(tmp_pg_layer)
+                new_mem_layer.setReadOnly(True)
+                layers += [new_mem_layer]
 
-                # print("mem_uri = " + mem_uri)
-                if mem_uri == "Unknown":
-                    return
-
-                layers += [(mem_uri, display_name + '_diff', 'memory')]
-                new_mem_layer = QgsVectorLayer(*layers[-1])
-
-                pr = new_mem_layer.dataProvider()
-                source_layer_features = [f for f in tmp_pg_layer.getFeatures()]
-                # print("Got features from source vector layer")
-                QgsProject.instance().removeMapLayer(tmp_pg_layer.id())
-                # print("Removed tmp layer")
-                pr.addFeatures(source_layer_features)
-                # print("Copied source features to mem layer")
                 # Style layer to show features as a function of whether they were
                 # - added/created ('a')
                 # - updated ('u')
@@ -818,7 +768,7 @@ class Plugin(QObject):
 
                 # delete the default rule
                 root_rule.removeChildAt(0)
-                new_mem_layer.setRendererV2(renderer)
+                new_mem_layer.setRenderer(renderer)
                 # refresh map and legend
                 self.iface.mapCanvas().refresh()
 
@@ -849,7 +799,7 @@ class Plugin(QObject):
                                           new_uri.keyColumn())
 
                     src = new_uri.uri().replace('()', '')
-                    layers += [(src, layer.name(), 'postgres')]
+                    layers += [QgsVectorLayer(src, layer.name(), 'postgres')]
                 self.__new_group(grp_name, layers)
                 
         self.iface.messageBar().clearWidgets()
@@ -1000,7 +950,7 @@ class Plugin(QObject):
                                   new_uri.sql(),
                                   new_uri.keyColumn())
             src = new_uri.uri().replace('()', '')
-            layers += [(src, layer.name(), 'postgres')]
+            layers += [QgsVectorLayer(src, layer.name(), 'postgres')]
 
         self.__new_group('trunk revision head', layers)
 
@@ -1082,9 +1032,9 @@ class Plugin(QObject):
             table = uri.table()
             display_name = layer.name()
             geom = '({})'.format(uri.geometryColumn()) if uri.geometryColumn() else ''
-            layers += [("dbname=\""+filename+"\"" +
-                       " key=\"OGC_FID\" table=\""+table+"_view\" "
-                       + geom, display_name, 'spatialite')]
+            layers += [QgsVectorLayer("dbname=\""+filename+"\"" +
+                                      " key=\"OGC_FID\" table=\""+table+"_view\" "
+                                      + geom, display_name, 'spatialite')]
 
         self.__new_group(grp_name, layers).setExpanded(True)
 
@@ -1201,7 +1151,7 @@ class Plugin(QObject):
 
             display_name = layer.name()
             src = new_uri.uri().replace('()', '')
-            layers += [(src, display_name, 'postgres')]
+            layers += [QgsVectorLayer(src, display_name, 'postgres')]
 
         self.__new_group(working_copy_schema, layers)
         
@@ -1306,7 +1256,7 @@ class Plugin(QObject):
             display_name = layer.name()
             print("replacing ", display_name)
             src = new_uri.uri().replace('()', '')
-            layers += [(src, display_name, 'postgres')]
+            layers += [QgsVectorLayer(src, display_name, 'postgres')]
         self.__new_group(working_copy_schema, layers)
 
     def commit(self):

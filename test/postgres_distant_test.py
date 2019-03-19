@@ -93,7 +93,7 @@ def test(host, pguser):
     scon.enable_load_extension(True)
     scon.execute("SELECT load_extension('mod_spatialite')")
     scur = scon.cursor()
-    scur.execute("INSERT INTO pipes_view(id, start_node, end_node, geom) VALUES ('4', '10','100',ST_GeometryFromText('LINESTRING(2 0, 0 2)',2154))")
+    scur.execute("INSERT INTO pipes_view(id, start_node, end_node, geom) VALUES (4, 1, 2,ST_GeometryFromText('LINESTRING(2 0, 0 2)',2154))")
     scon.commit()
     spversioning1.commit("sp commit")
     

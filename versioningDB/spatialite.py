@@ -321,7 +321,68 @@ class spVersioning(object):
         scur.commit()
         scur.close()
         
-    
+    def __setup_contraint_trigger(self, connection, schema, tables):
+        """
+        Build and setup unique and foreign key constraints on table views
+        """
+
+        # Get unique and foreign key constraints
+        (sqlite_filename, pg_conn_info) = connection
+        pcur = Db(psycopg2.connect(pg_conn_info))
+        pcur.execute("SELECT * FROM {schema}.versioning_constraints".format(schema=schema))
+
+        scur = Db(dbapi2.connect(sqlite_filename))
+
+        # Build trigger upon this contraints and setup on view
+        for table_from, columns_from, table_to, columns_to in pcur.fetchall():
+
+            # table is not being checkout
+            if table_from not in tables:
+                continue
+            
+            sql = None
+            
+            # unique constraint
+            if not table_to:
+                sql = """
+                CREATE TRIGGER insert_check_unique_{table}_{column}
+                INSTEAD OF INSERT ON {table}_view
+                FOR EACH ROW
+                WHEN (SELECT COUNT(*) FROM {table}_view WHERE {column} = NEW.{column}) != 0
+                BEGIN
+                SELECT RAISE(FAIL, "Fail junction {column} field unique constraint");
+                END;"""
+                
+                sql = "".join([sql.format(table=table_from, column=column)
+                               for column in columns_from])
+
+            # foreign key constraint
+            else: 
+
+                assert(len(columns_from)==len(columns_from))
+
+                sql = """
+                CREATE TRIGGER insert_check_fkey_{table_from}_{column_from}_to_{table_to}_{column_to}
+                INSTEAD OF INSERT ON {table_from}_view
+                FOR EACH ROW
+                WHEN (SELECT COUNT(*) FROM {table_to}_view 
+                WHERE {column_to} = NEW.{column_from}) == 0
+                BEGIN
+                SELECT RAISE(FAIL, "Fail {table_from} {column_from} field foreign key constraint");
+                END;
+                """
+
+                sql = "".join([sql.format(table_from=table_from, table_to=table_to,
+                                          column_from=column_from, column_to=column_to) for column_from, column_to
+                               in zip(columns_from, columns_to)])
+
+
+            scur.execute(sql)
+            scur.commit()
+            
+        scur.close()
+        pcur.close()
+        
     def checkout(self, connection, pg_table_names, selected_feature_lists = []):
         (sqlite_filename, pg_conn_info) = connection
         """create working copy from versioned database tables
@@ -505,7 +566,7 @@ class spVersioning(object):
                     "VALUES "
                     "("+max_fid_sub+"+1, "+newcols+", "+current_rev_sub+"+1);\n"
                 "END")
-    
+            
             scur.execute("CREATE TRIGGER delete_"+table+" "
             "INSTEAD OF DELETE ON "+table+"_view\n"
                 "BEGIN\n"
@@ -536,6 +597,8 @@ class spVersioning(object):
             pcur.execute(del_view_str)
             pcur.commit()
         pcur.close()
+
+        self.__setup_contraint_trigger(connection, schema, pg_table_names)
         
     
     def unresolved_conflicts(self, connection):

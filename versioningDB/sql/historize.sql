@@ -8,18 +8,18 @@ CREATE TABLE {schema}.versioning_constraints (
 
 -- populate constraints table
 INSERT INTO {schema}.versioning_constraints 
-SELECT conrelid::regclass AS table_from,
-       (select array_agg(att.attname)
-	  from (select unnest(conkey) as key) as keys,
-	       pg_attribute att where att.attrelid = conrelid and att.attnum = keys.key) as column_from,
-       confrelid::regclass AS table_to,
-       (select array_agg(att.attname)
-	  from (select unnest(confkey) as key) as keys,
-	       pg_attribute att where att.attrelid = conrelid and att.attnum = keys.key) as column_to
-  FROM   pg_constraint c, pg_namespace n
- WHERE    n.oid = c.connamespace
-      AND  contype IN ('f', 'p ')
-      AND    n.nspname = '{schema}' ;
+SELECT (SELECT relname FROM pg_class WHERE oid = conrelid::regclass) AS table_from,
+       (SELECT array_agg(att.attname)
+	  FROM (SELECT unnest(conkey) AS key) AS keys,
+	       pg_attribute att WHERE att.attrelid = conrelid AND att.attnum = keys.key) AS column_from,
+       (SELECT relname FROM pg_class WHERE oid = confrelid::regclass),
+       (SELECT array_agg(att.attname)
+	  FROM (SELECT unnest(confkey) AS key) AS keys,
+	       pg_attribute att WHERE att.attrelid = conrelid AND att.attnum = keys.key) AS column_to
+  FROM   pg_constraint c
+	   JOIN pg_namespace n ON n.oid = c.connamespace
+ WHERE  contype IN ('f', 'p ')
+      AND    n.nspname = '{schema}';
 
 -- Drop foreign keys and primary keys 
 DO

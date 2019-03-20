@@ -3,6 +3,7 @@
 from __future__ import absolute_import
 from .utils import *
 from itertools import zip_longest
+from collections import OrderedDict
 
 import os
 DEBUG=False
@@ -333,11 +334,13 @@ class spVersioning(object):
 
         scur = Db(dbapi2.connect(sqlite_filename))
 
+        tables_wo_schema = [table[1] for table in tables]
+
         # Build trigger upon this contraints and setup on view
         for table_from, columns_from, table_to, columns_to in pcur.fetchall():
 
             # table is not being checkout
-            if table_from not in tables:
+            if table_from not in tables_wo_schema:
                 continue
             
             sql = None
@@ -377,11 +380,50 @@ class spVersioning(object):
                                in zip(columns_from, columns_to)])
 
 
+            print(sql)
             scur.execute(sql)
             scur.commit()
             
         scur.close()
         pcur.close()
+
+    def __get_checkout_tables(self, connection, table_names):
+        """
+        Build and return tables to be checkout according to given pg_tables parameter. 
+        It also adds the referenced table (in order to check the foreign key)
+        :returns: a list of tuple (schema, table, branch)
+        """
+        (sqlite_filename, pg_conn_info) = connection
+        pcur = Db(psycopg2.connect(pg_conn_info))
+
+        # We use and ordered dict because we don't want table duplicate and we want to keep original
+        # order for later purpose (see selectedFeatureList in checkout method)
+        tables = OrderedDict()
+        for table_name in table_names:
+            schema, table = table_name.split('.')
+            if not ( schema and table and schema[-9:] == "_rev_head"):
+                raise RuntimeError("Schema names must end with "
+                    "suffix _branch_rev_head")
+
+            schema, _, branch = schema[:-9].rpartition('_')
+            tables[(schema, table, branch)] = None
+
+            # Search for referenced table
+            sql = """
+            SELECT DISTINCT table_to 
+            FROM {schema}.versioning_constraints
+            WHERE table_from = '{table}'
+            AND table_to IS NOT NULL;
+            """.format(schema=schema, table=table)
+
+            pcur.execute(sql)
+
+            # add them (if not already added). We don't use set
+            # because we want to keep the original order
+            for ref_table in pcur.fetchall():
+                tables[(schema, ref_table[0], branch)] = None
+
+        return list(tables)
         
     def checkout(self, connection, pg_table_names, selected_feature_lists = []):
         (sqlite_filename, pg_conn_info) = connection
@@ -391,23 +433,16 @@ class spVersioning(object):
         the file sqlite_filename must not exists
         the views and trigger for local edition will be created
         along with the tables and triggers for conflict resolution"""
-    
+
         if os.path.isfile(sqlite_filename):
             raise RuntimeError("File "+sqlite_filename+" already exists")
-        for pg_table_name in pg_table_names:
-            [schema, table] = pg_table_name.split('.')
-            if not ( schema and table and schema[-9:] == "_rev_head"):
-                raise RuntimeError("Schema names must end with "
-                    "suffix _branch_rev_head")
-    
+
+        tables = self.__get_checkout_tables(connection, pg_table_names)
         pcur = Db(psycopg2.connect(pg_conn_info))
     
         temp_view_names = []
         first_table = True
-        for pg_table_name,feature_list in list(zip_longest(pg_table_names, selected_feature_lists)):
-            [schema, table] = pg_table_name.split('.')
-            [schema, sep, branch] = schema[:-9].rpartition('_')
-            del sep
+        for (schema, table, branch), feature_list in list(zip_longest(tables, selected_feature_lists)):
     
             # fetch the current rev
             pcur.execute("SELECT MAX(rev) FROM "+schema+".revisions")
@@ -598,7 +633,7 @@ class spVersioning(object):
             pcur.commit()
         pcur.close()
 
-        self.__setup_contraint_trigger(connection, schema, pg_table_names)
+        self.__setup_contraint_trigger(connection, schema, tables)
         
     
     def unresolved_conflicts(self, connection):

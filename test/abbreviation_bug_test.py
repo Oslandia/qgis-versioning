@@ -60,7 +60,7 @@ def test(host, pguser):
 
     scur.execute("update junctions_view set demand_pattern_id='this_is_another_edited_very_long_name_that should_be_trunctated_if_buggy' where ogc_fid > 8")
 
-    scur.execute("insert into junctions_view(id, demand_pattern_id, elevation, geom) select 10, 'newly inserted with long name', elevation, geom from junctions_view where ogc_fid=4")
+    scur.execute("insert into junctions_view(id, demand_pattern_id, elevation, geom) select 13, 'newly inserted with long name', elevation, geom from junctions_view where ogc_fid=4")
     scon.commit()
 
     spversioning.commit('a commit msg')

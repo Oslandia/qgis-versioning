@@ -330,59 +330,64 @@ class spVersioning(object):
         # Get unique and foreign key constraints
         (sqlite_filename, pg_conn_info) = connection
         pcur = Db(psycopg2.connect(pg_conn_info))
-        pcur.execute("SELECT * FROM {schema}.versioning_constraints".format(schema=schema))
-
-        scur = Db(dbapi2.connect(sqlite_filename))
-
+        pcur.execute("""
+        SELECT table_from, unnest(columns_from), table_to, unnest(columns_to)
+        FROM {schema}.versioning_constraints
+        """.format(schema=schema))
+       
         tables_wo_schema = [table[1] for table in tables]
 
+        requests = []
+            
         # Build trigger upon this contraints and setup on view
-        for table_from, columns_from, table_to, columns_to in pcur.fetchall():
+        for table_from, column_from, table_to, column_to in pcur.fetchall():
 
             # table is not being checkout
             if table_from not in tables_wo_schema:
                 continue
             
-            sql = None
-            
             # unique constraint
             if not table_to:
-                sql = """
-                CREATE TRIGGER insert_check_unique_{table}_{column}
-                INSTEAD OF INSERT ON {table}_view
-                FOR EACH ROW
-                WHEN (SELECT COUNT(*) FROM {table}_view WHERE {column} = NEW.{column}) != 0
-                BEGIN
-                SELECT RAISE(FAIL, "Fail junction {column} field unique constraint");
-                END;"""
-                
-                sql = "".join([sql.format(table=table_from, column=column)
-                               for column in columns_from])
+
+                for method in ['insert','update']:
+                    
+                    update_filter = f"AND NEW.{column_from} != OLD.{column_from}" if method == 'update' else ""
+
+                    sql = f"""
+                    CREATE TRIGGER {method}_check_unique_{table_from}_{column_from}
+                    INSTEAD OF {method} ON {table_from}_view
+                    FOR EACH ROW
+                    WHEN (SELECT COUNT(*) FROM {table_from}_view WHERE {column_from} = NEW.{column_from}) != 0
+                    {update_filter}
+                    BEGIN
+                    SELECT RAISE(FAIL, "Fail junction {column_from} field unique constraint");
+                    END;"""
+
+                    requests += [sql]
 
             # foreign key constraint
             else: 
 
-                assert(len(columns_from)==len(columns_from))
+                for method in ['insert','update']:
+                    
+                    sql = f"""
+                    CREATE TRIGGER {method}_check_fkey_{table_from}_{column_from}_to_{table_to}_{column_to}
+                    INSTEAD OF {method} ON {table_from}_view
+                    FOR EACH ROW
+                    WHEN (SELECT COUNT(*) FROM {table_to}_view 
+                    WHERE {column_to} = NEW.{column_from}) == 0
+                    BEGIN
+                    SELECT RAISE(FAIL, "Fail {table_from} {column_from} field foreign key constraint");
+                    END;
+                    """
 
-                sql = """
-                CREATE TRIGGER insert_check_fkey_{table_from}_{column_from}_to_{table_to}_{column_to}
-                INSTEAD OF INSERT ON {table_from}_view
-                FOR EACH ROW
-                WHEN (SELECT COUNT(*) FROM {table_to}_view 
-                WHERE {column_to} = NEW.{column_from}) == 0
-                BEGIN
-                SELECT RAISE(FAIL, "Fail {table_from} {column_from} field foreign key constraint");
-                END;
-                """
+                    requests += [sql]
 
-                sql = "".join([sql.format(table_from=table_from, table_to=table_to,
-                                          column_from=column_from, column_to=column_to) for column_from, column_to
-                               in zip(columns_from, columns_to)])
+        scur = Db(dbapi2.connect(sqlite_filename))
+        for request in requests:
+            scur.execute(request)
 
-
-            print(sql)
-            scur.execute(sql)
-            scur.commit()
+        scur.commit()
             
         scur.close()
         pcur.close()

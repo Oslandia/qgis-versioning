@@ -4,7 +4,9 @@ CREATE TABLE {schema}.versioning_constraints (
   table_from varchar,
   columns_from varchar[],
   table_to varchar,
-  columns_to varchar[]);
+  columns_to varchar[],
+  updtype char,
+  deltype char);
 
 -- populate constraints table
 INSERT INTO {schema}.versioning_constraints 
@@ -15,7 +17,8 @@ SELECT (SELECT relname FROM pg_class WHERE oid = conrelid::regclass) AS table_fr
        (SELECT relname FROM pg_class WHERE oid = confrelid::regclass),
        (SELECT array_agg(att.attname)
 	  FROM (SELECT unnest(confkey) AS key) AS keys,
-	       pg_attribute att WHERE att.attrelid = conrelid AND att.attnum = keys.key) AS column_to
+	       pg_attribute att WHERE att.attrelid = conrelid AND att.attnum = keys.key) AS column_to,
+       c.confupdtype, c.confdeltype
   FROM   pg_constraint c
 	   JOIN pg_namespace n ON n.oid = c.connamespace
  WHERE  contype IN ('f', 'p ')

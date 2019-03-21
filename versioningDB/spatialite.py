@@ -331,7 +331,7 @@ class spVersioning(object):
         (sqlite_filename, pg_conn_info) = connection
         pcur = Db(psycopg2.connect(pg_conn_info))
         pcur.execute("""
-        SELECT table_from, columns_from, table_to, columns_to
+        SELECT table_from, columns_from, table_to, columns_to, updtype, deltype
         FROM {schema}.versioning_constraints
         """.format(schema=schema))
        
@@ -340,7 +340,7 @@ class spVersioning(object):
         requests = []
             
         # Build trigger upon this contraints and setup on view
-        for idx, (table_from, columns_from, table_to, columns_to) in enumerate(pcur.fetchall()):
+        for idx, (table_from, columns_from, table_to, columns_to, updtype, deltype) in enumerate(pcur.fetchall()):
 
             # table is not being checkout
             if table_from not in tables_wo_schema:
@@ -379,7 +379,7 @@ class spVersioning(object):
 
                 assert(len(columns_from) == len(columns_to))
                 
-                # check if unique keys already exist
+                # check if referenced keys exists
                 when_filter = "(SELECT COUNT(*) FROM {}_view WHERE {}) == 0".format(
                     table_to,
                     " AND ".join(["{} = NEW.{}".format(column_to, column_from)
@@ -401,6 +401,41 @@ class spVersioning(object):
 
                     requests += [sql]
 
+                # special actions when a referenced key is updated/deleted
+                for method in ['delete','update']:
+
+                    # check if referencing keys have been modified
+                    when_filter = ""
+                    if method == 'update': 
+                        when_filter += "WHEN " + " OR ".join(["NEW.{0} != OLD.{0}".format(column)
+                                                              for column in columns_to]) 
+
+
+                    keys_label = ",".join(columns_to) + (" is" if len(columns_to) == 1 else " are")
+
+                    action_type = updtype if method == 'update' else deltype
+                    print("action_type={}".format(action_type))
+                    if action_type == 'c':
+                        pass
+                    elif action_type == 'n':
+                        pass
+                    elif action_type == 'd':
+                        pass
+                    else:
+                        action = f"""SELECT RAISE(FAIL, "{keys_label} still referenced by {table_from}");""";
+                    
+                    sql = f"""
+                    CREATE TRIGGER {method}_check{idx}_fkey_modifed_{table_from}_to_{table_to}
+                    INSTEAD OF {method} ON {table_to}_view
+                    FOR EACH ROW
+                    {when_filter}
+                    BEGIN
+                    {action}
+                    END;
+                    """
+
+                    requests += [sql]
+                    
         scur = Db(dbapi2.connect(sqlite_filename))
         for request in requests:
             scur.execute(request)

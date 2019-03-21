@@ -331,7 +331,7 @@ class spVersioning(object):
         (sqlite_filename, pg_conn_info) = connection
         pcur = Db(psycopg2.connect(pg_conn_info))
         pcur.execute("""
-        SELECT table_from, unnest(columns_from), table_to, unnest(columns_to)
+        SELECT table_from, columns_from, table_to, columns_to
         FROM {schema}.versioning_constraints
         """.format(schema=schema))
        
@@ -340,7 +340,7 @@ class spVersioning(object):
         requests = []
             
         # Build trigger upon this contraints and setup on view
-        for table_from, column_from, table_to, column_to in pcur.fetchall():
+        for idx, (table_from, columns_from, table_to, columns_to) in enumerate(pcur.fetchall()):
 
             # table is not being checkout
             if table_from not in tables_wo_schema:
@@ -350,17 +350,26 @@ class spVersioning(object):
             if not table_to:
 
                 for method in ['insert','update']:
-                    
-                    update_filter = f"AND NEW.{column_from} != OLD.{column_from}" if method == 'update' else ""
 
+                    # check if unique keys already exist
+                    when_filter = "(SELECT COUNT(*) FROM {}_view WHERE {}) != 0".format(
+                        table_from,
+                        " AND ".join(["{0} = NEW.{0}".format(column) for column in columns_from]))
+
+                    # check if unique keys have been modified
+                    if method == 'update': 
+                        when_filter += " AND " + " AND ".join(["NEW.{0} != OLD.{0}".format(column)
+                                                             for column in columns_from]) 
+
+                    keys = ",".join(columns_from)
+                    
                     sql = f"""
-                    CREATE TRIGGER {method}_check_unique_{table_from}_{column_from}
+                    CREATE TRIGGER {method}_check{idx}_unique_{table_from}
                     INSTEAD OF {method} ON {table_from}_view
                     FOR EACH ROW
-                    WHEN (SELECT COUNT(*) FROM {table_from}_view WHERE {column_from} = NEW.{column_from}) != 0
-                    {update_filter}
+                    WHEN {when_filter}
                     BEGIN
-                    SELECT RAISE(FAIL, "Fail junction {column_from} field unique constraint");
+                    SELECT RAISE(FAIL, "Fail {table_from} {keys} unique constraint");
                     END;"""
 
                     requests += [sql]
@@ -368,16 +377,25 @@ class spVersioning(object):
             # foreign key constraint
             else: 
 
+                assert(len(columns_from) == len(columns_to))
+                
+                # check if unique keys already exist
+                when_filter = "(SELECT COUNT(*) FROM {}_view WHERE {}) == 0".format(
+                    table_to,
+                    " AND ".join(["{} = NEW.{}".format(column_to, column_from)
+                                  for column_to, column_from in zip(columns_to, columns_from)]))
+
+                keys = ",".join(columns_from)
+                    
                 for method in ['insert','update']:
                     
                     sql = f"""
-                    CREATE TRIGGER {method}_check_fkey_{table_from}_{column_from}_to_{table_to}_{column_to}
+                    CREATE TRIGGER {method}_check{idx}_fkey_{table_from}_to_{table_to}
                     INSTEAD OF {method} ON {table_from}_view
                     FOR EACH ROW
-                    WHEN (SELECT COUNT(*) FROM {table_to}_view 
-                    WHERE {column_to} = NEW.{column_from}) == 0
+                    WHEN {when_filter}
                     BEGIN
-                    SELECT RAISE(FAIL, "Fail {table_from} {column_from} field foreign key constraint");
+                    SELECT RAISE(FAIL, "Fail {keys} foreign key constraint");
                     END;
                     """
 

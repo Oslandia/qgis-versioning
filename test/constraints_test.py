@@ -9,30 +9,42 @@ import psycopg2
 import os
 import tempfile
 
+tmp_dir = tempfile.gettempdir()
+sqlite_test_filename = os.path.join(tmp_dir, "constraints_test.sqlite")
 
-def test(host, pguser):
+def load_test_database(host, pguser):
+
     pg_conn_info = "dbname=epanet_test_db host=" + host + " user=" + pguser
-    tmp_dir = tempfile.gettempdir()
     test_data_dir = os.path.dirname(os.path.realpath(__file__))
 
-    sqlite_test_filename = os.path.join(tmp_dir, "constraints_test.sqlite")
     if os.path.isfile(sqlite_test_filename):
         os.remove(sqlite_test_filename)
 
     # create the test database
-    os.system("dropdb --if-exists -h " + host + " -U "+pguser+" epanet_test_db")
+    os.system("dropdb --if-exists -h " + host + " -U "+pguser
+              + " epanet_test_db")
     os.system("createdb -h " + host + " -U "+pguser+" epanet_test_db")
-    os.system("psql -h " + host + " -U "+pguser+" epanet_test_db -c 'CREATE EXTENSION postgis'")
-    os.system("psql -h " + host + " -U "+pguser+" epanet_test_db -f "+test_data_dir+"/epanet_test_db.sql")
-    versioning.historize("dbname=epanet_test_db host={} user={}".format(host,pguser), "epanet")
+    os.system("psql -h " + host + " -U "+pguser
+              + " epanet_test_db -c 'CREATE EXTENSION postgis'")
+    os.system("psql -h " + host + " -U "+pguser+" epanet_test_db -f "
+              + test_data_dir + "/epanet_test_db.sql")
+    versioning.historize("dbname=epanet_test_db host={} user={}".format(
+        host, pguser), "epanet")
 
     spversioning = versioning.spatialite(sqlite_test_filename, pg_conn_info)
-
     spversioning.checkout(["epanet_trunk_rev_head.pipes"])
 
     scon = dbapi2.connect(sqlite_test_filename)
     scon.enable_load_extension(True)
     scon.execute("SELECT load_extension('mod_spatialite')")
+
+    return (spversioning, scon)
+
+
+def test_insert(host, pguser):
+
+    spversioning, scon = load_test_database(host, pguser)
+
     scur = scon.cursor()
 
     # insert valid
@@ -59,6 +71,18 @@ def test(host, pguser):
         assert(False and "Insert must fail foreign key constraint")
     except IntegrityError:
         pass
+
+def test_update_referencing(host, pguser):
+
+    spversioning, scon = load_test_database(host, pguser)
+    scur = scon.cursor()
+
+    # insert one more pipe for testing
+    res = scur.execute("insert into pipes_view (id, start_node, end_node) "
+                       "values (2,1,2);")
+    scon.commit()
+    scur.execute("SELECT COUNT(*) FROM pipes_view")
+    assert(scur.fetchone()[0] == 2)
 
     # update nothing to do with constraint
     res = scur.execute("UPDATE pipes_view SET diameter = '10' WHERE id = 1")
@@ -94,6 +118,30 @@ def test(host, pguser):
         assert(False and "Insert must fail foreign key constraint")
     except IntegrityError:
         pass
+
+
+def test_delete_restrict(host, pguser):
+
+    spversioning, scon = load_test_database(host, pguser)
+    scur = scon.cursor()
+
+    # delete is restrict, must fail
+    try:
+        res = scur.execute("DELETE FROM junctions_view WHERE id = 1")
+        scon.commit()
+        assert(False and "Delete must fail because of referenced key")
+    except IntegrityError:
+        pass
+
+    scon.commit()
+    pass
+
+
+def test(host, pguser):
+
+    test_insert(host, pguser)
+    test_update_referencing(host, pguser)
+    test_delete_restrict(host, pguser)
 
 
 if __name__ == "__main__":

@@ -423,7 +423,10 @@ class spVersioning(object):
                             else:
                                 action += f"DELETE FROM {table_from} {where};"
                     elif action_type == 'n':
-                        pass
+                        action = ""
+                        for column_from, column_to in zip(columns_from, columns_to):
+                            where = f"WHERE {column_from} = OLD.{column_to}"
+                            action += f"UPDATE {table_from} SET {column_from} = NULL {where};"""
                     elif action_type == 'd':
                         pass
                     else:

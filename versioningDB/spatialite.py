@@ -414,9 +414,14 @@ class spVersioning(object):
                     keys_label = ",".join(columns_to) + (" is" if len(columns_to) == 1 else " are")
 
                     action_type = updtype if method == 'update' else deltype
-                    print("action_type={}".format(action_type))
                     if action_type == 'c':
-                        pass
+                        action = ""
+                        for column_from, column_to in zip(columns_from, columns_to):
+                            where = f"WHERE {column_from} = OLD.{column_to}"
+                            if method == 'update':
+                                action += f"UPDATE {table_from} SET {column_from} = NEW.{column_to} {where};"""
+                            else:
+                                action += f"DELETE FROM {table_from} {where};"
                     elif action_type == 'n':
                         pass
                     elif action_type == 'd':

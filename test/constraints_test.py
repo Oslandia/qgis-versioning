@@ -12,7 +12,26 @@ import tempfile
 tmp_dir = tempfile.gettempdir()
 sqlite_test_filename = os.path.join(tmp_dir, "constraints_test.sqlite")
 
-def load_test_database(host, pguser):
+sql_modify_fkey = """
+    ALTER TABLE epanet.pipes
+    DROP CONSTRAINT pipes_start_node_fkey;
+    ALTER TABLE epanet.pipes
+    DROP CONSTRAINT pipes_end_node_fkey;
+
+    ALTER TABLE epanet.pipes
+    ADD CONSTRAINT pipes_start_node_fkey
+    FOREIGN KEY (start_node)
+    REFERENCES epanet.junctions(id)
+    {ftype};
+
+    ALTER TABLE epanet.pipes
+    ADD CONSTRAINT pipes_end_node_fkey
+    FOREIGN KEY (end_node)
+    REFERENCES epanet.junctions(id)
+    {ftype};
+    """
+
+def load_test_database(host, pguser, additional_sql=None):
 
     pg_conn_info = "dbname=epanet_test_db host=" + host + " user=" + pguser
     test_data_dir = os.path.dirname(os.path.realpath(__file__))
@@ -28,6 +47,13 @@ def load_test_database(host, pguser):
               + " epanet_test_db -c 'CREATE EXTENSION postgis'")
     os.system("psql -h " + host + " -U "+pguser+" epanet_test_db -f "
               + test_data_dir + "/epanet_test_db.sql")
+
+    if additional_sql:
+        pcon = psycopg2.connect(pg_conn_info)
+        pcur = pcon.cursor()
+        pcur.execute(additional_sql)
+        pcon.commit()
+
     versioning.historize("dbname=epanet_test_db host={} user={}".format(
         host, pguser), "epanet")
 
@@ -137,11 +163,51 @@ def test_delete_restrict(host, pguser):
     pass
 
 
+def test_delete_cascade(host, pguser):
+
+    # set foreign key to on delete cascade
+    sql = sql_modify_fkey.format(ftype="ON DELETE CASCADE")
+
+    spversioning, scon = load_test_database(host, pguser, sql)
+    scur = scon.cursor()
+
+    res = scur.execute("DELETE FROM junctions_view WHERE id = 1")
+    scon.commit()
+
+    scur.execute("SELECT * FROM junctions_view")
+    assert(len(scur.fetchall()) == 1)
+
+    scur.execute("SELECT * FROM pipes_view")
+    assert(len(scur.fetchall()) == 0)
+
+
+def test_update_cascade(host, pguser):
+
+    # set foreign key to on delete cascade
+    sql = sql_modify_fkey.format(ftype="ON UPDATE CASCADE")
+
+    spversioning, scon = load_test_database(host, pguser, sql)
+    scur = scon.cursor()
+
+    res = scur.execute("UPDATE junctions_view SET id = 3 WHERE id = 1")
+    scon.commit()
+    scur.execute("SELECT count(*) FROM junctions_view WHERE id = 3")
+    assert(len(scur.fetchall()) == 1)
+
+    scur.execute("SELECT * FROM pipes_view WHERE start_node = 3")
+    assert(len(scur.fetchall()) == 1)
+
+    scur.execute("SELECT * FROM pipes_view WHERE start_node = 1")
+    assert(len(scur.fetchall()) == 0)
+
+
 def test(host, pguser):
 
     test_insert(host, pguser)
     test_update_referencing(host, pguser)
     test_delete_restrict(host, pguser)
+    test_delete_cascade(host, pguser)
+    test_update_cascade(host, pguser)
 
 
 if __name__ == "__main__":

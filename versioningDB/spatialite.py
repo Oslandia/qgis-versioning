@@ -331,7 +331,7 @@ class spVersioning(object):
         (sqlite_filename, pg_conn_info) = connection
         pcur = Db(psycopg2.connect(pg_conn_info))
         pcur.execute("""
-        SELECT table_from, columns_from, table_to, columns_to, updtype, deltype
+        SELECT table_from, columns_from, defaults_from, table_to, columns_to, updtype, deltype
         FROM {schema}.versioning_constraints
         """.format(schema=schema))
        
@@ -340,7 +340,7 @@ class spVersioning(object):
         requests = []
             
         # Build trigger upon this contraints and setup on view
-        for idx, (table_from, columns_from, table_to, columns_to, updtype, deltype) in enumerate(pcur.fetchall()):
+        for idx, (table_from, columns_from, defaults_from, table_to, columns_to, updtype, deltype) in enumerate(pcur.fetchall()):
 
             # table is not being checkout
             if table_from not in tables_wo_schema:
@@ -410,10 +410,9 @@ class spVersioning(object):
                         when_filter += "WHEN " + " OR ".join(["NEW.{0} != OLD.{0}".format(column)
                                                               for column in columns_to]) 
 
-
-                    keys_label = ",".join(columns_to) + (" is" if len(columns_to) == 1 else " are")
-
                     action_type = updtype if method == 'update' else deltype
+
+                    # cascade
                     if action_type == 'c':
                         action = ""
                         for column_from, column_to in zip(columns_from, columns_to):
@@ -422,14 +421,18 @@ class spVersioning(object):
                                 action += f"UPDATE {table_from} SET {column_from} = NEW.{column_to} {where};"""
                             else:
                                 action += f"DELETE FROM {table_from} {where};"
-                    elif action_type == 'n':
+
+                    # set null or set default
+                    elif action_type == 'n' or action_type == 'd':
                         action = ""
-                        for column_from, column_to in zip(columns_from, columns_to):
+                        for column_from, column_to, default_from in zip(columns_from, columns_to, defaults_from):
+                            new_value = "NULL" if action_type == 'n' or default_from is None else default_from
                             where = f"WHERE {column_from} = OLD.{column_to}"
-                            action += f"UPDATE {table_from} SET {column_from} = NULL {where};"""
-                    elif action_type == 'd':
-                        pass
+                            action += f"UPDATE {table_from} SET {column_from} = {new_value} {where};"""
+
+                    # fail
                     else:
+                        keys_label = ",".join(columns_to) + (" is" if len(columns_to) == 1 else " are")
                         action = f"""SELECT RAISE(FAIL, "{keys_label} still referenced by {table_from}");""";
                     
                     sql = f"""

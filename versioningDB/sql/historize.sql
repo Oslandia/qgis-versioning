@@ -3,6 +3,7 @@
 CREATE TABLE {schema}.versioning_constraints (
   table_from varchar,
   columns_from varchar[],
+  defaults_from varchar[],
   table_to varchar,
   columns_to varchar[],
   updtype char,
@@ -11,14 +12,24 @@ CREATE TABLE {schema}.versioning_constraints (
 -- populate constraints table
 INSERT INTO {schema}.versioning_constraints 
 SELECT (SELECT relname FROM pg_class WHERE oid = conrelid::regclass) AS table_from,
+       
        (SELECT array_agg(att.attname)
 	  FROM (SELECT unnest(conkey) AS key) AS keys,
-	       pg_attribute att WHERE att.attrelid = conrelid AND att.attnum = keys.key) AS column_from,
-       (SELECT relname FROM pg_class WHERE oid = confrelid::regclass),
+	       pg_attribute att WHERE att.attrelid = conrelid AND att.attnum = keys.key) AS columns_from,
+
+       (SELECT array_agg(adef.adsrc)
+	  FROM (SELECT unnest(conkey) AS key) AS keys
+		 LEFT JOIN pg_attrdef adef ON adef.adrelid = conrelid
+		     AND adef.adnum = keys.key ) AS defaults_from,
+
+       (SELECT relname FROM pg_class WHERE oid = confrelid::regclass) as table_to,
+       
        (SELECT array_agg(att.attname)
 	  FROM (SELECT unnest(confkey) AS key) AS keys,
-	       pg_attribute att WHERE att.attrelid = conrelid AND att.attnum = keys.key) AS column_to,
-       c.confupdtype, c.confdeltype
+	       pg_attribute att WHERE att.attrelid = conrelid AND att.attnum = keys.key) AS columns_to,
+       
+       c.confupdtype as updtype,
+       c.confdeltype as deltype
   FROM   pg_constraint c
 	   JOIN pg_namespace n ON n.oid = c.connamespace
  WHERE  contype IN ('f', 'p ')

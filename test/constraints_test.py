@@ -242,6 +242,49 @@ def test_update_setnull(host, pguser):
     assert(pipes[0][1] == 2)
 
 
+def test_delete_setdefault(host, pguser):
+
+    # set foreign key to on delete cascade
+    sql = sql_modify_fkey.format(ftype="ON DELETE SET DEFAULT")
+    sql += "ALTER TABLE epanet.pipes ALTER COLUMN start_node SET DEFAULT 2;"
+
+    spversioning, scon = load_test_database(host, pguser, sql)
+    scur = scon.cursor()
+
+    res = scur.execute("DELETE FROM junctions_view WHERE id = 1")
+    scon.commit()
+
+    scur.execute("SELECT * FROM junctions_view")
+    assert(len(scur.fetchall()) == 1)
+
+    scur.execute("SELECT start_node, end_node FROM pipes_view")
+    pipes = scur.fetchall()
+    assert(len(pipes) == 1)
+    assert(pipes[0][0] == 2)
+    assert(pipes[0][1] == 2)
+
+
+def test_update_setdefault(host, pguser):
+
+    # set foreign key to on delete cascade
+    sql = sql_modify_fkey.format(ftype="ON UPDATE SET DEFAULT")
+    sql += "ALTER TABLE epanet.pipes ALTER COLUMN start_node SET DEFAULT 2;"
+
+    spversioning, scon = load_test_database(host, pguser, sql)
+    scur = scon.cursor()
+
+    res = scur.execute("UPDATE junctions_view SET id = 3 WHERE id = 1")
+    scon.commit()
+    scur.execute("SELECT count(*) FROM junctions_view WHERE id = 3")
+    assert(len(scur.fetchall()) == 1)
+
+    scur.execute("SELECT start_node, end_node FROM pipes_view")
+    pipes = scur.fetchall()
+    assert(len(pipes) == 1)
+    assert(pipes[0][0] == 2)
+    assert(pipes[0][1] == 2)
+
+
 def test(host, pguser):
 
     test_insert(host, pguser)
@@ -251,6 +294,8 @@ def test(host, pguser):
     test_update_cascade(host, pguser)
     test_delete_setnull(host, pguser)
     test_update_setnull(host, pguser)
+    test_delete_setdefault(host, pguser)
+    test_update_setdefault(host, pguser)
 
 
 if __name__ == "__main__":

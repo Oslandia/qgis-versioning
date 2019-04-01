@@ -37,3 +37,14 @@ INSERT INTO epanet.pipes
     (id, start_node, end_node, length, diameter, geom) 
     VALUES
     ('0','0','1',1,2,ST_GeometryFromText('LINESTRING(1 0,0 1)',2154));
+
+CREATE TABLE epanet.areas (
+    id serial PRIMARY KEY,
+    name varchar,
+    geom geometry('POLYGON',2154)
+);
+
+INSERT INTO epanet.areas
+    (name, geom) 
+    VALUES
+    ('test',ST_GeometryFromText('POLYGON((0 0,0 1,1 0,0 0))',2154));

@@ -29,6 +29,7 @@ import sys
 import traceback
 import codecs
 import os
+from collections import OrderedDict
 
 # Deactivate stdout (like output of print statements) because windows
 # causes occasional "IOError [Errno 9] File descriptor error"
@@ -253,3 +254,42 @@ def quote_ident(ident):
 def get_username():
     """Returns user name"""
     return getpass.getuser()
+
+
+
+def get_checkout_tables(connection, table_names):
+    """
+    Build and return tables to be checkout according to given pg_tables parameter. 
+    It also adds the referenced table (in order to check the foreign key)
+    :returns: a list of tuple (schema, table, branch)
+    """
+    pcur = Db(psycopg2.connect(connection))
+
+    # We use and ordered dict because we don't want table duplicate and we want to keep original
+    # order for later purpose (see selectedFeatureList in checkout method)
+    tables = OrderedDict()
+    for table_name in table_names:
+        schema, table = table_name.split('.')
+        if not ( schema and table and schema[-9:] == "_rev_head"):
+            raise RuntimeError("Schema names must end with "
+                "suffix _branch_rev_head")
+
+        schema, _, branch = schema[:-9].rpartition('_')
+        tables[(schema, table, branch)] = None
+
+        # Search for referenced table
+        sql = """
+        SELECT DISTINCT table_to 
+        FROM {schema}.versioning_constraints
+        WHERE table_from = '{table}'
+        AND table_to IS NOT NULL;
+        """.format(schema=schema, table=table)
+
+        pcur.execute(sql)
+
+        # add them (if not already added). We don't use set
+        # because we want to keep the original order
+        for ref_table in pcur.fetchall():
+            tables[(schema, ref_table[0], branch)] = None
+
+    return list(tables)

@@ -40,9 +40,7 @@ def test(host, pguser):
     # insert into epanet_brwcs_rev_head
     pcur.execute("INSERT INTO epanet_brwcs_rev_head.pipes_view(id, start_node, end_node, geom) VALUES ('2','1','2',ST_GeometryFromText('LINESTRING(1 1,0 1)',2154))")
     pcur.execute("INSERT INTO epanet_brwcs_rev_head.pipes_view(id, start_node, end_node, geom) VALUES ('3','1','2',ST_GeometryFromText('LINESTRING(1 -1,0 1)',2154))")
-    pcur.execute(
-        "DELETE FROM epanet_brwcs_rev_head.junctions_view WHERE versioning_hid=2")
-    pcur.execute("DELETE FROM epanet_brwcs_rev_head.pipes_view WHERE versioning_hid=3")
+    pcur.execute("DELETE FROM epanet_brwcs_rev_head.pipes_view WHERE id=3")
     pcur.commit()
 
     pgversioning.commit("commit", "postgres")
@@ -60,10 +58,6 @@ def test(host, pguser):
     pcur.execute(
         "SELECT versioning_hid, trunk_rev_begin, trunk_rev_end, mybranch_rev_begin,mybranch_rev_end FROM epanet.pipes")
     assert(pcur.fetchall() == [(1, 1, None, 2, None), (2, 3, None, 3, None)])
-
-    pcur.execute(
-        "SELECT versioning_hid, trunk_rev_begin, trunk_rev_end, mybranch_rev_begin,mybranch_rev_end FROM epanet.junctions")
-    assert(pcur.fetchall() == [(1, 1, None, 2, None), (2, 1, 2, 2, 2)])
 
     pcur.close()
 

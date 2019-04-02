@@ -8,6 +8,8 @@ from itertools import zip_longest
 
 DEBUG=False
 
+from .constraints import *
+
 class pgVersioningServer(object):    
     
     def revision(self, connection ):
@@ -312,21 +314,13 @@ class pgVersioningServer(object):
             "WHERE schema_name = '"+wcs+"'")
         if pcur.fetchone():
             raise RuntimeError("Schema "+wcs+" already exists")
-    
-        for pg_table_name in pg_table_names:
-            [schema, table] = pg_table_name.split('.')
-            if not ( schema and table and schema[-9:] == "_rev_head"):
-                raise RuntimeError("Schema names must end with suffix "
-                    "_branch_rev_head")
-    
+
+        tables = get_checkout_tables(pg_conn_info, pg_table_names)
     
         pcur.execute("CREATE SCHEMA "+wcs)
     
         first_table = True
-        for pg_table_name, feature_list in list(zip_longest(pg_table_names, selected_feature_lists)):
-            [schema, table] = pg_table_name.split('.')
-            [schema, sep, branch] = schema[:-9].rpartition('_')
-            del sep
+        for (schema, table, branch), feature_list in list(zip_longest(tables, selected_feature_lists)):
     
             pkey = pg_pk( pcur, schema, table )
             history_columns = [pkey] + sum([
@@ -546,8 +540,10 @@ class pgVersioningServer(object):
                 "FOR EACH ROW EXECUTE PROCEDURE "+wcs+".delete_"+table+"();")
     
         pcur.commit()
+
+        setup_constraint_triggers(pcur, pcur, schema, wcs, tables)
         pcur.close()
-    
+
     def unresolved_conflicts(self, connection ):
         (pg_conn_info, working_copy_schema) = connection
         """return a list of tables with unresolved conflicts"""

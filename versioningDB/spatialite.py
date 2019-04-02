@@ -3,10 +3,11 @@
 from __future__ import absolute_import
 from .utils import *
 from itertools import zip_longest
-from collections import OrderedDict
 
 import os
 DEBUG=False
+
+from .constraints import *
 
 class spVersioning(object):
     
@@ -322,178 +323,6 @@ class spVersioning(object):
         scur.commit()
         scur.close()
         
-    def __setup_contraint_trigger(self, connection, schema, tables):
-        """
-        Build and setup unique and foreign key constraints on table views
-        """
-
-        # Get unique and foreign key constraints
-        (sqlite_filename, pg_conn_info) = connection
-        pcur = Db(psycopg2.connect(pg_conn_info))
-        pcur.execute("""
-        SELECT table_from, columns_from, defaults_from, table_to, columns_to, updtype, deltype
-        FROM {schema}.versioning_constraints
-        """.format(schema=schema))
-       
-        tables_wo_schema = [table[1] for table in tables]
-
-        requests = []
-            
-        # Build trigger upon this contraints and setup on view
-        for idx, (table_from, columns_from, defaults_from, table_to, columns_to, updtype, deltype) in enumerate(pcur.fetchall()):
-
-            # table is not being checkout
-            if table_from not in tables_wo_schema:
-                continue
-            
-            # unique constraint
-            if not table_to:
-
-                for method in ['insert','update']:
-
-                    # check if unique keys already exist
-                    when_filter = "(SELECT COUNT(*) FROM {}_view WHERE {}) != 0".format(
-                        table_from,
-                        " AND ".join(["{0} = NEW.{0}".format(column) for column in columns_from]))
-
-                    # check if unique keys have been modified
-                    if method == 'update': 
-                        when_filter += " AND " + " AND ".join(["NEW.{0} != OLD.{0}".format(column)
-                                                             for column in columns_from]) 
-
-                    keys = ",".join(columns_from)
-                    
-                    sql = f"""
-                    CREATE TRIGGER {method}_check{idx}_unique_{table_from}
-                    INSTEAD OF {method} ON {table_from}_view
-                    FOR EACH ROW
-                    WHEN {when_filter}
-                    BEGIN
-                    SELECT RAISE(FAIL, "Fail {table_from} {keys} unique constraint");
-                    END;"""
-
-                    requests += [sql]
-
-            # foreign key constraint
-            else: 
-
-                assert(len(columns_from) == len(columns_to))
-                
-                # check if referenced keys exists
-                when_filter = "(SELECT COUNT(*) FROM {}_view WHERE {}) == 0".format(
-                    table_to,
-                    " AND ".join(["{} = NEW.{}".format(column_to, column_from)
-                                  for column_to, column_from in zip(columns_to, columns_from)]))
-
-                keys = ",".join(columns_from)
-                    
-                for method in ['insert','update']:
-                    
-                    sql = f"""
-                    CREATE TRIGGER {method}_check{idx}_fkey_{table_from}_to_{table_to}
-                    INSTEAD OF {method} ON {table_from}_view
-                    FOR EACH ROW
-                    WHEN {when_filter}
-                    BEGIN
-                    SELECT RAISE(FAIL, "Fail {keys} foreign key constraint");
-                    END;
-                    """
-
-                    requests += [sql]
-
-                # special actions when a referenced key is updated/deleted
-                for method in ['delete','update']:
-
-                    # check if referencing keys have been modified
-                    when_filter = ""
-                    if method == 'update': 
-                        when_filter += "WHEN " + " OR ".join(["NEW.{0} != OLD.{0}".format(column)
-                                                              for column in columns_to]) 
-
-                    action_type = updtype if method == 'update' else deltype
-
-                    # cascade
-                    if action_type == 'c':
-                        action = ""
-                        for column_from, column_to in zip(columns_from, columns_to):
-                            where = f"WHERE {column_from} = OLD.{column_to}"
-                            if method == 'update':
-                                action += f"UPDATE {table_from} SET {column_from} = NEW.{column_to} {where};"""
-                            else:
-                                action += f"DELETE FROM {table_from} {where};"
-
-                    # set null or set default
-                    elif action_type == 'n' or action_type == 'd':
-                        action = ""
-                        for column_from, column_to, default_from in zip(columns_from, columns_to, defaults_from):
-                            new_value = "NULL" if action_type == 'n' or default_from is None else default_from
-                            where = f"WHERE {column_from} = OLD.{column_to}"
-                            action += f"UPDATE {table_from} SET {column_from} = {new_value} {where};"""
-
-                    # fail
-                    else:
-                        keys_label = ",".join(columns_to) + (" is" if len(columns_to) == 1 else " are")
-                        action = f"""SELECT RAISE(FAIL, "{keys_label} still referenced by {table_from}");""";
-                    
-                    sql = f"""
-                    CREATE TRIGGER {method}_check{idx}_fkey_modifed_{table_from}_to_{table_to}
-                    INSTEAD OF {method} ON {table_to}_view
-                    FOR EACH ROW
-                    {when_filter}
-                    BEGIN
-                    {action}
-                    END;
-                    """
-
-                    requests += [sql]
-                    
-        scur = Db(dbapi2.connect(sqlite_filename))
-        for request in requests:
-            scur.execute(request)
-
-        scur.commit()
-            
-        scur.close()
-        pcur.close()
-
-    def __get_checkout_tables(self, connection, table_names):
-        """
-        Build and return tables to be checkout according to given pg_tables parameter. 
-        It also adds the referenced table (in order to check the foreign key)
-        :returns: a list of tuple (schema, table, branch)
-        """
-        (sqlite_filename, pg_conn_info) = connection
-        pcur = Db(psycopg2.connect(pg_conn_info))
-
-        # We use and ordered dict because we don't want table duplicate and we want to keep original
-        # order for later purpose (see selectedFeatureList in checkout method)
-        tables = OrderedDict()
-        for table_name in table_names:
-            schema, table = table_name.split('.')
-            if not ( schema and table and schema[-9:] == "_rev_head"):
-                raise RuntimeError("Schema names must end with "
-                    "suffix _branch_rev_head")
-
-            schema, _, branch = schema[:-9].rpartition('_')
-            tables[(schema, table, branch)] = None
-
-            # Search for referenced table
-            sql = """
-            SELECT DISTINCT table_to 
-            FROM {schema}.versioning_constraints
-            WHERE table_from = '{table}'
-            AND table_to IS NOT NULL;
-            """.format(schema=schema, table=table)
-
-            pcur.execute(sql)
-
-            # add them (if not already added). We don't use set
-            # because we want to keep the original order
-            for ref_table in pcur.fetchall():
-                tables[(schema, ref_table[0], branch)] = None
-
-        return list(tables)
-        
     def checkout(self, connection, pg_table_names, selected_feature_lists = []):
         (sqlite_filename, pg_conn_info) = connection
         """create working copy from versioned database tables
@@ -506,7 +335,7 @@ class spVersioning(object):
         if os.path.isfile(sqlite_filename):
             raise RuntimeError("File "+sqlite_filename+" already exists")
 
-        tables = self.__get_checkout_tables(connection, pg_table_names)
+        tables = get_checkout_tables(pg_conn_info, pg_table_names)
         pcur = Db(psycopg2.connect(pg_conn_info))
     
         temp_view_names = []
@@ -694,16 +523,17 @@ class spVersioning(object):
                 "END")
     
             scur.commit()
-            scur.close()
+
         # Remove temp views after sqlite file is written
         for i in temp_view_names:
             del_view_str = "DROP VIEW IF EXISTS " + i
             pcur.execute(del_view_str)
             pcur.commit()
-        pcur.close()
 
-        self.__setup_contraint_trigger(connection, schema, tables)
-        
+        setup_constraint_triggers(pcur, scur, schema, None, tables)
+
+        pcur.close()
+        scur.close()
     
     def unresolved_conflicts(self, connection):
         sqlite_filename = connection[0]

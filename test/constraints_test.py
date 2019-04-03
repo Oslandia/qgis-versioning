@@ -266,7 +266,7 @@ class ConstraintTest:
         # 2 junctions, delete one (modify its rev_end field), so 2 revisions
         # 1 pipe, cascade updated so 2 revisions
         # FAILED test !!!
-        # self.commit_and_check([("junctions", 2), ("pipes", 2)])
+        self.commit_and_check([("junctions", 2), ("pipes", 2)])
 
     def test_update_setnull(self):
 
@@ -287,7 +287,7 @@ class ConstraintTest:
         # 2 junctions, update one, so 3 revisions
         # 1 pipe, cascade updated so 2 revisions
         # FAILED test !!!
-        # self.commit_and_check([("junctions", 3), ("pipes", 2)])
+        self.commit_and_check([("junctions", 3), ("pipes", 2)])
 
     def test_delete_setdefault(self):
 
@@ -309,7 +309,7 @@ class ConstraintTest:
         # 2 junctions, delete one (modify its rev_end), so 2 revisions
         # 1 pipe, cascade updated so 2 revisions
         # FAILED test !!!
-        # self.commit_and_check([("junctions", 2), ("pipes", 2)])
+        self.commit_and_check([("junctions", 2), ("pipes", 2)])
 
     def test_update_setdefault(self):
 
@@ -330,7 +330,7 @@ class ConstraintTest:
         # 2 junctions, update one, so 3 revisions
         # 1 pipe, cascade updated so 2 revisions
         # FAILED test !!!
-        # self.commit_and_check([("junctions", 3), ("pipes", 2)])
+        self.commit_and_check([("junctions", 3), ("pipes", 2)])
 
 
 class ConstraintSpatialiteTest(ConstraintTest):
@@ -374,29 +374,30 @@ class ConstraintPgServerTest(ConstraintTest):
 def test(host, pguser):
 
     # loop on the 3 ways of checkout (sqlite, pgserver, pglocal)
-    for test_class in [ConstraintSpatialiteTest, ConstraintPgServerTest]:
+    for test_class in [ConstraintSpatialiteTest,
+                       ConstraintPgServerTest]:
 
-        test = test_class(host, pguser)
-        test.test_insert()
-        del test
+        # test = test_class(host, pguser)
+        # test.test_insert()
+        # del test
 
-        test = test_class(host, pguser)
-        test.test_update_referencing()
-        del test
+        # test = test_class(host, pguser)
+        # test.test_update_referencing()
+        # del test
 
-        test = test_class(host, pguser)
-        test.test_delete_restrict()
-        del test
+        # test = test_class(host, pguser)
+        # test.test_delete_restrict()
+        # del test
 
-        test = test_class(host, pguser, sql_modify_fkey.format(
-            ftype="ON DELETE CASCADE"))
-        test.test_delete_cascade()
-        del test
+        # test = test_class(host, pguser, sql_modify_fkey.format(
+        #     ftype="ON DELETE CASCADE"))
+        # test.test_delete_cascade()
+        # del test
 
-        test = test_class(host, pguser, sql_modify_fkey.format(
-            ftype="ON update CASCADE"))
-        test.test_update_cascade()
-        del test
+        # test = test_class(host, pguser, sql_modify_fkey.format(
+        #     ftype="ON update CASCADE"))
+        # test.test_update_cascade()
+        # del test
 
         test = test_class(host, pguser,
                           sql_modify_fkey.format(ftype="ON DELETE SET NULL"))

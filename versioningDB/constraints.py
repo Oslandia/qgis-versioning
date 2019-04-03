@@ -130,9 +130,11 @@ def setup_constraint_triggers(b_cur, wc_cur, b_schema, wc_schema, tables):
 
             # check if referenced keys exists
             when_filter = "(SELECT COUNT(*) FROM {}_view WHERE {}) = 0".format(
-                q_table_to,
-                " AND ".join(["{} = NEW.{}".format(column_to, column_from)
-                              for column_to, column_from in zip(columns_to, columns_from)]))
+                q_table_to, " AND ".join(
+                    [f"(NEW.{column_from} IS NULL "
+                     f"OR {column_to} = NEW.{column_from})"
+                     for column_to, column_from
+                     in zip(columns_to, columns_from)]))
 
             keys = ",".join(columns_from)
 
@@ -200,7 +202,7 @@ def setup_constraint_triggers(b_cur, wc_cur, b_schema, wc_schema, tables):
                     for column_from, column_to, default_from in zip(columns_from, columns_to, defaults_from):
                         new_value = "NULL" if action_type == 'n' or default_from is None else default_from
                         where = f"WHERE {column_from} = OLD.{column_to}"
-                        action += f"UPDATE {b_table_from} SET {column_from} = {new_value} {where};"""
+                        action += f"UPDATE {q_table_from}_view SET {column_from} = {new_value} {where};"""
 
                 # fail
                 else:

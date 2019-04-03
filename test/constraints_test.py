@@ -377,27 +377,27 @@ def test(host, pguser):
     for test_class in [ConstraintSpatialiteTest,
                        ConstraintPgServerTest]:
 
-        # test = test_class(host, pguser)
-        # test.test_insert()
-        # del test
+        test = test_class(host, pguser)
+        test.test_insert()
+        del test
 
-        # test = test_class(host, pguser)
-        # test.test_update_referencing()
-        # del test
+        test = test_class(host, pguser)
+        test.test_update_referencing()
+        del test
 
-        # test = test_class(host, pguser)
-        # test.test_delete_restrict()
-        # del test
+        test = test_class(host, pguser)
+        test.test_delete_restrict()
+        del test
 
-        # test = test_class(host, pguser, sql_modify_fkey.format(
-        #     ftype="ON DELETE CASCADE"))
-        # test.test_delete_cascade()
-        # del test
+        test = test_class(host, pguser, sql_modify_fkey.format(
+            ftype="ON DELETE CASCADE"))
+        test.test_delete_cascade()
+        del test
 
-        # test = test_class(host, pguser, sql_modify_fkey.format(
-        #     ftype="ON update CASCADE"))
-        # test.test_update_cascade()
-        # del test
+        test = test_class(host, pguser, sql_modify_fkey.format(
+            ftype="ON update CASCADE"))
+        test.test_update_cascade()
+        del test
 
         test = test_class(host, pguser,
                           sql_modify_fkey.format(ftype="ON DELETE SET NULL"))

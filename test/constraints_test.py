@@ -31,318 +31,337 @@ sql_modify_fkey = """
     {ftype};
     """
 
-pgserver_workingcopy_schema = "epanet_workingcopy"
 
+class ConstraintTest:
 
-def load_database(host, pguser, additional_sql=None):
+    def __init__(self, host, pguser, schema, additional_sql=None):
 
-    pg_conn_info = "dbname=epanet_test_db host=" + host + " user=" + pguser
-    test_data_dir = os.path.dirname(os.path.realpath(__file__))
+        self.schema = schema
+        self.cur = None
+        self.con = None
+        self.versioning = None
 
-    if os.path.isfile(sqlite_test_filename):
-        os.remove(sqlite_test_filename)
+        self.pg_conn_info = "dbname=epanet_test_db host={} user={}".format(
+            host, pguser)
 
-    # create the test database
-    os.system("dropdb --if-exists -h " + host + " -U "+pguser
-              + " epanet_test_db")
-    os.system("createdb -h " + host + " -U "+pguser+" epanet_test_db")
-    os.system("psql -h " + host + " -U "+pguser+" epanet_test_db -f "
-              + test_data_dir + "/epanet_test_db.sql")
+        test_data_dir = os.path.dirname(os.path.realpath(__file__))
 
-    if additional_sql:
-        pcon = psycopg2.connect(pg_conn_info)
-        pcur = pcon.cursor()
-        pcur.execute(additional_sql)
-        pcon.commit()
+        if os.path.isfile(sqlite_test_filename):
+            os.remove(sqlite_test_filename)
 
-    versioning.historize("dbname=epanet_test_db host={} user={}".format(
-        host, pguser), "epanet")
+        # create the test database
+        os.system("dropdb --if-exists -h " + host + " -U "+pguser
+                  + " epanet_test_db")
+        os.system("createdb -h " + host + " -U "+pguser+" epanet_test_db")
+        os.system("psql -h " + host + " -U "+pguser+" epanet_test_db -f "
+                  + test_data_dir + "/epanet_test_db.sql")
 
-    return pg_conn_info
+        if additional_sql:
+            pcon = psycopg2.connect(self.pg_conn_info)
+            pcur = pcon.cursor()
+            pcur.execute(additional_sql)
+            pcon.commit()
 
+        versioning.historize(
+            "dbname=epanet_test_db host={} user={}".format(host, pguser),
+            "epanet")
 
-def load_spatialite_database(host, pguser, additional_sql=None):
+    def test_insert(self):
 
-    pg_conn_info = load_database(host, pguser, additional_sql)
-
-    if os.path.isfile(sqlite_test_filename):
-        os.remove(sqlite_test_filename)
-
-    spversioning = versioning.spatialite(sqlite_test_filename, pg_conn_info)
-    spversioning.checkout(["epanet_trunk_rev_head.pipes"])
-
-    scon = dbapi2.connect(sqlite_test_filename)
-    scon.enable_load_extension(True)
-    scon.execute("SELECT load_extension('mod_spatialite')")
-
-    return scon
-
-
-def load_pgserver_database(host, pguser, additional_sql=None):
-
-    pg_conn_info = load_database(host, pguser, additional_sql)
-
-    pgs_versioning = versioning.pgServer(pg_conn_info,
-                                         pgserver_workingcopy_schema)
-    pgs_versioning.checkout(["epanet_trunk_rev_head.pipes"])
-
-    pcon = psycopg2.connect("dbname=epanet_test_db host={} user={}".format(
-        host, pguser))
-
-    return pcon
-
-
-def test_insert(con, cur, schema):
-
-    # insert valid
-    res = cur.execute(
-        "insert into {}.pipes_view (id, start_node, end_node) "
-        "values (2,1,2);".format(schema))
-
-    con.commit()
-    cur.execute("SELECT COUNT(*) FROM {}.pipes_view".format(schema))
-    assert(cur.fetchone()[0] == 2)
-
-    # insert fail unique constraint
-    try:
-        res = cur.execute(
+        # insert valid
+        res = self.cur.execute(
             "insert into {}.pipes_view (id, start_node, end_node) "
-            "values (1,1,2);".format(schema))
-        assert(False and "Insert must fail unique constraint")
-    except (IntegrityError, psycopg2.InternalError) as e:
-        con.rollback()
-    else:
-        con.commit()
+            "values (2,1,2);".format(self.schema))
 
-    # insert fail foreign key constraint
-    try:
-        res = cur.execute(
-            "insert into {}.pipes_view (id, start_node, end_node) "
-            "values (3,1,3);".format(schema))
-        assert(False and "Insert must fail foreign key constraint")
-    except (IntegrityError, psycopg2.InternalError) as e:
-        con.rollback()
-    else:
-        con.commit()
+        self.con.commit()
+        self.cur.execute("SELECT COUNT(*) FROM {}.pipes_view".format(
+            self.schema))
+        assert(self.cur.fetchone()[0] == 2)
+
+        # self.cur.execute("SELECT COUNT(*) FROM {}.pipes".format(b_schema))
+        # assert(self.cur.fetchone()[0] == 2)
+
+        # insert fail unique constraint
+        try:
+            res = self.cur.execute(
+                "insert into {}.pipes_view (id, start_node, end_node) "
+                "values (1,1,2);".format(self.schema))
+            assert(False and "Insert must fail unique constraint")
+        except (IntegrityError, psycopg2.InternalError) as e:
+            self.con.rollback()
+        else:
+            self.con.commit()
+
+        # insert fail foreign key constraint
+        try:
+            res = self.cur.execute(
+                "insert into {}.pipes_view (id, start_node, end_node) "
+                "values (3,1,3);".format(self.schema))
+            assert(False and "Insert must fail foreign key constraint")
+        except (IntegrityError, psycopg2.InternalError) as e:
+            self.con.rollback()
+        else:
+            self.con.commit()
+
+    def test_update_referencing(self):
+
+        # insert one more pipe for testing
+        res = self.cur.execute("insert into {}.pipes_view "
+                               "(id, start_node, end_node) "
+                               "values (2,1,2);".format(self.schema))
+        self.con.commit()
+        self.cur.execute("SELECT COUNT(*) FROM {}.pipes_view".format(
+            self.schema))
+        assert(self.cur.fetchone()[0] == 2)
+
+        # update nothing to do with self.constraint
+        res = self.cur.execute(
+            "UPDATE {}.pipes_view SET diameter = '10' WHERE id = 1".format(
+                self.schema))
+        self.con.commit()
+        self.cur.execute(
+            "SELECT diameter FROM {}.pipes_view WHERE id = 1".format(
+                self.schema))
+        assert(self.cur.fetchone()[0] == 10)
+
+        # update valid unique self.constraint
+        res = self.cur.execute(
+            "UPDATE {}.pipes_view SET id = 3 WHERE id = 1".format(self.schema))
+        self.con.commit()
+        self.cur.execute("SELECT * FROM {}.pipes_view WHERE id = 3".format(
+            self.schema))
+        assert(len(self.cur.fetchall()) == 1)
+
+        # update valid foreign key self.constraint
+        res = self.cur.execute(
+            "UPDATE {}.pipes_view SET start_node = 2 WHERE id = 2".format(
+                self.schema))
+        self.con.commit()
+        self.cur.execute(
+            "SELECT start_node FROM {}.pipes_view WHERE id = 2".format(
+                self.schema))
+        assert(self.cur.fetchone()[0] == 2)
+
+        # update fail unique self.constraint
+        try:
+            res = self.cur.execute(
+                "UPDATE {}.pipes_view SET ID = 2 WHERE id = 3".format(
+                    self.schema))
+            assert(False and "Insert must fail unique self.constraint")
+        except (IntegrityError, psycopg2.InternalError) as e:
+            self.con.rollback()
+        else:
+            self.con.commit()
+
+        # update fail foreign key self.constraint
+        try:
+            res = self.cur.execute("UPDATE {}.pipes_view SET start_node = 3 "
+                                   "WHERE id = 2".format(self.schema))
+            assert(False and "Insert must fail foreign key self.constraint")
+        except (IntegrityError, psycopg2.InternalError) as e:
+            self.con.rollback()
+        else:
+            self.con.commit()
+
+    def test_delete_restrict(self):
+
+        # delete is restrict, must fail
+        try:
+            res = self.cur.execute(
+                "DELETE FROM {}.junctions_view WHERE id = 1".format(
+                    self.schema))
+            assert(False and "Delete must fail because of referenced key")
+        except (IntegrityError, psycopg2.InternalError) as e:
+            self.con.rollback()
+        else:
+            self.con.commit()
+
+    def test_delete_cascade(self):
+
+        res = self.cur.execute(
+            "DELETE FROM {}.junctions_view WHERE id = 1".format(self.schema))
+        self.con.commit()
+
+        self.cur.execute("SELECT * FROM {}.junctions_view".format(self.schema))
+        assert(len(self.cur.fetchall()) == 1)
+
+        self.cur.execute("SELECT * FROM {}.pipes_view".format(self.schema))
+        assert(len(self.cur.fetchall()) == 0)
+
+    def test_update_cascade(self):
+
+        res = self.cur.execute(
+            "UPDATE {}.junctions_view SET id = 3 WHERE id = 1".format(
+                self.schema))
+        self.con.commit()
+        self.cur.execute(
+            "SELECT count(*) FROM {}.junctions_view WHERE id = 3".format(
+                self.schema))
+        assert(len(self.cur.fetchall()) == 1)
+
+        self.cur.execute(
+            "SELECT * FROM {}.pipes_view WHERE start_node = 3".format(
+                self.schema))
+        assert(len(self.cur.fetchall()) == 1)
+
+        self.cur.execute(
+            "SELECT * FROM {}.pipes_view WHERE start_node = 1".format(
+                self.schema))
+        assert(len(self.cur.fetchall()) == 0)
+
+    def test_delete_setnull(self):
+
+        res = self.cur.execute(
+            "DELETE FROM {}.junctions_view WHERE id = 1".format(self.schema))
+        self.con.commit()
+
+        self.cur.execute(
+            "SELECT * FROM {}.junctions_view".format(self.schema))
+        assert(len(self.cur.fetchall()) == 1)
+
+        self.cur.execute(
+            "SELECT start_node, end_node FROM {}.pipes_view".format(self.schema))
+        pipes = self.cur.fetchall()
+        assert(len(pipes) == 1)
+        assert(pipes[0][0] is None)
+        assert(pipes[0][1] == 2)
+
+    def test_update_setnull(self):
+
+        res = self.cur.execute(
+            "UPDATE {}.junctions_view SET id = 3 WHERE id = 1".format(self.schema))
+        self.con.commit()
+        self.cur.execute(
+            "SELECT count(*) FROM {}.junctions_view WHERE id = 3".format(self.schema))
+        assert(len(self.cur.fetchall()) == 1)
+
+        self.cur.execute(
+            "SELECT start_node, end_node FROM {}.pipes_view".format(self.schema))
+        pipes = self.cur.fetchall()
+        assert(len(pipes) == 1)
+        assert(pipes[0][0] is None)
+        assert(pipes[0][1] == 2)
+
+    def test_delete_setdefault(self):
+
+        res = self.cur.execute(
+            "DELETE FROM {}.junctions_view WHERE id = 1".format(self.schema))
+        self.con.commit()
+
+        self.cur.execute(
+            "SELECT * FROM {}.junctions_view".format(self.schema))
+        assert(len(self.cur.fetchall()) == 1)
+
+        self.cur.execute(
+            "SELECT start_node, end_node FROM {}.pipes_view".format(self.schema))
+        pipes = self.cur.fetchall()
+        assert(len(pipes) == 1)
+        assert(pipes[0][0] == 2)
+        assert(pipes[0][1] == 2)
+
+    def test_update_setdefault(self):
+
+        res = self.cur.execute(
+            "UPDATE {}.junctions_view SET id = 3 WHERE id = 1".format(self.schema))
+        self.con.commit()
+        self.cur.execute(
+            "SELECT count(*) FROM {}.junctions_view WHERE id = 3".format(self.schema))
+        assert(len(self.cur.fetchall()) == 1)
+
+        self.cur.execute(
+            "SELECT start_node, end_node FROM {}.pipes_view".format(self.schema))
+        pipes = self.cur.fetchall()
+        assert(len(pipes) == 1)
+        assert(pipes[0][0] == 2)
+        assert(pipes[0][1] == 2)
 
 
-def test_update_referencing(con, cur, schema):
+class ConstraintSpatialiteTest(ConstraintTest):
 
-    # insert one more pipe for testing
-    res = cur.execute("insert into {}.pipes_view (id, start_node, end_node) "
-                       "values (2,1,2);".format(schema))
-    con.commit()
-    cur.execute("SELECT COUNT(*) FROM {}.pipes_view".format(schema))
-    assert(cur.fetchone()[0] == 2)
+    def __init__(self, host, pguser, additional_sql=None):
 
-    # update nothing to do with constraint
-    res = cur.execute(
-        "UPDATE {}.pipes_view SET diameter = '10' WHERE id = 1".format(schema))
-    con.commit()
-    cur.execute(
-        "SELECT diameter FROM {}.pipes_view WHERE id = 1".format(schema))
-    assert(cur.fetchone()[0] == 10)
+        super().__init__(host, pguser, "main", additional_sql)
 
-    # update valid unique constraint
-    res = cur.execute(
-        "UPDATE {}.pipes_view SET id = 3 WHERE id = 1".format(schema))
-    con.commit()
-    cur.execute("SELECT * FROM {}.pipes_view WHERE id = 3".format(schema))
-    assert(len(cur.fetchall()) == 1)
+        if os.path.isfile(sqlite_test_filename):
+            os.remove(sqlite_test_filename)
 
-    # update valid foreign key constraint
-    res = cur.execute(
-        "UPDATE {}.pipes_view SET start_node = 2 WHERE id = 2".format(schema))
-    con.commit()
-    cur.execute(
-        "SELECT start_node FROM {}.pipes_view WHERE id = 2".format(schema))
-    assert(cur.fetchone()[0] == 2)
+        self.versioning = versioning.spatialite(sqlite_test_filename,
+                                                self.pg_conn_info)
+        self.versioning.checkout(["epanet_trunk_rev_head.pipes"])
 
-    # update fail unique constraint
-    try:
-        res = cur.execute(
-            "UPDATE {}.pipes_view SET ID = 2 WHERE id = 3".format(schema))
-        assert(False and "Insert must fail unique constraint")
-    except (IntegrityError, psycopg2.InternalError) as e:
-        con.rollback()
-    else:
-        con.commit()
+        self.con = dbapi2.connect(sqlite_test_filename)
+        self.con.enable_load_extension(True)
+        self.con.execute("SELECT load_extension('mod_spatialite')")
+        self.cur = self.con.cursor()
 
-    # update fail foreign key constraint
-    try:
-        res = cur.execute("UPDATE {}.pipes_view SET start_node = 3 "
-                           "WHERE id = 2".format(schema))
-        assert(False and "Insert must fail foreign key constraint")
-    except (IntegrityError, psycopg2.InternalError) as e:
-        con.rollback()
-    else:
-        con.commit()
+    def __del__(self):
+        if self.con:
+            self.con.close()
 
 
-def test_delete_restrict(con, cur, schema):
+class ConstraintPgServerTest(ConstraintTest):
 
-    # delete is restrict, must fail
-    try:
-        res = cur.execute(
-            "DELETE FROM {}.junctions_view WHERE id = 1".format(schema))
-        assert(False and "Delete must fail because of referenced key")
-    except (IntegrityError, psycopg2.InternalError) as e:
-        con.rollback()
-    else:
-        con.commit()
+    def __init__(self, host, pguser, additional_sql=None):
 
+        wc_schema = "epanet_workingcopy"
+        super().__init__(host, pguser, wc_schema, additional_sql)
 
-def test_delete_cascade(con, cur, schema):
+        self.versioning = versioning.pgServer(self.pg_conn_info,
+                                              wc_schema)
+        self.versioning.checkout(["epanet_trunk_rev_head.pipes"])
 
-    res = cur.execute(
-        "DELETE FROM {}.junctions_view WHERE id = 1".format(schema))
-    con.commit()
-
-    cur.execute("SELECT * FROM {}.junctions_view".format(schema))
-    assert(len(cur.fetchall()) == 1)
-
-    cur.execute("SELECT * FROM {}.pipes_view".format(schema))
-    assert(len(cur.fetchall()) == 0)
-
-
-def test_update_cascade(con, cur, schema):
-
-    res = cur.execute(
-        "UPDATE {}.junctions_view SET id = 3 WHERE id = 1".format(schema))
-    con.commit()
-    cur.execute(
-        "SELECT count(*) FROM {}.junctions_view WHERE id = 3".format(schema))
-    assert(len(cur.fetchall()) == 1)
-
-    cur.execute(
-        "SELECT * FROM {}.pipes_view WHERE start_node = 3".format(schema))
-    assert(len(cur.fetchall()) == 1)
-
-    cur.execute(
-        "SELECT * FROM {}.pipes_view WHERE start_node = 1".format(schema))
-    assert(len(cur.fetchall()) == 0)
-
-
-def test_delete_setnull(con, cur, schema):
-
-    res = cur.execute(
-        "DELETE FROM {}.junctions_view WHERE id = 1".format(schema))
-    con.commit()
-
-    cur.execute(
-        "SELECT * FROM {}.junctions_view".format(schema))
-    assert(len(cur.fetchall()) == 1)
-
-    cur.execute(
-        "SELECT start_node, end_node FROM {}.pipes_view".format(schema))
-    pipes = cur.fetchall()
-    assert(len(pipes) == 1)
-    assert(pipes[0][0] is None)
-    assert(pipes[0][1] == 2)
-
-
-def test_update_setnull(con, cur, schema):
-
-    res = cur.execute(
-        "UPDATE {}.junctions_view SET id = 3 WHERE id = 1".format(schema))
-    con.commit()
-    cur.execute(
-        "SELECT count(*) FROM {}.junctions_view WHERE id = 3".format(schema))
-    assert(len(cur.fetchall()) == 1)
-
-    cur.execute(
-        "SELECT start_node, end_node FROM {}.pipes_view".format(schema))
-    pipes = cur.fetchall()
-    assert(len(pipes) == 1)
-    assert(pipes[0][0] is None)
-    assert(pipes[0][1] == 2)
-
-
-def test_delete_setdefault(con, cur, schema):
-
-    res = cur.execute(
-        "DELETE FROM {}.junctions_view WHERE id = 1".format(schema))
-    con.commit()
-
-    cur.execute(
-        "SELECT * FROM {}.junctions_view".format(schema))
-    assert(len(cur.fetchall()) == 1)
-
-    cur.execute(
-        "SELECT start_node, end_node FROM {}.pipes_view".format(schema))
-    pipes = cur.fetchall()
-    assert(len(pipes) == 1)
-    assert(pipes[0][0] == 2)
-    assert(pipes[0][1] == 2)
-
-
-def test_update_setdefault(con, cur, schema):
-
-    res = cur.execute(
-        "UPDATE {}.junctions_view SET id = 3 WHERE id = 1".format(schema))
-    con.commit()
-    cur.execute(
-        "SELECT count(*) FROM {}.junctions_view WHERE id = 3".format(schema))
-    assert(len(cur.fetchall()) == 1)
-
-    cur.execute(
-        "SELECT start_node, end_node FROM {}.pipes_view".format(schema))
-    pipes = cur.fetchall()
-    assert(len(pipes) == 1)
-    assert(pipes[0][0] == 2)
-    assert(pipes[0][1] == 2)
+        self.con = psycopg2.connect(self.pg_conn_info)
+        self.cur = self.con.cursor()
 
 
 def test(host, pguser):
 
     # loop on the 3 ways of checkout (sqlite, pgserver, pglocal)
-    for func, schema in [
-            (load_spatialite_database, "main"),
-            (load_pgserver_database, pgserver_workingcopy_schema)]:
+    for test_class in [ConstraintSpatialiteTest, ConstraintPgServerTest]:
 
-        con = func(host, pguser)
-        test_insert(con, con.cursor(), schema)
-        con.close()
+        test = test_class(host, pguser)
+        test.test_insert()
+        del test
 
-        con = func(host, pguser)
-        test_update_referencing(con, con.cursor(), schema)
-        con.close()
+        test = test_class(host, pguser)
+        test.test_update_referencing()
+        del test
 
-        con = func(host, pguser)
-        test_delete_restrict(con, con.cursor(), schema)
-        con.close()
+        test = test_class(host, pguser)
+        test.test_delete_restrict()
+        del test
 
-        con = func(host, pguser, sql_modify_fkey.format(
+        test = test_class(host, pguser, sql_modify_fkey.format(
             ftype="ON DELETE CASCADE"))
-        test_delete_cascade(con, con.cursor(), schema)
-        con.close()
+        test.test_delete_cascade()
+        del test
 
-        con = func(host, pguser, sql_modify_fkey.format(
+        test = test_class(host, pguser, sql_modify_fkey.format(
             ftype="ON update CASCADE"))
-        test_update_cascade(con, con.cursor(), schema)
-        con.close()
+        test.test_update_cascade()
+        del test
 
-        con = func(host, pguser,
-                   sql_modify_fkey.format(ftype="ON DELETE SET NULL"))
-        test_delete_setnull(con, con.cursor(), schema)
-        con.close()
+        test = test_class(host, pguser,
+                          sql_modify_fkey.format(ftype="ON DELETE SET NULL"))
+        test.test_delete_setnull()
+        del test
 
-        con = func(host, pguser,
-                   sql_modify_fkey.format(ftype="ON UPDATE SET NULL"))
-        test_update_setnull(con, con.cursor(), schema)
-        con.close()
+        test = test_class(host, pguser,
+                          sql_modify_fkey.format(ftype="ON UPDATE SET NULL"))
+        test.test_update_setnull()
+        del test
 
         sql = sql_modify_fkey.format(ftype="ON DELETE SET DEFAULT")
         sql += "ALTER TABLE epanet.pipes ALTER COLUMN start_node SET DEFAULT 2;"
-        con = func(host, pguser, sql)
-        test_delete_setdefault(con, con.cursor(), schema)
-        con.close()
+        test = test_class(host, pguser, sql)
+        test.test_delete_setdefault()
+        del test
 
         sql = sql_modify_fkey.format(ftype="ON UPDATE SET DEFAULT")
         sql += "ALTER TABLE epanet.pipes ALTER COLUMN start_node SET DEFAULT 2;"
-        con = func(host, pguser, sql)
-        test_update_setdefault(con, con.cursor(), schema)
-        con.close()
+        test = test_class(host, pguser, sql)
+        test.test_update_setdefault()
+        del test
 
 
 if __name__ == "__main__":

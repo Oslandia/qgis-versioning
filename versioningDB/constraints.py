@@ -23,6 +23,55 @@
 from collections import OrderedDict
 
 
+def patch_trigger(cur, schema, method, table, sql, before):
+
+    if method == "update" and cur.isSpatialite():
+        patch_trigger_from_name(cur, schema, f"{method}_old_{table}", sql, before)
+        patch_trigger_from_name(cur, schema, f"{method}_new_{table}", sql, before)
+    else:
+        patch_trigger_from_name(cur, schema, f"{method}_{table}", sql, before)
+
+
+def patch_trigger_from_name(cur, schema, trigger_name, sql, before):
+
+    if cur.isPostgres():
+
+        cur.execute(f"""
+        SELECT pr.prosrc FROM pg_proc pr, pg_namespace ns
+        WHERE pr.pronamespace = ns.oid AND nspname = '{schema}'
+        AND pr.proname = '{trigger_name}';
+        """)
+
+        trigger_sql = cur.fetchone()[0]
+        if before:
+            trigger_sql = trigger_sql.replace("BEGIN", "BEGIN\n" + sql)
+        else:
+            trigger_sql = trigger_sql.replace("RETURN", sql + "\nRETURN")
+
+        cur.execute(f"""
+        CREATE OR REPLACE FUNCTION {schema}.{trigger_name}()
+        RETURNS trigger AS
+        $$
+        {trigger_sql}
+        $$ LANGUAGE plpgsql
+        """)
+
+    else:
+        cur.execute(f"""
+        SELECT sql FROM sqlite_master WHERE type = 'trigger'
+        AND name = '{trigger_name}'
+        """)
+
+        trigger_sql = cur.fetchone()[0]
+        if before:
+            trigger_sql = trigger_sql.replace("BEGIN", "BEGIN\n" + sql)
+        else:
+            trigger_sql = trigger_sql.replace("END", sql + "\nEND")
+
+        cur.execute(f"DROP TRIGGER {trigger_name}")
+        cur.execute(trigger_sql)
+
+
 def setup_constraint_triggers(b_cur, wc_cur, b_schema, wc_schema, tables):
     """
 
@@ -62,14 +111,6 @@ def setup_constraint_triggers(b_cur, wc_cur, b_schema, wc_schema, tables):
         name_table_from = q_table_from.replace('.', '_')
         name_table_to = q_table_from.replace('.', '_')
 
-        # When we trigger on update on delete, We can't use the view
-        # because it will check the foreign key constraint before we made our
-        # modifications. So we want to update the table behind the view. so
-        # we get table_from name in base schema (except when wc_schema is None,
-        # which mean we are in spatialite)
-        b_table_from = ((b_schema + "." + table_from) if wc_schema
-                        else table_from)
-
         # unique constraint
         if not table_to:
 
@@ -88,40 +129,20 @@ def setup_constraint_triggers(b_cur, wc_cur, b_schema, wc_schema, tables):
                 keys = ",".join(columns_from)
 
                 # postgres requests
-                if wc_cur.db_type == 'pg : ':
+                if wc_cur.isPostgres():
 
-                    wc_cur.execute(f"""
-                    CREATE FUNCTION {method}_check{idx}_unique_{name_table_from}()
-                    RETURNS trigger AS
-                    $$
-                    BEGIN
+                    sql = f"""
                     IF {when_filter} THEN
                     RAISE EXCEPTION 'Fail {q_table_from} {keys} unique constraint';
                     END IF;
-                    RETURN NEW;
-                    END;
-                    $$ LANGUAGE plpgsql
-                    """)
-
-                    wc_cur.execute(f"""
-                    CREATE TRIGGER {method}_check{idx}_unique_{name_table_from}_trigger
-                    INSTEAD OF {method}
-                    ON {q_table_from}_view
-                    FOR EACH ROW
-                    EXECUTE PROCEDURE {method}_check{idx}_unique_{name_table_from}();
-                    """)
+                    """
+                    patch_trigger(wc_cur, wc_schema, method, table_from, sql, True)
 
                 # spatialite requests
                 else:
 
-                    wc_cur.execute(f"""
-                    CREATE TRIGGER {method}_check{idx}_unique_{name_table_from}
-                    INSTEAD OF {method} ON {q_table_from}_view
-                    FOR EACH ROW
-                    WHEN {when_filter}
-                    BEGIN
-                    SELECT RAISE(FAIL, "Fail {q_table_from} {keys} unique constraint");
-                    END;""")
+                    sql = f'SELECT RAISE(FAIL, "Fail {q_table_from} {keys} unique constraint") WHERE {when_filter};'
+                    patch_trigger(wc_cur, wc_schema, method, table_from, sql, True)
 
         # foreign key constraint
         else:
@@ -138,52 +159,36 @@ def setup_constraint_triggers(b_cur, wc_cur, b_schema, wc_schema, tables):
 
             keys = ",".join(columns_from)
 
-            for method in ['insert','update']:
+            for method in ['insert', 'update']:
 
                 # postgres requests
                 if wc_cur.db_type == 'pg : ':
 
-                    wc_cur.execute(f"""
-                    CREATE FUNCTION {method}_check{idx}_fkey_{name_table_from}_to_{name_table_to}()
-                    RETURNS trigger AS
-                    $$
-                    BEGIN
-                    IF {when_filter} THEN
+                    sql = f"""IF {when_filter} THEN
                     RAISE EXCEPTION 'Fail {keys} foreign key constraint';
-                    END IF;
-                    RETURN NEW;
-                    END;
-                    $$ LANGUAGE plpgsql
-                    """)
+                    END IF;"""
 
-                    wc_cur.execute(f"""
-                    CREATE TRIGGER {method}_check{idx}_fkey_{name_table_from}_to_{name_table_to}_trigger
-                    INSTEAD OF {method}
-                    ON {q_table_from}_view
-                    FOR EACH ROW
-                    EXECUTE PROCEDURE {method}_check{idx}_fkey_{name_table_from}_to_{name_table_to}();
-                    """)
+                    patch_trigger(wc_cur, wc_schema, method,
+                                  table_from, sql, True)
 
                 # spatialite requests
                 else:
 
-                    wc_cur.execute(f"""
-                    CREATE TRIGGER {method}_check{idx}_fkey_{name_table_from}_to_{name_table_to}
-                    INSTEAD OF {method} ON {q_table_from}_view
-                    FOR EACH ROW
-                    WHEN {when_filter}
-                    BEGIN
-                    SELECT RAISE(FAIL, "Fail {keys} foreign key constraint");
-                    END;""")
+                    sql = f'SELECT RAISE(FAIL, "Fail {keys} foreign key constraint") WHERE {when_filter};'
+                    patch_trigger(wc_cur, wc_schema,
+                                  method, table_from, sql, True)
 
             # special actions when a referenced key is updated/deleted
             for method in ['delete', 'update']:
 
                 # check if referencing keys have been modified
-                when_filter = ""
+                where = None
                 if method == 'update':
-                    when_filter += " OR ".join(["NEW.{0} != OLD.{0}".format(column)
-                                                for column in columns_to])
+                    where = "({})".format(
+                        " OR ".join(["NEW.{0} != OLD.{0}".format(column)
+                                     for column in columns_to]))
+                else:
+                    where = "True"
 
                 action_type = updtype if method == 'update' else deltype
 
@@ -191,64 +196,36 @@ def setup_constraint_triggers(b_cur, wc_cur, b_schema, wc_schema, tables):
                 action = ""
                 if action_type == 'c':
                     for column_from, column_to in zip(columns_from, columns_to):
-                        where = f"WHERE {column_from} = OLD.{column_to}"
+                        col_where = where + f" AND {column_from} = OLD.{column_to}"
                         if method == 'update':
-                            action += f"UPDATE {b_table_from} SET {column_from} = NEW.{column_to} {where};"""
+                            action += f"UPDATE {q_table_from}_view SET {column_from} = NEW.{column_to} WHERE {col_where};"""
                         else:
-                            action += f"DELETE FROM {q_table_from}_view {where};"
+                            action += f"DELETE FROM {q_table_from}_view WHERE {col_where};"
 
                 # set null or set default
                 elif action_type == 'n' or action_type == 'd':
                     for column_from, column_to, default_from in zip(columns_from, columns_to, defaults_from):
                         new_value = "NULL" if action_type == 'n' or default_from is None else default_from
-                        where = f"WHERE {column_from} = OLD.{column_to}"
-                        action += f"UPDATE {q_table_from}_view SET {column_from} = {new_value} {where};"""
+                        col_where = where + f" AND {column_from} = OLD.{column_to}"
+                        action += f"UPDATE {q_table_from}_view SET {column_from} = {new_value} WHERE {col_where};"""
 
                 # fail
                 else:
                     keys_label = ",".join(columns_to) + (" is" if len(columns_to) == 1 else " are")
-                    action += (f"""RAISE EXCEPTION '{keys_label} still referenced by {q_table_from}';"""
+                    action += (f"""IF {where} THEN RAISE EXCEPTION '{keys_label} still referenced by {q_table_from}'; END IF;"""
                                if wc_cur.db_type == 'pg : '
-                               else f"""SELECT RAISE(FAIL, "{keys_label} still referenced by {q_table_from}");""")
+                               else f"""SELECT RAISE(FAIL, "{keys_label} still referenced by {q_table_from}") WHERE {where};""")
 
                 # postgres requests
                 if wc_cur.db_type == 'pg : ':
 
-                    body = (f"IF {when_filter} THEN {action} END IF;"
-                            if when_filter else action)
-
-                    to_return = "OLD" if method == 'delete' else "NEW"
-
-                    wc_cur.execute(f"""
-                    CREATE FUNCTION {method}_check{idx}_fkey_modifed_{name_table_from}_to_{name_table_to}()
-                    RETURNS trigger AS
-                    $$
-                    BEGIN
-                    {body}
-                    RETURN {to_return};
-                    END;
-                    $$ LANGUAGE plpgsql
-                    """)
-
-                    wc_cur.execute(f"""
-                    CREATE TRIGGER {method}_check{idx}_fkey_modifed_{name_table_from}_to_{name_table_to}_trigger
-                    INSTEAD OF {method}
-                    ON {q_table_to}_view
-                    FOR EACH ROW
-                    EXECUTE PROCEDURE {method}_check{idx}_fkey_modifed_{name_table_from}_to_{name_table_to}();
-                    """)
+                    patch_trigger(wc_cur, wc_schema, method,
+                                  table_to, action, False)
 
                 # spatialite requests
                 else:
 
-                    when_filter = "WHEN " + when_filter if when_filter else ""
-                    wc_cur.execute(f"""
-                    CREATE TRIGGER {method}_check{idx}_fkey_modifed_{name_table_from}_to_{name_table_to}
-                    INSTEAD OF {method} ON {q_table_to}_view
-                    FOR EACH ROW
-                    {when_filter}
-                    BEGIN
-                    {action}
-                    END;""")
+                    sql = f'SELECT RAISE(FAIL, "Fail {q_table_from} {keys} unique constraint") WHERE {when_filter};'
+                    patch_trigger(wc_cur, wc_schema, method, table_to, action, False)
 
     wc_cur.commit()

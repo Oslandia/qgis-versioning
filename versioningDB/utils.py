@@ -58,6 +58,14 @@ class Db(object):
         self.begun = False
         self._verbose = False
 
+    def isPostgres(self):
+        """Returns True this cursor is a Postgres cursor"""
+        return self.db_type == 'pg : '
+
+    def isSpatialite(self):
+        """Returns True this cursor is a Spatialite cursor"""
+        return self.db_type == 'sp : '
+
     def hasrow(self):
         """Test if previous execute returned rows"""
         if self._verbose:

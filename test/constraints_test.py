@@ -96,9 +96,6 @@ class ConstraintTest:
             self.schema))
         assert(self.cur.fetchone()[0] == 2)
 
-        # self.cur.execute("SELECT COUNT(*) FROM {}.pipes".format(b_schema))
-        # assert(self.cur.fetchone()[0] == 2)
-
         # insert fail unique constraint
         try:
             res = self.cur.execute(
@@ -135,7 +132,7 @@ class ConstraintTest:
             self.schema))
         assert(self.cur.fetchone()[0] == 2)
 
-        # update nothing to do with self.constraint
+        # update nothing to do with foreign key or unique constraint
         res = self.cur.execute(
             "UPDATE {}.pipes_view SET diameter = '10' WHERE id = 1".format(
                 self.schema))
@@ -145,7 +142,7 @@ class ConstraintTest:
                 self.schema))
         assert(self.cur.fetchone()[0] == 10)
 
-        # update valid unique self.constraint
+        # update valid unique constraint
         res = self.cur.execute(
             "UPDATE {}.pipes_view SET id = 3 WHERE id = 1".format(self.schema))
         self.con.commit()
@@ -153,7 +150,7 @@ class ConstraintTest:
             self.schema))
         assert(len(self.cur.fetchall()) == 1)
 
-        # update valid foreign key self.constraint
+        # update valid foreign key constraint
         res = self.cur.execute(
             "UPDATE {}.pipes_view SET start_node = 2 WHERE id = 2".format(
                 self.schema))
@@ -163,7 +160,7 @@ class ConstraintTest:
                 self.schema))
         assert(self.cur.fetchone()[0] == 2)
 
-        # update fail unique self.constraint
+        # update fail unique constraint
         try:
             res = self.cur.execute(
                 "UPDATE {}.pipes_view SET ID = 2 WHERE id = 3".format(
@@ -174,7 +171,7 @@ class ConstraintTest:
         else:
             self.con.commit()
 
-        # update fail foreign key self.constraint
+        # update fail foreign key constraint
         try:
             res = self.cur.execute("UPDATE {}.pipes_view SET start_node = 3 "
                                    "WHERE id = 2".format(self.schema))
@@ -243,8 +240,7 @@ class ConstraintTest:
 
         # 2 junctions, update one, so 3 revisions
         # 1 pipe, cascade updated so 2 revision
-        # FAILED test !!!
-        # self.commit_and_check([("junctions", 3), ("pipes", 2)])
+        self.commit_and_check([("junctions", 3), ("pipes", 2)])
 
     def test_delete_setnull(self):
 
@@ -265,7 +261,6 @@ class ConstraintTest:
 
         # 2 junctions, delete one (modify its rev_end field), so 2 revisions
         # 1 pipe, cascade updated so 2 revisions
-        # FAILED test !!!
         self.commit_and_check([("junctions", 2), ("pipes", 2)])
 
     def test_update_setnull(self):
@@ -286,7 +281,6 @@ class ConstraintTest:
 
         # 2 junctions, update one, so 3 revisions
         # 1 pipe, cascade updated so 2 revisions
-        # FAILED test !!!
         self.commit_and_check([("junctions", 3), ("pipes", 2)])
 
     def test_delete_setdefault(self):
@@ -308,7 +302,6 @@ class ConstraintTest:
 
         # 2 junctions, delete one (modify its rev_end), so 2 revisions
         # 1 pipe, cascade updated so 2 revisions
-        # FAILED test !!!
         self.commit_and_check([("junctions", 2), ("pipes", 2)])
 
     def test_update_setdefault(self):
@@ -329,7 +322,6 @@ class ConstraintTest:
 
         # 2 junctions, update one, so 3 revisions
         # 1 pipe, cascade updated so 2 revisions
-        # FAILED test !!!
         self.commit_and_check([("junctions", 3), ("pipes", 2)])
 
 

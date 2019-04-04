@@ -11,7 +11,7 @@ import shutil
 
 def prtTab( cur, tab ):
     print("--- ",tab," ---")
-    cur.execute("SELECT versioning_hid, trunk_rev_begin, trunk_rev_end, trunk_parent, trunk_child, length FROM "+tab)
+    cur.execute("SELECT versioning_id, trunk_rev_begin, trunk_rev_end, trunk_parent, trunk_child, length FROM "+tab)
     for r in cur.fetchall():
         t = []
         for i in r: t.append(str(i))
@@ -19,7 +19,7 @@ def prtTab( cur, tab ):
 
 def prtHid( cur, tab ):
     print("--- ",tab," ---")
-    cur.execute("SELECT versioning_hid FROM "+tab)
+    cur.execute("SELECT versioning_id FROM "+tab)
     for [r] in cur.fetchall(): print(r)
 
 def test(host, pguser):

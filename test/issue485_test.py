@@ -127,7 +127,7 @@ def test(host, pguser):
     scur.close()
     spversioning.commit(  'moved a junction' )
 
-    pcur.execute("SELECT ST_AsText(geometry), ST_AsText(geometry_schematic) FROM epanet_trunk_rev_head.junctions ORDER BY versioning_hid DESC")
+    pcur.execute("SELECT ST_AsText(geometry), ST_AsText(geometry_schematic) FROM epanet_trunk_rev_head.junctions ORDER BY versioning_id DESC")
     res = pcur.fetchall()
     for r in res: print(r)
     print("res={}".format(res[0][0]))
@@ -140,7 +140,7 @@ def test(host, pguser):
     versioning.add_branch( pg_conn_info, 'epanet', 'b1', 'add branch b1' )
 
     pcur = versioning.Db(psycopg2.connect(pg_conn_info))
-    pcur.execute("SELECT versioning_hid, trunk_rev_begin, trunk_rev_end, b1_rev_begin, b1_rev_end FROM epanet.junctions ORDER BY versioning_hid")
+    pcur.execute("SELECT versioning_id, trunk_rev_begin, trunk_rev_end, b1_rev_begin, b1_rev_end FROM epanet.junctions ORDER BY versioning_id")
     for r in pcur.fetchall(): print(r)
     pcur.close()
 
@@ -159,7 +159,7 @@ def test(host, pguser):
     spversioning.commit( 'moved a junction')
 
     pcur = versioning.Db(psycopg2.connect(pg_conn_info))
-    pcur.execute("SELECT versioning_hid, trunk_rev_begin, trunk_rev_end, b1_rev_begin, b1_rev_end FROM epanet.junctions ORDER BY versioning_hid")
+    pcur.execute("SELECT versioning_id, trunk_rev_begin, trunk_rev_end, b1_rev_begin, b1_rev_end FROM epanet.junctions ORDER BY versioning_id")
     print("-----------------")
     for r in pcur.fetchall(): print(r)
     pcur.close()

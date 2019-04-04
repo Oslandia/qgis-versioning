@@ -108,7 +108,7 @@ def test(host, pguser):
     pcurcpy.execute("SELECT * FROM epanet_trunk_rev_head.pipes_view")
     assert( len(pcurcpy.fetchall())  == 3 )
     
-    pcur.execute("SELECT versioning_hid FROM epanet_trunk_rev_head.pipes ORDER BY versioning_hid")
+    pcur.execute("SELECT versioning_id FROM epanet_trunk_rev_head.pipes ORDER BY versioning_id")
     ret = pcur.fetchall()
 
     assert([i[0] for i in ret] == [3, 4, 5])

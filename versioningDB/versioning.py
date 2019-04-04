@@ -123,8 +123,8 @@ def add_branch( pg_conn_info, schema, branch, commit_msg,
         pcur.execute("""ALTER TABLE {schema}.{table}
         ADD COLUMN {branch}_rev_begin integer REFERENCES {schema}.revisions(rev),
         ADD COLUMN {branch}_rev_end   integer REFERENCES {schema}.revisions(rev),
-        ADD COLUMN {branch}_parent    integer REFERENCES {schema}.{table}(versioning_hid),
-        ADD COLUMN {branch}_child     integer REFERENCES {schema}.{table}(versioning_hid)""".format(
+        ADD COLUMN {branch}_parent    integer REFERENCES {schema}.{table}(versioning_id),
+        ADD COLUMN {branch}_child     integer REFERENCES {schema}.{table}(versioning_id)""".format(
             schema=schema, branch=branch, table=table))
 
         createIndex(pcur, schema, table, branch)
@@ -216,7 +216,7 @@ def diff_rev_view_str(pg_conn_info, schema, table, branch, rev_begin, rev_end):
     AND t.{branch}_rev_begin <= {rev_end})
     OR (t.{branch}_rev_end > {rev_begin}
     AND t.{branch}_rev_end <= {rev_end} )
-    ORDER BY versioning_hid""".format(
+    ORDER BY versioning_id""".format(
         schema=schema, table=table, branch=branch,
         rev_begin=rev_begin, rev_end=rev_end)
 

@@ -65,7 +65,7 @@ def test(host, pguser):
 
     spversioning.commit('a commit msg')
 
-    pcur.execute("select versioning_hid, demand_pattern_id from epanet_trunk_rev_head.junctions")
+    pcur.execute("select versioning_id, demand_pattern_id from epanet_trunk_rev_head.junctions")
     for row in pcur:
         print(row)
         if row[0] > 8:

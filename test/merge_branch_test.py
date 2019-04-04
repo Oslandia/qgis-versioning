@@ -56,7 +56,7 @@ def test(host, pguser):
            (4, 'Merge branch mybranch into trunk', 'trunk')])
 
     pcur.execute(
-        "SELECT versioning_hid, trunk_rev_begin, trunk_rev_end, mybranch_rev_begin,mybranch_rev_end FROM epanet.pipes")
+        "SELECT versioning_id, trunk_rev_begin, trunk_rev_end, mybranch_rev_begin,mybranch_rev_end FROM epanet.pipes")
     assert(pcur.fetchall() == [(1, 1, None, 2, None), (2, 3, None, 3, None)])
 
     pcur.close()

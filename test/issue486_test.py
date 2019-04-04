@@ -96,7 +96,7 @@ def test(host, pguser):
     scur.close()
     spversioning.commit( 'moved a junction' )
 
-    pcur.execute("SELECT ST_AsText(geometry), ST_AsText(geometry_schematic), printmap FROM epanet_trunk_rev_head.junctions ORDER BY versioning_hid DESC")
+    pcur.execute("SELECT ST_AsText(geometry), ST_AsText(geometry_schematic), printmap FROM epanet_trunk_rev_head.junctions ORDER BY versioning_id DESC")
     res = pcur.fetchall()
     for r in res: print(r)
     assert( res[0][0] == 'POINT(3 3)' )

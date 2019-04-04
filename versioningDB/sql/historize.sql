@@ -54,7 +54,7 @@ BEGIN
 END
 $do$;
 
--- Add the versioning_hid primary key
+-- Add the versioning_id primary key
 DO
   $$
   DECLARE
@@ -67,7 +67,7 @@ BEGIN
     AND tablename != 'versioning_constraints'
     LOOP
     EXECUTE 'ALTER TABLE ' || rec.schemaname || '.' || rec.tablename
-      || ' ADD COLUMN versioning_hid SERIAL PRIMARY KEY';
+      || ' ADD COLUMN versioning_id SERIAL PRIMARY KEY';
   END LOOP;
 END
 $$;

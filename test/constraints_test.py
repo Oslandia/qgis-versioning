@@ -46,9 +46,6 @@ class ConstraintTest:
 
         test_data_dir = os.path.dirname(os.path.realpath(__file__))
 
-        if os.path.isfile(sqlite_test_filename):
-            os.remove(sqlite_test_filename)
-
         # create the test database
         os.system("dropdb --if-exists -h " + host + " -U "+pguser
                   + " epanet_test_db")

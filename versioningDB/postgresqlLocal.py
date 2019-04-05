@@ -473,7 +473,8 @@ class pgVersioningLocal(object):
                        'PG:"'+pg_conn_info+' tables=' + wcs + '.' + table + '"', temp_view_name,
                        '-nln', table]
 
-                print(' '.join(cmd))
+                if DEBUG:
+                    print(' '.join(cmd))
                 
                 os.system(' '.join(cmd))
                 pcurcpy = Db(psycopg2.connect(pg_conn_info_copy))
@@ -515,8 +516,9 @@ class pgVersioningLocal(object):
                        '"' + tmp_dump + '"',
                        'PG:"'+pg_conn_info+' tables=' + wcs + '.' + table + '"', temp_view_name,
                        '-nln', table]
-
-                print(' '.join(cmd))
+                
+                if DEBUG:
+                    print(' '.join(cmd))
                 os.system(' '.join(cmd))
                 pcurcpy = Db(psycopg2.connect(pg_conn_info_copy))
                 pcurcpy.execute(open(tmp_dump, "r").read().replace(
@@ -583,7 +585,8 @@ class pgVersioningLocal(object):
                                                      newcols=newcols,
                                                      current_rev_sub=current_rev_sub
                                                      )
-            print(sql)
+            if DEBUG:
+                print(sql)
             pcurcpy.execute(sql)
             pcurcpy.execute("DROP TRIGGER IF EXISTS "
                             "update_old_"+table+"_view ON "+wcs+"."+table+"_view ")
@@ -592,16 +595,17 @@ class pgVersioningLocal(object):
                 update_old_{table}_conflicts 
                 INSTEAD OF UPDATE ON {wcs}.{table}_view 
                 FOR EACH ROW 
-                EXECUTE PROCEDURE {wcs}.update_old_{table}_view()\n""".format(
+                EXECUTE PROCEDURE {wcs}.update_old_{table}()\n""".format(
                 wcs=wcs,
                 table=table)
-            print(sql)
+            if DEBUG:
+                print(sql)
             pcurcpy.execute(sql)
             pcurcpy.commit()
 
             # when we edit something new, we just update
             pcurcpy.execute("CREATE OR REPLACE FUNCTION " +
-                            wcs+".update_new_"+table+"_view() RETURNS trigger AS $$\n"
+                            wcs+".update_new_"+table+"() RETURNS trigger AS $$\n"
                             "DECLARE\n"
                             "cnt integer;\n"
                             "BEGIN\n"

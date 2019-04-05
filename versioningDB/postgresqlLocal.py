@@ -620,7 +620,8 @@ class pgVersioningLocal(object):
                             "(new.ogc_fid, "+newcols+", " +
                             current_rev_sub+"+1, (SELECT "
                             + branch+"_parent FROM "+wcs+"."+table +
-                            " WHERE ogc_fid = new.ogc_fid));\n"
+                            " WHERE ogc_fid = new.ogc_fid))\n"
+                            " WHERE ogc_fid = new.ogc_fid;\n"
                             "end if;\n"
                             "RETURN NEW;\n"
                             "END;\n"

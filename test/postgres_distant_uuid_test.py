@@ -39,8 +39,7 @@ def test(host, pguser):
     os.system("psql -h " + host + " -U "+pguser+" epanet_test_db -f "+test_data_dir+"/epanet_test_db.sql")
     versioning.historize("dbname=epanet_test_db host={} user={}".format(host,pguser), "epanet")
 
-    # chechout
-    #tables = ['epanet_trunk_rev_head.junctions','epanet_trunk_rev_head.pipes']
+    # checkout
     tables = ['epanet_trunk_rev_head.junctions', 'epanet_trunk_rev_head.pipes']
     
     pgversioning = versioning.pgLocal(pg_conn_info, 'epanet_trunk_rev_head', pg_conn_info_cpy)
@@ -66,7 +65,7 @@ def test(host, pguser):
     pcur.execute("SELECT * FROM epanet.pipes")
     assert( len(pcur.fetchall()) == 3 )
 
-    pcurcpy.execute("UPDATE epanet_trunk_rev_head.pipes_view SET start_node = '2' WHERE id = '0'")
+    pcurcpy.execute("UPDATE epanet_trunk_rev_head.pipes_view SET start_node = 2 WHERE id = 1")
     pcurcpy.commit()
     pcurcpy.execute("SELECT * FROM epanet_trunk_rev_head.pipes_view")
     assert( len(pcurcpy.fetchall())  == 3 )
@@ -74,7 +73,6 @@ def test(host, pguser):
     assert( len(pcur.fetchall())== 3 )
     pgversioning.commit('UPDATE')
     pcur.execute("SELECT * FROM epanet.pipes")
-    print(len(pcur.fetchall()))
     assert( len(pcur.fetchall()) == 4 )
    
     pcurcpy.close()

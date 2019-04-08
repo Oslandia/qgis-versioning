@@ -476,6 +476,7 @@ class pgVersioningLocal(object):
                 
                 os.system(' '.join(cmd))
                 pcurcpy = Db(psycopg2.connect(pg_conn_info_copy))
+                pcurcpy.execute("CREATE EXTENSION IF NOT EXISTS postgis;")
                 pcurcpy.execute(open(tmp_dump, "r").read().replace(
                     "CREATE SCHEMA", "CREATE SCHEMA IF NOT EXISTS"))
                 pcurcpy.commit()

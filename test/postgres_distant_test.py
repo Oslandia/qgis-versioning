@@ -36,7 +36,6 @@ def test(host, pguser):
     os.system("dropdb --if-exists -h " + host + " -U "+pguser+" epanet_test_copy_db")
     os.system("createdb -h " + host + " -U "+pguser+" epanet_test_db")
     os.system("createdb -h " + host + " -U "+pguser+" epanet_test_copy_db")
-    os.system("psql -h " + host + " -U "+pguser+" epanet_test_db -c 'CREATE EXTENSION postgis'")
     os.system("psql -h " + host + " -U "+pguser+" epanet_test_db -f "+test_data_dir+"/epanet_test_db.sql")
     versioning.historize("dbname=epanet_test_db host={} user={}".format(host,pguser), "epanet")
 
@@ -115,7 +114,7 @@ def test(host, pguser):
     ret = pcurcpy.fetchall()
     assert([i[0] for i in ret] == [3, 4, 5])
 
-    pcurcpy.execute("INSERT INTO epanet_trunk_rev_head.pipes_view(id, start_node, end_node, geom) VALUES ('4','1','2',ST_GeometryFromText('LINESTRING(3 2,0 1)',2154))")
+    pcurcpy.execute("INSERT INTO epanet_trunk_rev_head.pipes_view(id, start_node, end_node, geom) VALUES (5,'1','2',ST_GeometryFromText('LINESTRING(3 2,0 1)',2154))")
     pcurcpy.commit()
     pgversioning.commit('INSERT AFTER UPDATE')
     

@@ -425,7 +425,9 @@ class spVersioning(object):
                 scur.close()
     
             scur = Db(dbapi2.connect(sqlite_filename))
-    
+
+            constraint_builder = ConstraintBuilder(pcur, scur, schema, None)
+            
             # create views and triggers in spatilite db
             
             cols = ""
@@ -458,15 +460,19 @@ class spVersioning(object):
                 (view_name, view_geometry, view_rowid, 
                 f_table_name, f_geometry_column, read_only)
                 VALUES ('{0}_view', '{1}', 'rowid', '{0}', '{1}', 0)""".format(table, pgeom))
-    
+
+            
             # when we edit something old, we insert and update parent
+            constraint_before = constraint_builder.get_referencing_constraint('update', table)
+            constraint_after = constraint_builder.get_referenced_constraint('update', table)
             scur.execute(
             "CREATE TRIGGER update_old_"+table+" "
                 "INSTEAD OF UPDATE ON "+table+"_view "
                 "WHEN (SELECT COUNT(*) FROM "+table+" "
                 "WHERE ogc_fid = new.ogc_fid "
                 "AND ("+branch+"_rev_begin <= "+current_rev_sub+" ) ) \n"
-                "BEGIN\n"
+                "BEGIN\n"+
+                constraint_before+"\n"+
                 "INSERT INTO "+table+" "
                 "(ogc_fid, "+cols+", "+branch+"_rev_begin, "
                  +branch+"_parent) "
@@ -474,35 +480,43 @@ class spVersioning(object):
                 "("+max_fid_sub+"+1, "+newcols+", "+current_rev_sub+"+1, "
                   "old.ogc_fid);\n"
                 "UPDATE "+table+" SET "+branch+"_rev_end = "+current_rev_sub+", "
-                +branch+"_child = "+max_fid_sub+" WHERE ogc_fid = old.ogc_fid;\n"
+                +branch+"_child = "+max_fid_sub+" WHERE ogc_fid = old.ogc_fid;\n"+
+                constraint_after+"\n"+
                 "END")
+            
             # when we edit something new, we just update
             scur.execute("CREATE TRIGGER update_new_"+table+" "
             "INSTEAD OF UPDATE ON "+table+"_view "
                   "WHEN (SELECT COUNT(*) FROM "+table+" "
                   "WHERE ogc_fid = new.ogc_fid AND ("+branch+"_rev_begin > "
                   +current_rev_sub+" ) ) \n"
-                  "BEGIN\n"
+                  "BEGIN\n"+
+                    constraint_before+"\n"+
                     "REPLACE INTO "+table+" "
                     "(ogc_fid, "+cols+", "+branch+"_rev_begin, "+branch+"_parent) "
                     "VALUES "
                     "(new.ogc_fid, "+newcols+", "+current_rev_sub+"+1, (SELECT "
                     +branch+"_parent FROM "+table+
-                    " WHERE ogc_fid = new.ogc_fid));\n"
+                    " WHERE ogc_fid = new.ogc_fid));\n"+
+                    constraint_after+"\n"+
                   "END")
     
+            constraint = constraint_builder.get_referencing_constraint('insert', table)
             scur.execute("CREATE TRIGGER insert_"+table+" "
             "INSTEAD OF INSERT ON "+table+"_view\n"
-                "BEGIN\n"
+                "BEGIN\n"+
+                    constraint+"\n"+
                     "INSERT INTO "+table+" "+
                     "(ogc_fid, "+cols+", "+branch+"_rev_begin) "
                     "VALUES "
                     "("+max_fid_sub+"+1, "+newcols+", "+current_rev_sub+"+1);\n"
                 "END")
-            
+
+            constraint = constraint_builder.get_referenced_constraint('delete', table)
             scur.execute("CREATE TRIGGER delete_"+table+" "
             "INSTEAD OF DELETE ON "+table+"_view\n"
-                "BEGIN\n"
+                "BEGIN\n"+
+                    constraint+"\n"+
                   # update it if its old
                     "UPDATE "+table+" "
                         "SET "+branch+"_rev_end = "+current_rev_sub+" "
@@ -529,8 +543,6 @@ class spVersioning(object):
             del_view_str = "DROP VIEW IF EXISTS " + i
             pcur.execute(del_view_str)
             pcur.commit()
-
-        setup_constraint_triggers(pcur, scur, schema, None, tables)
 
         pcur.close()
         scur.close()

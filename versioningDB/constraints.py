@@ -20,212 +20,226 @@
  ***************************************************************************/
 """
 
-from collections import OrderedDict
+class Constraint:
+
+    def __init__(self, table_from, columns_from, defaults_from, table_to, columns_to,
+         updtype, deltype):
+        """ Construct a unique or foreign key constraint
+
+        :param table_from: referencing table
+        :param columns_from: referencing columns
+        :param defaults_from: default values
+        :param table_to: referenced table (None if constraint is unique key)
+        :param columns_to: referenced columns (empty if constraint is unique key
+        :param updtype: update type (cascade, set default, set null, restrict)
+        :param deltype: delete type (cascade, set default, set null, restrict)
+
+        """
+        assert(not columns_to or len(columns_from) == len(columns_to))
+
+        self.table_from = table_from
+        self.columns_from =  columns_from
+        self.defaults_from =  defaults_from
+        self.table_to =  table_to
+        self.columns_to =  columns_to
+        self.updtype =  updtype
+        self.deltype =  deltype        
+
+    def get_q_table_from(self, schema):
+        """ Build and return fully qualified table from
+
+        :param schema: table schema
+        :returns: fully qualified table name
+        :rtype: str
+
+        """
+        
+        return ((schema + "." + self.table_from) if schema
+                else self.table_from)
+    
+    def get_q_table_to(self, schema):
+        """ Build and return fully qualified table to
+
+        :param schema: table schema
+        :returns: fully qualified table name
+        :rtype: str
+
+        """
+
+        return ((schema + "." + self.table_to) if schema
+                else self.table_to)
 
 
-def patch_trigger(cur, schema, method, table, sql, before):
+class ConstraintBuilder:
 
-    if method == "update" and cur.isSpatialite():
-        patch_trigger_from_name(cur, schema, f"{method}_old_{table}", sql, before)
-        patch_trigger_from_name(cur, schema, f"{method}_new_{table}", sql, before)
-    else:
-        patch_trigger_from_name(cur, schema, f"{method}_{table}", sql, before)
+    def __init__(self, b_cur, wc_cur, b_schema, wc_schema):
+        """ Build to build unique and foreign key constraint 
 
+        :param b_cur: base cursor (must be opened and valid)
+        :param wc_cur: working copy cursor (must be opened and valid)
+        :param b_schema: base schema
+        :param wc_schema: working copy schema
 
-def patch_trigger_from_name(cur, schema, trigger_name, sql, before):
+        """
+        
+        self.b_cur = b_cur
+        self.wc_cur = wc_cur
+        self.b_schema = b_schema
+        self.wc_schema = wc_schema
 
-    if cur.isPostgres():
-
-        cur.execute(f"""
-        SELECT pr.prosrc FROM pg_proc pr, pg_namespace ns
-        WHERE pr.pronamespace = ns.oid AND nspname = '{schema}'
-        AND pr.proname = '{trigger_name}';
+        b_cur.execute(f"""
+        SELECT table_from, columns_from, defaults_from, table_to,
+        columns_to, updtype, deltype
+        FROM {b_schema}.versioning_constraints
         """)
 
-        trigger_sql = cur.fetchone()[0]
-        if before:
-            trigger_sql = trigger_sql.replace("BEGIN", "BEGIN\n" + sql)
-        else:
-            trigger_sql = trigger_sql.replace("RETURN", sql + "\nRETURN")
 
-        cur.execute(f"""
-        CREATE OR REPLACE FUNCTION {schema}.{trigger_name}()
-        RETURNS trigger AS
-        $$
-        {trigger_sql}
-        $$ LANGUAGE plpgsql
-        """)
+        # build two dict to speed access to constraint from
+        # referencing and referenced table
+        self.referencing_constraints = {}
+        self.referenced_constraints = {}
+        
+        # Build trigger upon this contraints and setup on view
+        for (table_from, columns_from, defaults_from, table_to, columns_to,
+             updtype, deltype) in b_cur.fetchall():
 
-    else:
-        cur.execute(f"""
-        SELECT sql FROM sqlite_master WHERE type = 'trigger'
-        AND name = '{trigger_name}'
-        """)
+            constraint = Constraint(table_from, columns_from, defaults_from,
+                                    table_to, columns_to, updtype, deltype)
 
-        trigger_sql = cur.fetchone()[0]
-        if before:
-            trigger_sql = trigger_sql.replace("BEGIN", "BEGIN\n" + sql)
-        else:
-            trigger_sql = trigger_sql.replace("END", sql + "\nEND")
+            self.referencing_constraints.setdefault(table_from, []).append(constraint)
 
-        cur.execute(f"DROP TRIGGER {trigger_name}")
-        cur.execute(trigger_sql)
+            if table_to:
+                self.referenced_constraints.setdefault(table_to, []).append(constraint)
 
+    def get_referencing_constraint(self, method, table):
+        """ Build and return unique and foreign key referencing constraints sql for given table
 
-def setup_constraint_triggers(b_cur, wc_cur, b_schema, wc_schema, tables):
-    """
+        :param method: insert, update or delete
+        :param table: the referencing table for which we need to build constraints
 
-    Build and setup unique and foreign key constraints on table views
+        """
 
-    :param b_cur: base cursor (must be opened and valid)
-    :param wc_cur: working copy cursor (must be opened and valid)
-    :param b_schema: base schema
-    :param wc_schema: working copy schema
-    :param tables: list of tables
+        sql_constraint = ""
+        if table not in self.referencing_constraints or method not in ['insert', 'update']:
+            return sql_constraint
+        
+        for constraint in self.referencing_constraints.get(table, []):
 
-    """
-    # Get unique and foreign key constraints
-    b_cur.execute(f"""
-    SELECT table_from, columns_from, defaults_from, table_to,
-    columns_to, updtype, deltype
-    FROM {b_schema}.versioning_constraints
-    """)
+            # unique constraint
+            if not constraint.table_to:
 
-    tables_wo_schema = [table[1] for table in tables]
-
-    # Build trigger upon this contraints and setup on view
-    for idx, (table_from, columns_from, defaults_from, table_to, columns_to,
-              updtype, deltype) in enumerate(b_cur.fetchall()):
-
-        # table is not being checkout
-        if table_from not in tables_wo_schema:
-            continue
-
-        # build fully qualified table
-        q_table_from = ((wc_schema + "." + table_from) if wc_schema
-                        else table_from)
-        q_table_to = ((wc_schema + "." + table_to) if wc_schema and table_to
-                      else table_to)
-
-        # build table name for trigger name
-        name_table_from = q_table_from.replace('.', '_')
-        name_table_to = q_table_from.replace('.', '_')
-
-        # unique constraint
-        if not table_to:
-
-            for method in ['insert', 'update']:
+                q_table_from = constraint.get_q_table_from(self.wc_schema)
 
                 # check if unique keys already exist
                 when_filter = "(SELECT COUNT(*) FROM {}_view WHERE {}) != 0".format(
                     q_table_from,
-                    " AND ".join(["{0} = NEW.{0}".format(column) for column in columns_from]))
+                    " AND ".join(["{0} = NEW.{0}".format(column) for column in constraint.columns_from]))
 
                 # check if unique keys have been modified
                 if method == 'update': 
                     when_filter += " AND " + " AND ".join(["NEW.{0} != OLD.{0}".format(column)
-                                                         for column in columns_from]) 
+                                                           for column in constraint.columns_from]) 
 
-                keys = ",".join(columns_from)
+                keys = ",".join(constraint.columns_from)
 
                 # postgres requests
-                if wc_cur.isPostgres():
+                if self.wc_cur.isPostgres():
 
-                    sql = f"""
-                    IF {when_filter} THEN
+                    sql_constraint += f"""IF {when_filter} THEN
                     RAISE EXCEPTION 'Fail {q_table_from} {keys} unique constraint';
                     END IF;
                     """
-                    patch_trigger(wc_cur, wc_schema, method, table_from, sql, True)
 
                 # spatialite requests
                 else:
 
-                    sql = f'SELECT RAISE(FAIL, "Fail {q_table_from} {keys} unique constraint") WHERE {when_filter};'
-                    patch_trigger(wc_cur, wc_schema, method, table_from, sql, True)
+                    sql_constraint += f'SELECT RAISE(FAIL, "Fail {q_table_from} {keys} unique constraint") WHERE {when_filter};'
 
-        # foreign key constraint
-        else:
 
-            assert(len(columns_from) == len(columns_to))
+            # foreign key constraint
+            else:
 
-            # check if referenced keys exists
-            when_filter = "(SELECT COUNT(*) FROM {}_view WHERE {}) = 0".format(
-                q_table_to, " AND ".join(
-                    [f"(NEW.{column_from} IS NULL "
-                     f"OR {column_to} = NEW.{column_from})"
-                     for column_to, column_from
-                     in zip(columns_to, columns_from)]))
+                q_table_to = constraint.get_q_table_to(self.wc_schema)
 
-            keys = ",".join(columns_from)
+                # check if referenced keys exists
+                when_filter = "(SELECT COUNT(*) FROM {}_view WHERE {}) = 0".format(
+                    q_table_to, " AND ".join(
+                        [f"(NEW.{column_from} IS NULL "
+                         f"OR {column_to} = NEW.{column_from})"
+                         for column_to, column_from
+                         in zip(constraint.columns_to, constraint.columns_from)]))
 
-            for method in ['insert', 'update']:
+                keys = ",".join(constraint.columns_from)
 
                 # postgres requests
-                if wc_cur.db_type == 'pg : ':
+                if self.wc_cur.db_type == 'pg : ':
 
-                    sql = f"""IF {when_filter} THEN
+                    sql_constraint += f"""IF {when_filter} THEN
                     RAISE EXCEPTION 'Fail {keys} foreign key constraint';
                     END IF;"""
 
-                    patch_trigger(wc_cur, wc_schema, method,
-                                  table_from, sql, True)
-
                 # spatialite requests
                 else:
 
-                    sql = f'SELECT RAISE(FAIL, "Fail {keys} foreign key constraint") WHERE {when_filter};'
-                    patch_trigger(wc_cur, wc_schema,
-                                  method, table_from, sql, True)
+                    sql_constraint += f'SELECT RAISE(FAIL, "Fail {keys} foreign key constraint") WHERE {when_filter};'
 
-            # special actions when a referenced key is updated/deleted
-            for method in ['delete', 'update']:
+        return sql_constraint
 
-                # check if referencing keys have been modified
-                where = None
-                if method == 'update':
-                    where = "({})".format(
-                        " OR ".join(["NEW.{0} != OLD.{0}".format(column)
-                                     for column in columns_to]))
-                else:
-                    where = "True"
+    def get_referenced_constraint(self, method, table):
+        """ Build and return foreign key referenced constraints sql for given table
 
-                action_type = updtype if method == 'update' else deltype
+        :param method: insert, update or delete
+        :param table: the referenced table for which we need to build constraints
 
-                # cascade
-                action = ""
-                if action_type == 'c':
-                    for column_from, column_to in zip(columns_from, columns_to):
-                        col_where = where + f" AND {column_from} = OLD.{column_to}"
-                        if method == 'update':
-                            action += f"UPDATE {q_table_from}_view SET {column_from} = NEW.{column_to} WHERE {col_where};"""
-                        else:
-                            action += f"DELETE FROM {q_table_from}_view WHERE {col_where};"
+        """
 
-                # set null or set default
-                elif action_type == 'n' or action_type == 'd':
-                    for column_from, column_to, default_from in zip(columns_from, columns_to, defaults_from):
-                        new_value = "NULL" if action_type == 'n' or default_from is None else default_from
-                        col_where = where + f" AND {column_from} = OLD.{column_to}"
-                        action += f"UPDATE {q_table_from}_view SET {column_from} = {new_value} WHERE {col_where};"""
+        sql_constraint = ""
+        if table not in self.referenced_constraints or method not in ['delete', 'update']:
+            return sql_constraint
+        
+        for constraint in self.referenced_constraints.get(table, []):
+        
+            # check if referenced keys have been modified
+            where = None
+            if method == 'update':
+                where = "({})".format(
+                    " OR ".join(["NEW.{0} != OLD.{0}".format(column)
+                                 for column in constraint.columns_to]))
+            else:
+                where = "True"
 
-                # fail
-                else:
-                    keys_label = ",".join(columns_to) + (" is" if len(columns_to) == 1 else " are")
-                    action += (f"""IF {where} THEN RAISE EXCEPTION '{keys_label} still referenced by {q_table_from}'; END IF;"""
-                               if wc_cur.db_type == 'pg : '
-                               else f"""SELECT RAISE(FAIL, "{keys_label} still referenced by {q_table_from}") WHERE {where};""")
+            action_type = constraint.updtype if method == 'update' else constraint.deltype
 
-                # postgres requests
-                if wc_cur.db_type == 'pg : ':
+            q_table_from = constraint.get_q_table_from(self.wc_schema)
 
-                    patch_trigger(wc_cur, wc_schema, method,
-                                  table_to, action, False)
+            # cascade
+            if action_type == 'c':
+                for column_from, column_to in zip(constraint.columns_from, constraint.columns_to):
+                    col_where = where + f" AND {column_from} = OLD.{column_to}"
+                    if method == 'update':
+                        sql_constraint += f"UPDATE {q_table_from}_view SET {column_from} = NEW.{column_to} WHERE {col_where};"""
+                    else:
+                        sql_constraint += f"DELETE FROM {q_table_from}_view WHERE {col_where};"
 
-                # spatialite requests
-                else:
+            # set null or set default
+            elif action_type == 'n' or action_type == 'd':
+                for column_from, column_to, default_from in zip(constraint.columns_from, constraint.columns_to, constraint.defaults_from):
+                    new_value = "NULL" if action_type == 'n' or default_from is None else default_from
+                    col_where = where + f" AND {column_from} = OLD.{column_to}"
+                    sql_constraint += f"UPDATE {q_table_from}_view SET {column_from} = {new_value} WHERE {col_where};"""
 
-                    sql = f'SELECT RAISE(FAIL, "Fail {q_table_from} {keys} unique constraint") WHERE {when_filter};'
-                    patch_trigger(wc_cur, wc_schema, method, table_to, action, False)
+            # fail
+            else:
 
-    wc_cur.commit()
+                where += " AND (SELECT COUNT(*) FROM {}_view WHERE {}) > 0".format(
+                    q_table_from,
+                    " AND ".join(f"{column_from} = OLD.{column_to}" for column_from, column_to in
+                                 zip(constraint.columns_from, constraint.columns_to)))
+                
+                keys_label = ",".join(constraint.columns_to) + (" is" if len(constraint.columns_to) == 1 else " are")
+                sql_constraint += (f"""IF {where} THEN RAISE EXCEPTION '{keys_label} still referenced by {q_table_from}'; END IF;"""
+                                   if self.wc_cur.db_type == 'pg : '
+                                   else f"""SELECT RAISE(FAIL, "{keys_label} still referenced by {q_table_from}") WHERE {where};""")
+
+
+        return sql_constraint

@@ -321,7 +321,9 @@ class pgVersioningServer(object):
     
         first_table = True
         for (schema, table, branch), feature_list in list(zip_longest(tables, selected_feature_lists)):
-    
+
+            constraint_builder = ConstraintBuilder(pcur, pcur, schema, wcs)
+
             pkey = pg_pk( pcur, schema, table )
             history_columns = [pkey] + sum([
                 [brch+'_rev_end', brch+'_rev_begin',
@@ -428,9 +430,12 @@ class pgVersioningServer(object):
                 "end;\n"
                 "$$ language plpgsql;")
     
+            constraint_before = constraint_builder.get_referencing_constraint('update', table)
+            constraint_after = constraint_builder.get_referenced_constraint('update', table)
             pcur.execute("CREATE FUNCTION "+wcs+".update_"+table+"() "
             "RETURNS trigger AS $$\n"
-                "BEGIN\n"
+                "BEGIN\n"+
+                    constraint_before+"\n"+
                     # when we edit something we already added , we just update
                     "UPDATE "+wcs+"."+table+"_diff "
                     "SET ("+cols+") = ("+newcols+") "
@@ -479,7 +484,9 @@ class pgVersioningServer(object):
                         "WHERE "+pkey+" = OLD."+pkey+" "
                         "AND "+branch+"_rev_begin <= "+current_rev_sub+" "
                         "AND ("+branch+"_rev_end IS NULL "
-                            "OR "+branch+"_rev_end >= "+current_rev_sub+")) = 1;\n"
+                            "OR "+branch+"_rev_end >= "+current_rev_sub+")) = 1;\n"+
+
+                    constraint_after+"\n"+
                     "RETURN NEW;\n"
                 "END;\n"
             "$$ LANGUAGE plpgsql;")
@@ -487,10 +494,12 @@ class pgVersioningServer(object):
             pcur.execute("CREATE TRIGGER update_"+table+" "
                 "INSTEAD OF UPDATE ON "+wcs+"."+table+"_view "
                 "FOR EACH ROW EXECUTE PROCEDURE "+wcs+".update_"+table+"();")
-    
+
+            constraint = constraint_builder.get_referencing_constraint('insert', table)
             pcur.execute("CREATE FUNCTION "+wcs+".insert_"+table+"() "
             "RETURNS trigger AS $$\n"
-                "BEGIN\n"
+                "BEGIN\n"+
+                    constraint + "\n" +
                     "INSERT INTO "+wcs+"."+table+"_diff "+
                         "("+pkey+", "+cols+", "+branch+"_rev_begin) "
                         "VALUES "
@@ -503,9 +512,11 @@ class pgVersioningServer(object):
                 "INSTEAD OF INSERT ON "+wcs+"."+table+"_view "
                 "FOR EACH ROW EXECUTE PROCEDURE "+wcs+".insert_"+table+"();")
     
+            constraint = constraint_builder.get_referenced_constraint('delete', table)
             pcur.execute("CREATE FUNCTION "+wcs+".delete_"+table+"() "
             "RETURNS trigger AS $$\n"
-                "BEGIN\n"
+                "BEGIN\n"+
+                    constraint+"\n"+
                     # insert if not already in diff
                     "INSERT INTO "+wcs+"."+table+"_diff "
                         "SELECT "+cols+", "+hcols+" FROM "+schema+"."+table+" "
@@ -540,8 +551,6 @@ class pgVersioningServer(object):
                 "FOR EACH ROW EXECUTE PROCEDURE "+wcs+".delete_"+table+"();")
     
         pcur.commit()
-
-        setup_constraint_triggers(pcur, pcur, schema, wcs, tables)
         pcur.close()
 
     def unresolved_conflicts(self, connection ):

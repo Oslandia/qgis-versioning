@@ -2,7 +2,10 @@
 
 from __future__ import absolute_import
 from .utils import (Db, pg_pk, pg_geom, pg_geoms, pg_branches, quote_ident,
-                    preserve_fid, escape_quote, get_username, os_info)
+                    preserve_fid, escape_quote, get_username, os_info,
+                    get_checkout_tables)
+from .constraints import ConstraintBuilder
+
 import psycopg2
 import tempfile
 import os
@@ -408,11 +411,7 @@ class pgVersioningLocal(object):
         the views and trigger for local edition will be created
         along with the tables and triggers for conflict resolution"""
 
-        for pg_table_name in pg_table_names:
-            [schema, table] = pg_table_name.split('.')
-            if not (schema and table and schema[-9:] == "_rev_head"):
-                raise RuntimeError("Schema names must end with "
-                                   "suffix _branch_rev_head")
+        tables = get_checkout_tables(pg_conn_info, pg_table_names)
 
         pcur = Db(psycopg2.connect(pg_conn_info))
         pcurcpy = Db(psycopg2.connect(pg_conn_info_copy))
@@ -422,10 +421,9 @@ class pgVersioningLocal(object):
 
         temp_view_names = []
         first_table = True
-        for pg_table_name, feature_list in list(zip_longest(pg_table_names, selected_feature_lists)):
-            [schema, table] = pg_table_name.split('.')
-            [schema, sep, branch] = schema[:-9].rpartition('_')
-            del sep
+        for (schema, table, branch), feature_list in list(zip_longest(tables, selected_feature_lists)):
+
+            constraint_builder = ConstraintBuilder(pcur, pcurcpy, schema, wcs)
 
             # fetch the current rev
             pcur.execute("SELECT MAX(rev) FROM "+schema+".revisions")
@@ -556,35 +554,40 @@ class pgVersioningLocal(object):
                                "WHERE table_name = '{table}')".format(wcs=wcs, table=table))
 
             # when we edit something old, we insert and update parent
-            sql = """
+            constraint_before = constraint_builder.get_referencing_constraint('update', table)
+            constraint_after = constraint_builder.get_referenced_constraint('update', table)
+            sql = f"""
                 
-                CREATE OR REPLACE FUNCTION 
-                {wcs}.update_old_{table}_view() RETURNS trigger AS $$\n
-                DECLARE\n
-                cnt integer;\n
-                BEGIN\n
-                SELECT COUNT(*) FROM {wcs}.{table} 
-                WHERE ogc_fid = new.ogc_fid AND ({branch}_rev_begin <= 
-                {current_rev_sub} ) into cnt;\n
-                IF cnt > 0 THEN\n
-                INSERT INTO {wcs}.{table} 
-                (ogc_fid, {cols}, {branch}_rev_begin, 
-                 {branch}_parent)
-                VALUES 
-                ({max_fid_sub}+1, {newcols}, {current_rev_sub}+1, old.ogc_fid);\n
-                
-                UPDATE {wcs}.{table} SET {branch}_rev_end = {current_rev_sub}, 
-                {branch}_child = {max_fid_sub} WHERE ogc_fid = old.ogc_fid;\n
-                END IF;\n
-                RETURN OLD;\n
-                END;\n$$ LANGUAGE plpgsql;""".format(wcs=wcs,
-                                                     table=table,
-                                                     cols=cols,
-                                                     branch=branch,
-                                                     max_fid_sub=max_fid_sub,
-                                                     newcols=newcols,
-                                                     current_rev_sub=current_rev_sub
-                                                     )
+            CREATE OR REPLACE FUNCTION 
+            {wcs}.update_old_{table}() RETURNS trigger AS $$\n
+            DECLARE\n
+            cnt integer;\n
+           BEGIN\n
+            RAISE NOTICE 'update_old.1 new.ogc_fid=%', new.ogc_fid;
+            
+            SELECT COUNT(*) FROM {wcs}.{table} 
+            WHERE ogc_fid = new.ogc_fid AND ({branch}_rev_begin <= 
+            {current_rev_sub} ) into cnt;\n
+            RAISE NOTICE 'update_old.2';
+            IF cnt > 0 THEN\n
+            
+            {constraint_before}
+            RAISE NOTICE 'update_old.3';
+            INSERT INTO {wcs}.{table} 
+            (ogc_fid, {cols}, {branch}_rev_begin, 
+            {branch}_parent)
+            VALUES 
+            ({max_fid_sub}+1, {newcols}, {current_rev_sub}+1, old.ogc_fid);\n
+            RAISE NOTICE 'update_old.4';
+            
+            UPDATE {wcs}.{table} SET {branch}_rev_end = {current_rev_sub}, 
+            {branch}_child = {max_fid_sub} WHERE ogc_fid = old.ogc_fid;\n
+            RAISE NOTICE 'update_old.5';
+            {constraint_after}
+            END IF;\n
+            RAISE NOTICE 'update_old.6';
+            RETURN OLD;\n
+            END;\n$$ LANGUAGE plpgsql;"""
             if DEBUG:
                 print(sql)
             pcurcpy.execute(sql)
@@ -604,48 +607,66 @@ class pgVersioningLocal(object):
             pcurcpy.commit()
 
             # when we edit something new, we just update
-            pcurcpy.execute("CREATE OR REPLACE FUNCTION " +
-                            wcs+".update_new_"+table+"() RETURNS trigger AS $$\n"
-                            "DECLARE\n"
-                            "cnt integer;\n"
-                            "BEGIN\n"
-                            "SELECT COUNT(*) FROM "+wcs+"."+table+" "
-                            "WHERE ogc_fid = new.ogc_fid AND ("+branch+"_rev_begin > "
-                            +current_rev_sub+" ) into cnt;\n"
-                            "IF cnt > 0 THEN\n"
-                            "UPDATE "+wcs+"."+table+" "
-                            "SET (ogc_fid, "+cols+", "+branch +
-                            "_rev_begin, "+branch+"_parent) "
-                            " = "
-                            "(new.ogc_fid, "+newcols+", " +
-                            current_rev_sub+"+1, (SELECT "
-                            + branch+"_parent FROM "+wcs+"."+table +
-                            " WHERE ogc_fid = new.ogc_fid))\n"
-                            " WHERE ogc_fid = new.ogc_fid;\n"
-                            "end if;\n"
-                            "RETURN NEW;\n"
-                            "END;\n"
-                            "$$ LANGUAGE plpgsql;")
+            pcurcpy.execute(f"""
+            CREATE OR REPLACE FUNCTION
+            {wcs}.update_new_{table}() RETURNS trigger AS $$
+            DECLARE
+            cnt integer;
+            BEGIN
+            RAISE NOTICE 'update_new.1 new.ogc_fid=%', new.ogc_fid;
+            SELECT COUNT(*) FROM {wcs}.{table}
+            WHERE ogc_fid = new.ogc_fid AND ({branch}_rev_begin >
+            {current_rev_sub}) into cnt;
+            RAISE NOTICE 'update_new.2';
+            IF cnt > 0 THEN
+            {constraint_before}
+            RAISE NOTICE 'update_new.3';
+                            
+            INSERT INTO {wcs}.{table} (ogc_fid, {cols}, {branch}_rev_begin, {branch}_parent)
+            VALUES (new.ogc_fid, {newcols}, {current_rev_sub}+1, (SELECT
+            {branch}_parent FROM {wcs}.{table}
+            WHERE ogc_fid = new.ogc_fid))
+            ON CONFLICT (ogc_fid)
+            DO
+            UPDATE
+            SET (ogc_fid, {cols}, {branch}_rev_begin, {branch}_parent)
+            =
+            (new.ogc_fid, {newcols}, {current_rev_sub}+1, (SELECT
+            {branch}_parent FROM {wcs}.{table}
+            WHERE ogc_fid = new.ogc_fid));
+                            
+            RAISE NOTICE 'update_new.4';
+            {constraint_after}
+            end if;
+            RAISE NOTICE 'update_new.5';
+            RETURN NEW;
+            END;
+            $$ LANGUAGE plpgsql;""")
+            
             pcurcpy.execute("DROP TRIGGER IF EXISTS "
                             "update_new_"+table+"_view ON "+wcs+"."+table+"_view ")
             pcurcpy.execute("CREATE TRIGGER "
                             "update_new_"+table+"_conflicts "
                             "INSTEAD OF UPDATE ON "+wcs+"."+table+"_view "
                             "FOR EACH ROW "
-                            "EXECUTE PROCEDURE "+wcs+".update_new_"+table+"_view();\n")
+                            "EXECUTE PROCEDURE "+wcs+".update_new_"+table+"();\n")
             pcurcpy.commit()
 
+            constraint = constraint_builder.get_referencing_constraint('insert', table)
             pcurcpy.execute("CREATE OR REPLACE FUNCTION " +
                             wcs+".insert_"+table+"() RETURNS trigger AS $$\n"
-                            "BEGIN\n"
+                            "DECLARE\n"
+                            "BEGIN\n" +
+                            constraint + "\n" +
                             "INSERT INTO "+wcs+"."+table+" " +
                             "(ogc_fid, "+cols+", "+branch+"_rev_begin) "
                             "VALUES "
                             "("+max_fid_sub+"+1, "+newcols +
-                            ", "+current_rev_sub+"+1);\n"
+                            ", "+current_rev_sub+"+1);\n" +
                             "RETURN NEW;\n"
                             "END;\n"
                             "$$ LANGUAGE plpgsql;")
+
             pcurcpy.execute("DROP TRIGGER IF EXISTS "
                             "insert_"+table+" ON "+wcs+"."+table)
             pcurcpy.execute("CREATE TRIGGER "
@@ -653,11 +674,14 @@ class pgVersioningLocal(object):
                             "INSTEAD OF INSERT ON "+wcs+"."+table + "_view "
                             " FOR EACH ROW "
                             "EXECUTE PROCEDURE "+wcs+".insert_"+table+"();")
+
             pcurcpy.commit()
 
+            constraint = constraint_builder.get_referenced_constraint('delete', table)
             pcurcpy.execute("CREATE OR REPLACE FUNCTION " +
                             wcs+".delete_"+table+"() RETURNS trigger AS $$\n"
-                            "BEGIN\n"
+                            "BEGIN\n" +
+                            constraint + "\n" +
                             # update it if its old
                             "UPDATE "+wcs+"."+table+" "
                             "SET "+branch+"_rev_end = "+current_rev_sub+" "

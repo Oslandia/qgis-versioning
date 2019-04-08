@@ -162,7 +162,7 @@ class ConstraintTest:
             res = self.cur.execute(
                 "UPDATE {}.pipes_view SET ID = 2 WHERE id = 3".format(
                     self.schema))
-            assert(False and "Insert must fail unique self.constraint")
+            assert(False and "Insert must fail unique constraint")
         except (IntegrityError, psycopg2.InternalError) as e:
             self.con.rollback()
         else:
@@ -172,7 +172,7 @@ class ConstraintTest:
         try:
             res = self.cur.execute("UPDATE {}.pipes_view SET start_node = 3 "
                                    "WHERE id = 2".format(self.schema))
-            assert(False and "Insert must fail foreign key self.constraint")
+            assert(False and "Update must fail foreign key constraint")
         except (IntegrityError, psycopg2.InternalError) as e:
             self.con.rollback()
         else:
@@ -360,11 +360,38 @@ class ConstraintPgServerTest(ConstraintTest):
         self.cur = self.pcur
 
 
+class ConstraintPgLocalTest(ConstraintTest):
+
+    def __init__(self, host, pguser, additional_sql=None):
+
+        wc_schema = "epanet_workingcopy"
+        super().__init__(host, pguser, wc_schema, additional_sql)
+
+        db_name = "epanet_test_db_wc"
+        pg_conn_info_out = "dbname={} host={} user={}".format(
+            db_name, host, pguser)
+
+        # create the test working copy database
+        os.system(f"dropdb --if-exists -h {host} -U {pguser} {db_name}")
+        os.system(f"createdb -h {host} -U {pguser} {db_name}")
+        os.system(f"psql -h {host} -U {pguser} {db_name}"
+                  " -c 'CREATE EXTENSION postgis;'")
+
+        self.versioning = versioning.pgLocal(self.pg_conn_info,
+                                             wc_schema, pg_conn_info_out)
+        self.versioning.checkout(["epanet_trunk_rev_head.pipes"])
+
+        self.con = psycopg2.connect(pg_conn_info_out)
+        self.cur = self.con.cursor()
+
+
 def test(host, pguser):
 
     # loop on the 3 ways of checkout (sqlite, pgserver, pglocal)
     for test_class in [ConstraintSpatialiteTest,
-                       ConstraintPgServerTest]:
+                       ConstraintPgServerTest,
+                       ConstraintPgLocalTest
+    ]:
 
         test = test_class(host, pguser)
         test.test_insert()
@@ -384,7 +411,7 @@ def test(host, pguser):
         del test
 
         test = test_class(host, pguser, sql_modify_fkey.format(
-            ftype="ON update CASCADE"))
+            ftype="ON UPDATE CASCADE"))
         test.test_update_cascade()
         del test
 

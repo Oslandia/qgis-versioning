@@ -31,8 +31,8 @@ def test(host, pguser):
 
     os.system("dropdb --if-exists -h " + host + " -U "+pguser+" epanet_test_db")
     os.system("createdb -h " + host + " -U "+pguser+" epanet_test_db")
-    os.system("psql -h " + host + " -U "+pguser+" epanet_test_db -c 'CREATE EXTENSION postgis'")
     os.system("psql -h " + host + " -U "+pguser+" epanet_test_db -f "+test_data_dir+"/epanet_test_db.sql")
+    
     versioning.historize("dbname=epanet_test_db host={} user={}".format(host,pguser), "epanet")
 
     spversioning1 = versioning.spatialite(sqlite_test_filename1, pg_conn_info)
@@ -79,7 +79,7 @@ def test(host, pguser):
 
     # add revision : edit one table and commit changes; rev = 3
 
-    spversioning2.checkout(["epanet_trunk_rev_head.junctions"])
+    spversioning2.checkout(["epanet_trunk_rev_head.junctions", "epanet_trunk_rev_head.pipes"])
 
     scon = dbapi2.connect(sqlite_test_filename2)
     scon.enable_load_extension(True)
@@ -109,10 +109,17 @@ def test(host, pguser):
 
     # add revision : delete one junction and commit changes; rev = 5
 
-    spversioning4.checkout(["epanet_trunk_rev_head.junctions"])
+    spversioning4.checkout(["epanet_trunk_rev_head.junctions", "epanet_trunk_rev_head.pipes"])
 
     scon = dbapi2.connect(sqlite_test_filename4)
     scur = scon.cursor()
+
+    # remove pipes so wen can delete referenced junctions
+    scur.execute("DELETE FROM pipes_view")
+    scon.commit()
+    scur.execute("SELECT COUNT(*) FROM pipes_view")
+    assert(scur.fetchone()[0]==0)
+    
     scur.execute("DELETE FROM junctions_view  WHERE id = 1")
     scon.commit()
     #scur.execute("SELECT COUNT(*) FROM junctions")
@@ -169,7 +176,7 @@ def test(host, pguser):
 
     # add revision : edit one table then delete and commit changes; rev = 6
 
-    spversioning5.checkout(["epanet_trunk_rev_head.junctions"])
+    spversioning5.checkout(["epanet_trunk_rev_head.junctions", "epanet_trunk_rev_head.pipes"])
 
     scon = dbapi2.connect(sqlite_test_filename5)
     scur = scon.cursor()

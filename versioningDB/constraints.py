@@ -20,17 +20,19 @@
  ***************************************************************************/
 """
 
+
 class Constraint:
 
-    def __init__(self, table_from, columns_from, defaults_from, table_to, columns_to,
-         updtype, deltype):
+    def __init__(self, table_from, columns_from, defaults_from, table_to,
+                 columns_to, updtype, deltype):
         """ Construct a unique or foreign key constraint
 
         :param table_from: referencing table
         :param columns_from: referencing columns
         :param defaults_from: default values
         :param table_to: referenced table (None if constraint is unique key)
-        :param columns_to: referenced columns (empty if constraint is unique key
+        :param columns_to: referenced columns (empty if constraint is
+        unique key)
         :param updtype: update type (cascade, set default, set null, restrict)
         :param deltype: delete type (cascade, set default, set null, restrict)
 
@@ -38,12 +40,12 @@ class Constraint:
         assert(not columns_to or len(columns_from) == len(columns_to))
 
         self.table_from = table_from
-        self.columns_from =  columns_from
-        self.defaults_from =  defaults_from
-        self.table_to =  table_to
-        self.columns_to =  columns_to
-        self.updtype =  updtype
-        self.deltype =  deltype        
+        self.columns_from = columns_from
+        self.defaults_from = defaults_from
+        self.table_to = table_to
+        self.columns_to = columns_to
+        self.updtype = updtype
+        self.deltype = deltype
 
     def get_q_table_from(self, schema):
         """ Build and return fully qualified table from
@@ -53,10 +55,9 @@ class Constraint:
         :rtype: str
 
         """
-        
         return ((schema + "." + self.table_from) if schema
                 else self.table_from)
-    
+
     def get_q_table_to(self, schema):
         """ Build and return fully qualified table to
 
@@ -73,7 +74,7 @@ class Constraint:
 class ConstraintBuilder:
 
     def __init__(self, b_cur, wc_cur, b_schema, wc_schema):
-        """ Build to build unique and foreign key constraint 
+        """ Build to build unique and foreign key constraint
 
         :param b_cur: base cursor (must be opened and valid)
         :param wc_cur: working copy cursor (must be opened and valid)
@@ -81,7 +82,6 @@ class ConstraintBuilder:
         :param wc_schema: working copy schema
 
         """
-        
         self.b_cur = b_cur
         self.wc_cur = wc_cur
         self.b_schema = b_schema
@@ -93,12 +93,11 @@ class ConstraintBuilder:
         FROM {b_schema}.versioning_constraints
         """)
 
-
         # build two dict to speed access to constraint from
         # referencing and referenced table
         self.referencing_constraints = {}
         self.referenced_constraints = {}
-        
+
         # Build trigger upon this contraints and setup on view
         for (table_from, columns_from, defaults_from, table_to, columns_to,
              updtype, deltype) in b_cur.fetchall():
@@ -106,23 +105,28 @@ class ConstraintBuilder:
             constraint = Constraint(table_from, columns_from, defaults_from,
                                     table_to, columns_to, updtype, deltype)
 
-            self.referencing_constraints.setdefault(table_from, []).append(constraint)
+            self.referencing_constraints.setdefault(table_from, []).append(
+                constraint)
 
             if table_to:
-                self.referenced_constraints.setdefault(table_to, []).append(constraint)
+                self.referenced_constraints.setdefault(table_to, []).append(
+                    constraint)
 
     def get_referencing_constraint(self, method, table):
-        """ Build and return unique and foreign key referencing constraints sql for given table
+        """ Build and return unique and foreign key referencing constraints
+        sql for given table
 
         :param method: insert, update or delete
-        :param table: the referencing table for which we need to build constraints
+        :param table: the referencing table for which we need to build
+        constraints
 
         """
 
         sql_constraint = ""
-        if table not in self.referencing_constraints or method not in ['insert', 'update']:
+        if (table not in self.referencing_constraints
+                or method not in ['insert', 'update']):
             return sql_constraint
-        
+
         for constraint in self.referencing_constraints.get(table, []):
 
             # unique constraint
@@ -154,7 +158,6 @@ class ConstraintBuilder:
                 else:
 
                     sql_constraint += f'SELECT RAISE(FAIL, "Fail {q_table_from} {keys} unique constraint") WHERE {when_filter};'
-
 
             # foreign key constraint
             else:
@@ -189,16 +192,17 @@ class ConstraintBuilder:
         """ Build and return foreign key referenced constraints sql for given table
 
         :param method: insert, update or delete
-        :param table: the referenced table for which we need to build constraints
+        :param table: the referenced table for which we need to build
+        constraints
 
         """
 
         sql_constraint = ""
         if table not in self.referenced_constraints or method not in ['delete', 'update']:
             return sql_constraint
-        
+
         for constraint in self.referenced_constraints.get(table, []):
-        
+
             # check if referenced keys have been modified
             where = None
             if method == 'update':
@@ -208,7 +212,8 @@ class ConstraintBuilder:
             else:
                 where = "True"
 
-            action_type = constraint.updtype if method == 'update' else constraint.deltype
+            action_type = (constraint.updtype if method == 'update'
+                           else constraint.deltype)
 
             q_table_from = constraint.get_q_table_from(self.wc_schema)
 

@@ -20,6 +20,8 @@
  ***************************************************************************/
 """
 
+from .utils import get_pkeys
+
 
 class Constraint:
 
@@ -246,5 +248,81 @@ class ConstraintBuilder:
                                    if self.wc_cur.db_type == 'pg : '
                                    else f"""SELECT RAISE(FAIL, "{keys_label} still referenced by {q_table_from}") WHERE {where};""")
 
-
         return sql_constraint
+
+
+def check_unique_constraints(b_cur, wc_cur, wc_schema):
+
+    wc_cur.execute("SELECT rev, branch, table_schema, table_name "
+                   f"FROM {wc_schema}.initial_revision")
+    versioned_layers = wc_cur.fetchall()
+
+    errors = []
+    for [rev, branch, b_schema, table] in versioned_layers:
+
+        # Spatialite
+        if wc_cur.isSpatialite():
+            table_w_revs = f"{table}"
+            vid = "ogc_fid"
+
+        # PgServer
+        elif b_cur is wc_cur:
+            table_w_revs = f"{wc_schema}.{table}_diff"
+            vid = "versioning_id"
+
+        # PgLocal
+        else:
+            table_w_revs = f"{wc_schema}.{table}"
+            vid = "ogc_fid"
+
+        pkeys = get_pkeys(b_cur, b_schema, table)
+        pkey_list = ",".join(["trev." + pkey for pkey in pkeys])
+
+        wc_cur.execute(f"""
+        -- INSERTED PKEY
+        SELECT {pkey_list}
+        FROM {table_w_revs} trev
+        WHERE {branch}_rev_end is NULL
+        AND {branch}_parent is NULL
+        AND {branch}_rev_begin > {rev}
+        UNION
+        -- UPDATED PKEY
+        SELECT {pkey_list}
+        FROM {table_w_revs} trev, {table_w_revs} trev2
+        WHERE trev.{branch}_parent IS NOT NULL
+        AND trev.{branch}_rev_begin > 1
+        AND trev.{branch}_parent = trev2.{vid}
+        AND trev.id != trev2.id;
+        """)
+
+        new_keys = wc_cur.fetchall()
+
+        if not new_keys:
+            continue
+
+        # search in database if there are some working copy new key that
+        # already exist.
+        new_key_list = ",".join(["({})".format(
+            ",".join([str(int_key)for int_key in new_key]))
+                                 for new_key in new_keys])
+
+        b_cur.execute(f"""
+        SELECT {pkey_list}
+        FROM {b_schema}.{table} trev
+        WHERE {branch}_rev_end is NULL
+        AND {branch}_parent is NULL
+        INTERSECT
+        SELECT *
+        FROM (VALUES {new_key_list}) AS new_keys""")
+
+        def to_string(rec):
+            return " and ".join(
+                [f"{pkey}={value}" for pkey, value in zip(pkeys, rec)])
+
+        errors += ["   {}.{} : {}".format(wc_schema, table, to_string(res))
+                   for res in b_cur.fetchall()]
+
+    if errors:
+        raise RuntimeError("Some new or updated row violate the primary key"
+                           " constraint in base database :\n{}".format(
+                               "\n".join(errors)))

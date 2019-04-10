@@ -7,7 +7,7 @@ from itertools import zip_longest
 import os
 DEBUG=False
 
-from .constraints import *
+from .constraints import ConstraintBuilder, check_unique_constraints
 
 class spVersioning(object):
     

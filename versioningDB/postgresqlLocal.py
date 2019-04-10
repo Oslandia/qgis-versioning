@@ -3,14 +3,12 @@
 from __future__ import absolute_import
 from .utils import (Db, pg_pk, pg_geom, pg_geoms, pg_branches, quote_ident,
                     preserve_fid, escape_quote, get_username, os_info,
-                    get_checkout_tables, check_unique_constraints)
-from .constraints import ConstraintBuilder
+                    get_checkout_tables)
+from .constraints import ConstraintBuilder, check_unique_constraints
 
 import psycopg2
 import tempfile
 import os
-
-from itertools import zip_longest
 
 DEBUG = False
 

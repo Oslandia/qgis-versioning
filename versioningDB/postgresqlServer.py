@@ -8,7 +8,7 @@ from itertools import zip_longest
 
 DEBUG=False
 
-from .constraints import *
+from .constraints import ConstraintBuilder, check_unique_constraints
 
 class pgVersioningServer(object):    
     

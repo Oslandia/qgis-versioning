@@ -577,7 +577,7 @@ class pgVersioningServer(object):
             raise RuntimeError("Working copy "+working_copy_schema+" "
                 "is not up to date. It's late by "+str(late_by)+" commit(s).\n\n"
                 "Please update before committing your modifications")
-    
+
         # Better if we could have a QgsDataSourceURI.username()
         try :
             pg_username = pg_conn_info.split(' ')[3].replace("'","").split('=')[1]
@@ -587,7 +587,9 @@ class pgVersioningServer(object):
         pcur.execute("SELECT rev, branch, table_schema, table_name "
             "FROM "+wcs+".initial_revision")
         versioned_layers = pcur.fetchall()
-    
+
+        check_unique_constraints(pcur, pcur, wcs)
+
         if not versioned_layers:
             raise RuntimeError("Cannot find a versioned layer in "+wcs)
     

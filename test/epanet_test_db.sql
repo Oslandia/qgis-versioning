@@ -9,16 +9,6 @@ CREATE TABLE epanet.junctions (
     geom geometry('POINT',2154)
 );
 
-INSERT INTO epanet.junctions
-    (elevation, geom)
-    VALUES
-    (0,ST_GeometryFromText('POINT(1 0)',2154));
-
-INSERT INTO epanet.junctions
-    (elevation, geom)
-    VALUES
-    (1,ST_GeometryFromText('POINT(0 1)',2154));
-
 CREATE TABLE epanet.pipes (
     id serial PRIMARY KEY,
     start_node integer references epanet.junctions(id),
@@ -30,6 +20,19 @@ CREATE TABLE epanet.pipes (
     status varchar,
     geom geometry('LINESTRING',2154)
 );
+
+-- INSERT DATA (Use to identify the data insertion block in test, do not remove this line!!!)
+
+INSERT INTO epanet.junctions
+    (elevation, geom)
+    VALUES
+    (0,ST_GeometryFromText('POINT(1 0)',2154));
+
+INSERT INTO epanet.junctions
+    (elevation, geom)
+    VALUES
+    (1,ST_GeometryFromText('POINT(0 1)',2154));
+
 
 INSERT INTO epanet.pipes
     (start_node, end_node, length, diameter, geom) 

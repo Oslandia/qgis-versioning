@@ -3,7 +3,7 @@
 from __future__ import absolute_import
 from .utils import (Db, pg_pk, pg_geom, pg_geoms, pg_branches, quote_ident,
                     preserve_fid, escape_quote, get_username, os_info,
-                    get_checkout_tables)
+                    get_checkout_tables, check_unique_constraints)
 from .constraints import ConstraintBuilder
 
 import psycopg2
@@ -773,6 +773,9 @@ class pgVersioningLocal(object):
         if not versioned_layers:
             raise RuntimeError("Cannot find a versioned layer in "+wcs)
 
+        check_unique_constraints(Db(psycopg2.connect(pg_conn_info)),
+                                 pcurcpy, wcs)
+        
         schema_list = {}  # for final cleanup
         nb_of_updated_layer = 0
         next_rev = 0

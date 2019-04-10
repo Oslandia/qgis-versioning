@@ -112,6 +112,43 @@ class PartialCheckoutTest:
             self.schema))
         assert([res[0] for res in self.cur.fetchall()] == [1])
 
+    def test_duplicate_pkey(self):
+
+        self.checkout(["epanet_trunk_rev_head.junctions"], [[6, 7, 8]])
+        self.cur.execute("SELECT id from {}.junctions_view order by id".format(
+            self.schema))
+        assert([res[0] for res in self.cur.fetchall()] == [6, 7, 8])
+
+        self.cur.execute("""
+        INSERT INTO {}.junctions_view (id, elevation, geom) VALUES
+        (4, 40, ST_GeometryFromText('POINT(4 4)',2154)),
+        (5, 50, ST_GeometryFromText('POINT(5 5)',2154))""".format(
+            self.schema))
+        self.con.commit()
+
+        self.cur.execute("SELECT id from {}.junctions_view order by id".format(
+            self.schema))
+        assert([res[0] for res in self.cur.fetchall()] == [4, 5, 6, 7, 8])
+
+        self.con.rollback()
+
+        try:
+            self.versioning.commit("commit msg")
+            assert(False and "Commit must fail unique constraint")
+        except RuntimeError as e:
+            print(e)
+            self.con.rollback()
+
+        # Check we have only one current instance of feature with id 5
+        # and one with id 4 after commit
+        self.pcur.execute("""SELECT COUNT(*)
+        FROM epanet.junctions WHERE id = 5 AND trunk_rev_end IS NULL """)
+        assert(self.pcur.fetchone()[0] == 1)
+
+        self.pcur.execute("""SELECT COUNT(*)
+        FROM epanet.junctions WHERE id = 4 AND trunk_rev_end IS NULL """)
+        assert(self.pcur.fetchone()[0] == 1)
+
 
 class SpatialitePartialCheckoutTest(PartialCheckoutTest):
 
@@ -129,6 +166,8 @@ class SpatialitePartialCheckoutTest(PartialCheckoutTest):
         super().checkout(tables, feature_list)
 
         self.con = dbapi2.connect(sqlite_test_filename)
+        self.con.enable_load_extension(True)
+        self.con.execute("SELECT load_extension('mod_spatialite')")
         self.cur = self.con.cursor()
 
 
@@ -169,12 +208,13 @@ def test(host, pguser):
 
     # loop on the 3 ways of checkout (sqlite, pgserver, pglocal)
     for test_class in [SpatialitePartialCheckoutTest,
-                       PgServerPartialCheckoutTest,
-                       PgLocalPartialCheckoutTest]:
+                       PgLocalPartialCheckoutTest,
+                       PgServerPartialCheckoutTest
+    ]:
 
-        # test = test_class(host, pguser)
-        # test.test_select()
-        # del test
+        test = test_class(host, pguser)
+        test.test_select()
+        del test
 
         test = test_class(host, pguser)
         test.test_referenced()
@@ -186,6 +226,10 @@ def test(host, pguser):
 
         test = test_class(host, pguser)
         test.test_referencing()
+        del test
+
+        test = test_class(host, pguser)
+        test.test_duplicate_pkey()
         del test
 
 

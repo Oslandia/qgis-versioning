@@ -74,7 +74,7 @@ class Constraint:
 class ConstraintBuilder:
 
     def __init__(self, b_cur, wc_cur, b_schema, wc_schema):
-        """ Build to build unique and foreign key constraint
+        """ Constructor to build unique and foreign key constraint
 
         :param b_cur: base cursor (must be opened and valid)
         :param wc_cur: working copy cursor (must be opened and valid)

@@ -382,7 +382,7 @@ class spVersioning(object):
     
                 if DEBUG: print(' '.join(cmd))
                 os.system(' '.join(cmd))
-    
+
                 # save target revision in a table
                 scur = Db(dbapi2.connect(sqlite_filename))
                 scur.execute("CREATE TABLE initial_revision AS SELECT "+
@@ -584,11 +584,14 @@ class spVersioning(object):
                     " is not up to date. "
                     "It's late by "+str(late_by)+" commit(s).\n\n"
                     "Please update before commiting your modifications")
-    
+
         scur = Db(dbapi2.connect(sqlite_filename))
         scur.execute("SELECT rev, branch, table_schema, table_name "
             "FROM initial_revision")
         versioned_layers = scur.fetchall()
+
+        pcur = Db(psycopg2.connect(pg_conn_info))
+        check_unique_constraints(pcur, scur, "main")
     
         if not versioned_layers:
             raise RuntimeError("Cannot find a versioned layer in "+sqlite_filename)
@@ -604,7 +607,7 @@ class spVersioning(object):
                 assert( next_rev == rev + 1 )
             else:
                 next_rev = rev + 1
-    
+
             scur.execute( "DROP TABLE IF EXISTS "+table+"_diff")
     
             # note, creating the diff table dirrectly with
@@ -643,7 +646,6 @@ class spVersioning(object):
             except (IndexError):
                 pg_username = ''
     
-            pcur = Db(psycopg2.connect(pg_conn_info))
             pg_users_list = get_pg_users_list(pg_conn_info)
             pkey = pg_pk( pcur, table_schema, table )
             pgeom = pg_geom( pcur, table_schema, table )
@@ -667,10 +669,10 @@ class spVersioning(object):
                     '"' + sqlite_filename + '"',
                     table+"_diff",
                     '-nln', diff_schema+'.'+table+"_diff"]
-    
+
             if DEBUG: print(' '.join(cmd))
             os.system(' '.join(cmd))
-    
+
             for l in pcur.execute( "select * from geometry_columns").fetchall():
                 if DEBUG: print(l)
     
@@ -682,7 +684,6 @@ class spVersioning(object):
     
             if not there_is_something_to_commit:
                 if DEBUG: print("nothing to commit for ", table)
-                pcur.close()
                 continue
     
             nb_of_updated_layer += 1
@@ -742,13 +743,12 @@ class spVersioning(object):
                     "AND src."+branch+"_rev_end = "+str(rev))
     
             pcur.commit()
-            pcur.close()
+            # pcur.close()
     
             scur.commit()
-    
+
         if nb_of_updated_layer:
             for [rev, branch, table_schema, table] in versioned_layers:
-                pcur = Db(psycopg2.connect(pg_conn_info))
                 pkey = pg_pk( pcur, table_schema, table )
                 pcur.execute("SELECT MAX(rev) FROM "+table_schema+".revisions")
                 [rev] = pcur.fetchone()
@@ -756,7 +756,7 @@ class spVersioning(object):
                 [max_pk] = pcur.fetchone()
                 if not max_pk :
                     max_pk = 0
-                pcur.close()
+                
                 scur.execute("UPDATE initial_revision "
                     "SET rev = "+str(rev)+", max_pk = "+str(max_pk)+" "
                     "WHERE table_schema = '"+table_schema+"' "
@@ -768,9 +768,8 @@ class spVersioning(object):
     
         # cleanup diffs in postgis
         for schema, conn_info in schema_list.items():
-            pcur = Db(psycopg2.connect(conn_info))
             pcur.execute("DROP SCHEMA "+schema+" CASCADE")
             pcur.commit()
-            pcur.close()
-    
+        
+        pcur.close()
         return nb_of_updated_layer

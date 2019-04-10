@@ -98,7 +98,7 @@ def test(host, pguser):
     assert( 2 == pcur.fetchone()[0] )
 
 
-    pcur.execute("INSERT INTO epanet_working_copy_cflt.pipes_view(id, start_node, end_node, geom) VALUES ('3','1','2',ST_GeometryFromText('LINESTRING(1 -1,0 1)',2154))")
+    pcur.execute("INSERT INTO epanet_working_copy_cflt.pipes_view(id, start_node, end_node, geom) VALUES (4,'1','2',ST_GeometryFromText('LINESTRING(1 -1,0 1)',2154))")
     prtTab(pcur, 'epanet_working_copy_cflt.pipes_diff')
     pcur.commit()
     pgversioning2.update(  )

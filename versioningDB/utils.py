@@ -140,7 +140,7 @@ def os_info():
     return os_info
 
 
-def pg_pk( cur, schema_name, table_name):
+def pg_pk(cur, schema_name, table_name):
     """Fetch the primary key of the specified postgis table"""
     cur.execute("SELECT quote_ident(a.attname) as column_name "
                 "FROM pg_index i "
@@ -277,6 +277,18 @@ def get_username():
     return getpass.getuser()
 
 
+def get_pkeys(b_cur, schema, table):
+    """Returns real primary keys for given table (the one defined
+    before we historize the table
+    """
+
+    b_cur.execute(f"""
+    SELECT UNNEST(columns_from) FROM epanet.versioning_constraints
+    WHERE table_from = '{table}' and table_to is NULL;""")
+
+    return [res[0] for res in b_cur.fetchall()]
+
+
 def add_connected_features(pcur, tables, mode):
     """ Add referenced table in tables according to given mode
 
@@ -369,3 +381,66 @@ def get_checkout_tables(connection, table_names, selected_feature_lists):
     # transform set in list before return
     return {table: list(fids) if fids is not None else []
             for table, fids in tables.items()}
+
+
+def check_unique_constraints(b_cur, wc_cur, wc_schema):
+
+    wc_cur.execute("SELECT rev, branch, table_schema, table_name "
+                   f"FROM {wc_schema}.initial_revision")
+    versioned_layers = wc_cur.fetchall()
+
+    errors = []
+    for [rev, branch, b_schema, table] in versioned_layers:
+
+        pkeys = get_pkeys(b_cur, b_schema, table)
+        pkey_list = ",".join(pkeys)
+
+        # Spatialite
+        if wc_cur.isSpatialite():
+            table_w_revs = f"{table}"
+
+        # PgServer
+        elif b_cur is wc_cur:
+            table_w_revs = f"{wc_schema}.{table}_diff"
+
+        # PgLocal
+        else:
+            table_w_revs = f"{wc_schema}.{table}"
+
+        wc_cur.execute(f"""
+        SELECT {pkey_list}
+        FROM {table_w_revs}
+        WHERE {branch}_rev_end is NULL
+        AND {branch}_parent is NULL
+        AND {branch}_rev_begin > {rev}""")
+
+        new_keys = wc_cur.fetchall()
+
+        if not new_keys:
+            continue
+
+        # search in database if there are some working copy new key that
+        # already exist.
+        new_key_list = ",".join(["({})".format(
+            ",".join([str(int_key)for int_key in new_key]))
+                                 for new_key in new_keys])
+
+        b_cur.execute(f"""
+        SELECT {pkey_list}
+        FROM {b_schema}.{table}
+        WHERE {branch}_rev_end is NULL
+        AND {branch}_parent is NULL
+        INTERSECT
+        SELECT *
+        FROM (VALUES {new_key_list}) AS new_keys""")
+
+        def to_string(rec):
+            return " and ".join(
+                [f"{pkey}={value}" for pkey, value in zip(pkeys, rec)])
+
+        errors += ["   {}.{} : {}".format(wc_schema, table, to_string(res))
+                   for res in b_cur.fetchall()]
+
+    if errors:
+        raise RuntimeError("Some new row violate the primary key constraint in"
+                           " base database :\n{}".format("\n".join(errors)))

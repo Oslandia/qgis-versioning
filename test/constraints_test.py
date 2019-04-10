@@ -129,6 +129,7 @@ class ConstraintTest:
             self.schema))
         assert(self.cur.fetchone()[0] == 2)
 
+
         # update nothing to do with foreign key or unique constraint
         res = self.cur.execute(
             "UPDATE {}.pipes_view SET diameter = '10' WHERE id = 1".format(

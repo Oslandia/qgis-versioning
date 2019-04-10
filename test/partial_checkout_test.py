@@ -112,7 +112,7 @@ class PartialCheckoutTest:
             self.schema))
         assert([res[0] for res in self.cur.fetchall()] == [1])
 
-    def test_duplicate_pkey(self):
+    def test_duplicate_pkey_on_insert(self):
 
         self.checkout(["epanet_trunk_rev_head.junctions"], [[6, 7, 8]])
         self.cur.execute("SELECT id from {}.junctions_view order by id".format(
@@ -143,6 +143,51 @@ class PartialCheckoutTest:
         # and one with id 4 after commit
         self.pcur.execute("""SELECT COUNT(*)
         FROM epanet.junctions WHERE id = 5 AND trunk_rev_end IS NULL """)
+        assert(self.pcur.fetchone()[0] == 1)
+
+        self.pcur.execute("""SELECT COUNT(*)
+        FROM epanet.junctions WHERE id = 4 AND trunk_rev_end IS NULL """)
+        assert(self.pcur.fetchone()[0] == 1)
+
+    def test_duplicate_pkey_on_update(self):
+
+        self.checkout(["epanet_trunk_rev_head.junctions"], [[6, 7, 8]])
+        self.cur.execute("SELECT id from {}.junctions_view order by id".format(
+            self.schema))
+        assert([res[0] for res in self.cur.fetchall()] == [6, 7, 8])
+
+        # Modify id with existing unique id
+        self.cur.execute("""
+        UPDATE {}.junctions_view SET id = 3 WHERE id = 6""".format(
+            self.schema))
+        self.cur.execute("""
+        UPDATE {}.junctions_view SET id = 4 WHERE id = 7""".format(
+            self.schema))
+        self.con.commit()
+
+        # Modify anything but id
+        self.cur.execute("""
+        UPDATE {}.junctions_view SET elevation = 80 WHERE id = 8""".format(
+            self.schema))
+        self.con.commit()
+
+        self.cur.execute("SELECT id from {}.junctions_view order by id".format(
+            self.schema))
+        assert([res[0] for res in self.cur.fetchall()] == [3, 4, 8])
+
+        self.con.rollback()
+
+        try:
+            self.versioning.commit("commit msg")
+            assert(False and "Commit must fail unique constraint")
+        except RuntimeError as e:
+            print(e)
+            self.con.rollback()
+
+        # Check we have only one current instance of feature with id 3
+        # and one with id 4 after commit
+        self.pcur.execute("""SELECT COUNT(*)
+        FROM epanet.junctions WHERE id = 3 AND trunk_rev_end IS NULL """)
         assert(self.pcur.fetchone()[0] == 1)
 
         self.pcur.execute("""SELECT COUNT(*)
@@ -209,8 +254,7 @@ def test(host, pguser):
     # loop on the 3 ways of checkout (sqlite, pgserver, pglocal)
     for test_class in [SpatialitePartialCheckoutTest,
                        PgLocalPartialCheckoutTest,
-                       PgServerPartialCheckoutTest
-    ]:
+                       PgServerPartialCheckoutTest]:
 
         test = test_class(host, pguser)
         test.test_select()
@@ -229,7 +273,11 @@ def test(host, pguser):
         del test
 
         test = test_class(host, pguser)
-        test.test_duplicate_pkey()
+        test.test_duplicate_pkey_on_insert()
+        del test
+
+        test = test_class(host, pguser)
+        test.test_duplicate_pkey_on_update()
         del test
 
 

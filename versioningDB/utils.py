@@ -392,27 +392,40 @@ def check_unique_constraints(b_cur, wc_cur, wc_schema):
     errors = []
     for [rev, branch, b_schema, table] in versioned_layers:
 
-        pkeys = get_pkeys(b_cur, b_schema, table)
-        pkey_list = ",".join(pkeys)
-
         # Spatialite
         if wc_cur.isSpatialite():
             table_w_revs = f"{table}"
+            vid = "ogc_fid"
 
         # PgServer
         elif b_cur is wc_cur:
             table_w_revs = f"{wc_schema}.{table}_diff"
+            vid = "versioning_id"
 
         # PgLocal
         else:
             table_w_revs = f"{wc_schema}.{table}"
+            vid = "ogc_fid"
+
+        pkeys = get_pkeys(b_cur, b_schema, table)
+        pkey_list = ",".join(["trev." + pkey for pkey in pkeys])
 
         wc_cur.execute(f"""
+        -- INSERTED PKEY
         SELECT {pkey_list}
-        FROM {table_w_revs}
+        FROM {table_w_revs} trev
         WHERE {branch}_rev_end is NULL
         AND {branch}_parent is NULL
-        AND {branch}_rev_begin > {rev}""")
+        AND {branch}_rev_begin > {rev}
+        UNION
+        -- UPDATED PKEY
+        SELECT {pkey_list}
+        FROM {table_w_revs} trev, {table_w_revs} trev2
+        WHERE trev.{branch}_parent IS NOT NULL
+        AND trev.{branch}_rev_begin > 1
+        AND trev.{branch}_parent = trev2.{vid}
+        AND trev.id != trev2.id;
+        """)
 
         new_keys = wc_cur.fetchall()
 
@@ -427,7 +440,7 @@ def check_unique_constraints(b_cur, wc_cur, wc_schema):
 
         b_cur.execute(f"""
         SELECT {pkey_list}
-        FROM {b_schema}.{table}
+        FROM {b_schema}.{table} trev
         WHERE {branch}_rev_end is NULL
         AND {branch}_parent is NULL
         INTERSECT
@@ -442,5 +455,6 @@ def check_unique_constraints(b_cur, wc_cur, wc_schema):
                    for res in b_cur.fetchall()]
 
     if errors:
-        raise RuntimeError("Some new row violate the primary key constraint in"
-                           " base database :\n{}".format("\n".join(errors)))
+        raise RuntimeError("Some new or updated row violate the primary key"
+                           " constraint in base database :\n{}".format(
+                               "\n".join(errors)))

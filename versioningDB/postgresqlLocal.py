@@ -411,7 +411,8 @@ class pgVersioningLocal(object):
         the views and trigger for local edition will be created
         along with the tables and triggers for conflict resolution"""
 
-        tables = get_checkout_tables(pg_conn_info, pg_table_names)
+        tables = get_checkout_tables(pg_conn_info, pg_table_names,
+                                     selected_feature_lists)
 
         pcur = Db(psycopg2.connect(pg_conn_info))
         pcurcpy = Db(psycopg2.connect(pg_conn_info_copy))
@@ -421,7 +422,7 @@ class pgVersioningLocal(object):
 
         temp_view_names = []
         first_table = True
-        for (schema, table, branch), feature_list in list(zip_longest(tables, selected_feature_lists)):
+        for (schema, table, branch), feature_list in tables.items():
 
             constraint_builder = ConstraintBuilder(pcur, pcurcpy, schema, wcs)
 

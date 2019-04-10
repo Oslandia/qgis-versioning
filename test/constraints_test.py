@@ -344,6 +344,9 @@ class ConstraintSpatialiteTest(ConstraintTest):
         if self.con:
             self.con.close()
 
+        if self.pcon:
+            self.pcon.close()
+
 
 class ConstraintPgServerTest(ConstraintTest):
 
@@ -390,8 +393,7 @@ def test(host, pguser):
     # loop on the 3 ways of checkout (sqlite, pgserver, pglocal)
     for test_class in [ConstraintSpatialiteTest,
                        ConstraintPgServerTest,
-                       ConstraintPgLocalTest
-    ]:
+                       ConstraintPgLocalTest]:
 
         test = test_class(host, pguser)
         test.test_insert()

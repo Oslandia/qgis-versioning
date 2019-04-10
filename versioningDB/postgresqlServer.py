@@ -315,12 +315,12 @@ class pgVersioningServer(object):
         if pcur.fetchone():
             raise RuntimeError("Schema "+wcs+" already exists")
 
-        tables = get_checkout_tables(pg_conn_info, pg_table_names)
-    
+        tables = get_checkout_tables(pg_conn_info, pg_table_names, selected_feature_lists)
+
         pcur.execute("CREATE SCHEMA "+wcs)
     
         first_table = True
-        for (schema, table, branch), feature_list in list(zip_longest(tables, selected_feature_lists)):
+        for (schema, table, branch), feature_list in tables.items():
 
             constraint_builder = ConstraintBuilder(pcur, pcur, schema, wcs)
 
@@ -389,7 +389,7 @@ class pgVersioningServer(object):
                 additional_filter = ""
     
             current_rev_sub = "(SELECT MAX(rev) FROM "+wcs+".initial_revision)"
-            pcur.execute("""
+            pcur.execute(f"""
                 CREATE VIEW {wcs}.{table}_view AS 
                     SELECT {pkey}, {cols}
                     FROM {wcs}.{table}_diff 
@@ -405,17 +405,7 @@ class pgVersioningServer(object):
                         OR t.{branch}_rev_end >= {current_rev_sub}) 
                         AND t.{branch}_rev_begin IS NOT NULL)
                     {additional_filter}
-                """.format(
-                    wcs=wcs,
-                    schema=schema,
-                    table=table,
-                    pkey=pkey,
-                    cols=cols,
-                    hcols=hcols,
-                    branch=branch,
-                    current_rev_sub=current_rev_sub,
-                    additional_filter=additional_filter
-                ))
+                """)
     
             max_fid_sub = ("( SELECT MAX(max_fid) FROM ( SELECT MAX("+pkey+") "
                 "AS max_fid FROM "+wcs+"."+table+"_diff "

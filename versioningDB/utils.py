@@ -30,6 +30,7 @@ import traceback
 import codecs
 import os
 from itertools import zip_longest
+from collections import defaultdict
 
 # Deactivate stdout (like output of print statements) because windows
 # causes occasional "IOError [Errno 9] File descriptor error"
@@ -269,46 +270,102 @@ def quote_ident(ident):
         return '"'+ident+'"'
     else:
         return ident
-    
+
+
 def get_username():
     """Returns user name"""
     return getpass.getuser()
 
 
+def add_connected_features(pcur, tables, mode):
+    """ Add referenced table in tables according to given mode
 
-def get_checkout_tables(connection, table_names):
+    mode can be referenced or referencing whether you want to checkout
+    the foreign key referenced feature or whether you want to checkout
+    the features referencing your primary key
     """
-    Build and return tables to be checkout according to given pg_tables parameter. 
-    It also adds the referenced table (in order to check the foreign key)
-    :returns: a list of tuple (schema, table, branch)
+
+    assert(mode == "referenced" or mode == "referencing")
+
+    table_orig = "table_from" if mode == "referenced" else "table_to"
+    table_ref = "table_to" if mode == "referenced" else "table_from"
+
+    columns_orig = "columns_from" if mode == "referenced" else "columns_to"
+    columns_ref = "columns_to" if mode == "referenced" else "columns_from"
+
+    tables_cpy = tables.copy()
+
+    # We checkout all referenced features
+    for (schema, table, branch), feature_list in tables_cpy.items():
+
+        pcur.execute(f"""
+        SELECT {table_ref}, {columns_orig}, {columns_ref}
+        FROM {schema}.versioning_constraints
+        WHERE {table_orig} = '{table}'
+        AND {table_ref} IS NOT NULL;
+        """)
+
+        # get referenced feature ids for each referenced table
+        for t_ref, cols_orig, cols_ref in pcur.fetchall():
+
+            key = (schema, t_ref, branch)
+
+            # t_ref is already in tables and not filtered (feature_list is
+            # None) so we have all feature
+            if (key in tables_cpy and tables_cpy[key] is None):
+                continue
+
+            pkey_orig = pg_pk(pcur, schema, table)
+            pkey_ref = pg_pk(pcur, schema, t_ref)
+
+            where_filter = " AND ".join(
+                ["torig.{} = tref.{}".format(col_orig, col_ref)
+                 for col_orig, col_ref in
+                 zip(cols_orig, cols_ref)])
+
+            if feature_list:
+                fids = ",".join([str(fid) for fid in feature_list])
+                where_filter += f" AND torig.{pkey_orig} in ({fids})"
+
+            pcur.execute(f"""
+            SELECT tref.{pkey_ref}
+            FROM {schema}.{t_ref} tref, {schema}.{table} torig
+            WHERE {where_filter}
+            """)
+
+            tables[key] |= set(
+                [res[0] for res in pcur.fetchall()])
+
+
+def get_checkout_tables(connection, table_names, selected_feature_lists):
+    """ Build and return tables to be checkout according to given
+    pg_tables parameter.
+
+    :param connection: database connection string
+    :param table_names: table name list
+    :param selected_feature_lists: selected feature list (ids)
+
     """
     pcur = Db(psycopg2.connect(connection))
 
-    # We use and ordered dict because we don't want table duplicate and we want to keep original
-    # order for later purpose (see selectedFeatureList in checkout method)
-    tables = OrderedDict()
-    for table_name in table_names:
+    # We build table dictionnary with associated feature set
+    tables = defaultdict(set)
+    for table_name, feature_list in zip_longest(
+            table_names, selected_feature_lists):
         schema, table = table_name.split('.')
-        if not ( schema and table and schema[-9:] == "_rev_head"):
+        if not (schema and table and schema[-9:] == "_rev_head"):
             raise RuntimeError("Schema names must end with "
-                "suffix _branch_rev_head")
+                               "suffix _branch_rev_head")
 
         schema, _, branch = schema[:-9].rpartition('_')
-        tables[(schema, table, branch)] = None
 
-        # Search for referenced table
-        sql = """
-        SELECT DISTINCT table_to 
-        FROM {schema}.versioning_constraints
-        WHERE table_from = '{table}'
-        AND table_to IS NOT NULL;
-        """.format(schema=schema, table=table)
+        # None means that we retrieve all feature
+        tables[(schema, table, branch)] = (set(feature_list) if feature_list
+                                           else None)
 
-        pcur.execute(sql)
+    add_connected_features(pcur, tables, "referenced")
+    add_connected_features(pcur, tables, "referencing")
 
-        # add them (if not already added). We don't use set
-        # because we want to keep the original order
-        for ref_table in pcur.fetchall():
-            tables[(schema, ref_table[0], branch)] = None
-
-    return list(tables)
+    # transform set in list before return
+    return {table: list(fids) if fids is not None else []
+            for table, fids in tables.items()}

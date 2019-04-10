@@ -335,13 +335,13 @@ class spVersioning(object):
         if os.path.isfile(sqlite_filename):
             raise RuntimeError("File "+sqlite_filename+" already exists")
 
-        tables = get_checkout_tables(pg_conn_info, pg_table_names)
+        tables = get_checkout_tables(pg_conn_info, pg_table_names, selected_feature_lists)
         pcur = Db(psycopg2.connect(pg_conn_info))
     
         temp_view_names = []
         first_table = True
-        for (schema, table, branch), feature_list in list(zip_longest(tables, selected_feature_lists)):
-    
+        for (schema, table, branch), feature_list in tables.items():
+
             # fetch the current rev
             pcur.execute("SELECT MAX(rev) FROM "+schema+".revisions")
             current_rev = int(pcur.fetchone()[0])

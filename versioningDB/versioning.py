@@ -50,6 +50,7 @@ if any(platform.mac_ver()) and gdal_mac_path not in os.environ["PATH"]:
 
 sql_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "sql")
 
+
 def historize(pg_conn_info, schema):
     """Create historisation for the given schema"""
     if not schema:
@@ -57,12 +58,15 @@ def historize(pg_conn_info, schema):
 
     pcur = utils.Db(psycopg2.connect(pg_conn_info))
 
-    sql = open(os.path.join(sql_path, 'historize.sql'), 'r').read()
+    sql_file = open(os.path.join(sql_path, 'historize.sql'), 'r')
+    sql = sql_file.read()
+    sql_file.close()
     pcur.execute(sql.format(schema=schema))
 
     pcur.commit()
     pcur.close()
     add_branch(pg_conn_info, schema, 'trunk', 'initial commit')
+
 
 def createIndex(pcur, schema, table, branch):
     """ create index on columns used for versinoning"""

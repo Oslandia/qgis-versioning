@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 
 from PyQt5.QtWidgets import QMessageBox
-from qgis.core import (QgsApplication, QgsVectorLayer, QgsProject)
+from qgis.core import (QgsApplication, QgsVectorLayer, QgsProject, QgsProviderRegistry)
 import sys
 import os
 import plugin
@@ -72,7 +72,7 @@ class PluginTest:
         os.system(f"psql -h {host} -U {pguser} {dbname} -f {sql_file}")
 
         # Initialize project
-        layer_source = f"""dbname='{dbname}' user='{pguser}'
+        layer_source = f"""host='{host}' dbname='{dbname}' user='{pguser}'
         table="epanet"."junctions" (geom) sql="""
         j_layer = QgsVectorLayer(layer_source, "junctions", "postgres")
         assert(j_layer and j_layer.isValid() and j_layer.featureCount() == 2)

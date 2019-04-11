@@ -1,12 +1,11 @@
-# -*- coding: utf-8 -*-
 #!/usr/bin/env python3
-from __future__ import absolute_import
-import sys
-sys.path.insert(0, '..')
+# -*- coding: utf-8 -*-
 
+import sys
 from versioningDB import versioning
 import psycopg2
 import os
+
 
 def printTab(pcur, schema, table):
     pk = 'versioning_id'

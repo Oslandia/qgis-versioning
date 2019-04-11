@@ -7,19 +7,25 @@ import sys
 
 from subprocess import Popen, PIPE
 
+
 def test(host, pguser, verbose=True):
     __current_dir = os.path.abspath(os.path.dirname(__file__))
+    plugin_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
     tests = [os.path.join(__current_dir,file_)
         for file_ in os.listdir(__current_dir)
         if file_[-8:]=="_test.py"]
 
     failed = 0
+    env = os.environ.copy()
+    env['PYTHONPATH'] = plugin_dir + (":" + env['PYTHONPATH'] if 'PYTHONPATH'
+                                      in env else "")
     for i, test in enumerate(tests):
         sys.stdout.write("% 4d/%d %s %s"%(
             i+1, len(tests), test, "."*max(0, (80-len(test)))))
         sys.stdout.flush()
-        child = Popen([sys.executable, test, host, pguser], stdout=PIPE, stderr=PIPE)
+        child = Popen([sys.executable, test, host, pguser], stdout=PIPE,
+                      stderr=PIPE, env=env)
         out, err = child.communicate()
         if child.returncode:
             sys.stdout.write("failed\n")

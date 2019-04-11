@@ -20,8 +20,6 @@
  ***************************************************************************/
 """
 
-from __future__ import absolute_import
-
 import re
 import os
 import os.path
@@ -43,7 +41,7 @@ from qgis.core import QgsCredentials, QgsDataSourceUri, QgsProject, \
     QgsFeatureRequest, QgsWkbTypes, QgsFeature, QgsGeometry, QgsPoint, QgsSymbol, \
     QgsRuleBasedRenderer, QgsLayerTreeNode, QgsVectorLayer, Qgis
 
-from .versioningDB import versioning
+from versioningDB import versioning
 
 
 CONN = "PostgreSQL/connections"
@@ -239,7 +237,7 @@ class Plugin(QObject):
             conn_dict['username'] = qs.value('username', "postgres")
             print("username={}".format(conn_dict['username']))
             conn_dict['host'] = qs.value('host', "127.0.0.1")
-            conn_dict['port'] = qs.value('port', 5432)
+            conn_dict['port'] = qs.value('port', "5432")
             conn_dict['password'] = qs.value('password', '')
             pg_conn_info = "dbname='{}' user='{}' host='{}' port='{}' password='{}'".format(
                 conn_dict['database'], conn_dict['username'], conn_dict['host'],

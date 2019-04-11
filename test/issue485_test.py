@@ -1,14 +1,12 @@
 #!/usr/bin/env python3
-from __future__ import absolute_import
-import sys
-sys.path.insert(0, '..')
 
-from versioningDB import versioning 
+import sys
+from versioningDB import versioning
 from sqlite3 import dbapi2
 import psycopg2
 import os
-import shutil
 import tempfile
+
 
 def test(host, pguser):
     pg_conn_info = "dbname=epanet_test_db host=" + host + " user=" + pguser

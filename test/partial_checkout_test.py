@@ -1,8 +1,6 @@
 #!/usr/bin/env python3
 
 import sys
-sys.path.insert(0, '..')
-
 from versioningDB import versioning
 from sqlite3 import dbapi2
 import psycopg2

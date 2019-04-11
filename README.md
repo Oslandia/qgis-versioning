@@ -15,9 +15,17 @@ Build and install the qgis plugin
 
 If you have admin acces to a local postgres/postis server, you can run the regression tests:
 
-    export PYTHONPATH=$PWD
-    ./test.py # As of version 0.4; was *make test* in prior versions
+	export QGIS_PREFIX_PATH=/path/to/your/qgis/installation
+    export PYTHONPATH=$QGIS_DIR/python:$PYTHONPATH
+	python3 tests.py 127.0.0.1 postgres -v
+	
+And if you want to run only one regression test: 
 
+	export QGIS_PREFIX_PATH=/path/to/your/qgis/installation
+    export PYTHONPATH=$QGIS_DIR/python:..:$PYTHONPATH
+	python3 plugin_test.py 127.0.0.1 postgres
+
+	
 Use the plugin in qgis
 ----------------------
 

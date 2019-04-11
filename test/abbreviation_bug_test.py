@@ -1,13 +1,10 @@
 #!/usr/bin/env python3
-from __future__ import absolute_import
-import sys
-sys.path.insert(0, '..')
 
+import sys
 from versioningDB import versioning
 from sqlite3 import dbapi2
 import psycopg2
 import os
-import shutil
 import tempfile
 
 longname = '_this_is_a_very_long_name_that should_be_trunctated_if_buggy'

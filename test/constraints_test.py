@@ -1,13 +1,11 @@
 #!/usr/bin/env python3
-from __future__ import absolute_import
-import sys
-sys.path.insert(0, '..')
 
-from versioningDB import versioning 
+from versioningDB import versioning
 from sqlite3 import dbapi2, IntegrityError
 import psycopg2
 import os
 import tempfile
+import sys
 
 tmp_dir = tempfile.gettempdir()
 sqlite_test_filename = os.path.join(tmp_dir, "constraints_test.sqlite")

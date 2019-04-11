@@ -233,6 +233,7 @@ def get_actual_pk(uri, pg_conn_info):
     ascertain that the PK found by QGIS for PG views matches the real PK.
     """
     mtch = re.match(r'(.+)_([^_]+)_rev_(head|\d+)', uri.schema())
+    print("schema={}".format(uri.schema()))
     pcur = Db(psycopg2.connect(pg_conn_info))
     actual_pk = pg_pk(pcur, mtch.group(1), uri.table())
     pcur.close()

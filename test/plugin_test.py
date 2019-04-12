@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
 
 from PyQt5.QtWidgets import QMessageBox
-from qgis.core import (QgsApplication, QgsVectorLayer, QgsProject, QgsProviderRegistry)
+from qgis.core import (QgsApplication, QgsVectorLayer, QgsProject)
 import sys
 import os
 import plugin
+import psycopg2
 
 dbname = "epanet_test_db"
 wc_dbname = "epanet_test_wc_db"
@@ -31,7 +32,8 @@ def generate_tempfile(*args):
     return ("/tmp/plugin_test_file.sqlite", None)
 
 
-def return_ok(*args):
+def warning(*args):
+    print(args[2])
     return QMessageBox.Ok
 
 
@@ -54,7 +56,7 @@ iface.layerTreeView = EmptyObject()
 plugin.QDialog = EmptyObject()
 plugin.uic.loadUi = EmptyObject()
 plugin.QFileDialog.getSaveFileName = generate_tempfile
-plugin.QMessageBox.warning = return_ok
+plugin.QMessageBox.warning = warning
 plugin.QVBoxLayout = EmptyObject()
 plugin.QDialogButtonBox = EmptyObject()
 plugin.QDialogButtonBox.Cancel = 0
@@ -66,16 +68,32 @@ class PluginTest:
 
     def __init__(self, host, pguser):
 
+        self.host = host
+        self.pguser = pguser
+
         # create the test database
-        os.system(f"dropdb --if-exists -h {host} -U {pguser} {dbname}")
-        os.system(f"createdb -h {host} -U {pguser} {dbname}")
         os.system(f"psql -h {host} -U {pguser} {dbname} -f {sql_file}")
+
+        pg_conn_info = f"dbname={dbname} host={host} user={pguser}"
+        pcon = psycopg2.connect(pg_conn_info)
+        pcur = pcon.cursor()
+        pcur.execute("""
+        INSERT INTO epanet.junctions (id, elevation, geom)
+        VALUES (33, 30, ST_GeometryFromText('POINT(3 3)',2154));
+        """)
+        pcur.execute("""
+        INSERT INTO epanet.junctions (id, elevation, geom)
+        VALUES (44, 40, ST_GeometryFromText('POINT(4 4)',2154));
+        """)
+        pcon.commit()
+        pcon.close()
 
         # Initialize project
         layer_source = f"""host='{host}' dbname='{dbname}' user='{pguser}'
-        table="epanet"."junctions" (geom) sql="""
+        srid=2154 table="epanet"."junctions" (geom) sql="""
         j_layer = QgsVectorLayer(layer_source, "junctions", "postgres")
-        assert(j_layer and j_layer.isValid() and j_layer.featureCount() == 2)
+        assert(j_layer and j_layer.isValid() and
+               j_layer.featureCount() == 4)
         assert(QgsProject.instance().addMapLayer(j_layer, False))
 
         root = QgsProject.instance().layerTreeRoot()
@@ -86,7 +104,9 @@ class PluginTest:
         self.versioning_plugin.current_layers = [j_layer]
         self.versioning_plugin.current_group = group
 
-    def test_historize_checkout(self):
+        self.historize()
+
+    def historize(self):
 
         root = QgsProject.instance().layerTreeRoot()
 
@@ -101,14 +121,54 @@ class PluginTest:
         self.versioning_plugin.current_layers = [j_layer]
         self.versioning_plugin.current_group = group
 
+    def test_checkout(self):
+
+        root = QgsProject.instance().layerTreeRoot()
+
         # checkout
         self.checkout()
         assert(len(root.children()) == 2)
         group = root.children()[1]
         assert(group.name() == self.get_working_name())
 
+        j_layer = group.children()[0].layer()
+        assert(j_layer.name() == "junctions")
+        assert(j_layer.featureCount() == 4)
+
+        root.takeChild(group)
+
+    def test_checkout_w_selected_features(self):
+
+        root = QgsProject.instance().layerTreeRoot()
+
+        # select the 2 last features
+        group = root.children()[0]
+        j_layer = group.children()[0].layer()
+        assert(j_layer.name() == "junctions")
+
+        for feat in j_layer.getFeatures("id > 30"):
+            j_layer.select(feat.id())
+
+        # checkout
+        self.checkout()
+        assert(len(root.children()) == 2)
+        group = root.children()[1]
+        assert(group.name() == self.get_working_name())
+
+        j_layer = group.children()[0].layer()
+        assert(j_layer.name() == "junctions")
+        fids = [feature['id'] for feature in j_layer.getFeatures()]
+        print(f"fids={fids}")
+        assert(fids == [33, 44])
+
+        root.takeChild(group)
+
     def __del__(self):
         QgsProject.instance().clear()
+
+        for schema in ['epanet', 'epanet_trunk_rev_head']:
+            os.system("psql -h {} -U {} {} -c 'DROP SCHEMA {} CASCADE'".format(
+                          self.host, self.pguser, dbname, schema))
 
     def checkout(self):
         raise Exception("Must be overrided")
@@ -140,16 +200,18 @@ class PgServerPluginTest(PluginTest):
     def get_working_name(self):
         return wcs
 
+    def __del__(self):
+        super().__del__()
+        os.system("psql -h {} -U {} {} "
+                  "-c 'DROP SCHEMA {} CASCADE'".format(
+                      self.host, self.pguser, dbname, self.get_working_name()))
+
 
 class PgLocalPluginTest(PluginTest):
 
     def __init__(self, host, pguser):
 
         super().__init__(host, pguser)
-
-        # create the test database
-        os.system(f"dropdb --if-exists -h {host} -U {pguser} {wc_dbname}")
-        os.system(f"createdb -h {host} -U {pguser} {wc_dbname}")
 
         # Monkey patch the GUI to return database name
         self.versioning_plugin.selectDatabase = return_wc_database
@@ -160,8 +222,21 @@ class PgLocalPluginTest(PluginTest):
     def get_working_name(self):
         return "epanet_trunk_rev_head"
 
+    def __del__(self):
+        super().__del__()
+        os.system("psql -h {} -U {} {} "
+                  "-c 'DROP SCHEMA {} CASCADE'".format(
+                      self.host, self.pguser, wc_dbname,
+                      self.get_working_name()))
+
 
 def test(host, pguser):
+
+    # create the test database
+    os.system(f"dropdb --if-exists -h {host} -U {pguser} {wc_dbname}")
+    os.system(f"createdb -h {host} -U {pguser} {wc_dbname}")
+    os.system(f"dropdb --if-exists -h {host} -U {pguser} {dbname}")
+    os.system(f"createdb -h {host} -U {pguser} {dbname}")
 
     qgs = QgsApplication([], False)
     qgs.initQgis()
@@ -171,7 +246,11 @@ def test(host, pguser):
                        PgServerPluginTest]:
 
         test = test_class(host, pguser)
-        test.test_historize_checkout()
+        test.test_checkout()
+        del test
+
+        test = test_class(host, pguser)
+        test.test_checkout_w_selected_features()
         del test
 
     qgs.exitQgis()

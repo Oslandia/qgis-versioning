@@ -381,10 +381,9 @@ class pgVersioningServer(object):
                 "ON UPDATE CASCADE ON DELETE CASCADE")
     
             if feature_list:
-                additional_filter = "AND t.{pkey} IN ({features})".format(
-                        pkey=pkey,
-                        features = ','.join(str(f) for f in feature_list)
-                        )
+                actual_table_pk = get_pkey(pcur, schema, table)
+                fids_str = ",".join([str(feature_list[i]) for i in range(0, len(feature_list))])
+                additional_filter = f"AND t.{actual_table_pk} IN ({fids_str})"
             else:
                 additional_filter = ""
     

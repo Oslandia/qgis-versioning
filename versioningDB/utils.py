@@ -233,11 +233,12 @@ def get_actual_pk(uri, pg_conn_info):
     ascertain that the PK found by QGIS for PG views matches the real PK.
     """
     mtch = re.match(r'(.+)_([^_]+)_rev_(head|\d+)', uri.schema())
-    print("schema={}".format(uri.schema()))
     pcur = Db(psycopg2.connect(pg_conn_info))
-    actual_pk = pg_pk(pcur, mtch.group(1), uri.table())
+    actual_pkey = get_pkey(pcur, mtch.group(1), uri.table())
     pcur.close()
-    return actual_pk
+
+    # TODO manage multiple field pkeys
+    return actual_pkey
 
 
 def preserve_fid(pkid, fetchall_tuple):
@@ -276,6 +277,15 @@ def quote_ident(ident):
 def get_username():
     """Returns user name"""
     return getpass.getuser()
+
+
+def get_pkey(b_cur, schema, table):
+    """Returns real primary keys for given table (the one defined
+    before we historize the table
+    """
+
+    # TODO manage multiple field pkeys
+    return get_pkeys(b_cur, schema, table)[0]
 
 
 def get_pkeys(b_cur, schema, table):

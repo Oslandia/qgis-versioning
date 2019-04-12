@@ -3,7 +3,7 @@
 from __future__ import absolute_import
 from .utils import (Db, pg_pk, pg_geom, pg_geoms, pg_branches, quote_ident,
                     preserve_fid, escape_quote, get_username, os_info,
-                    get_checkout_tables)
+                    get_checkout_tables, get_pkey)
 from .constraints import ConstraintBuilder, check_unique_constraints
 
 import psycopg2
@@ -450,13 +450,13 @@ class pgVersioningLocal(object):
                              schema+"\' AND table_name   = \'"+table+"\'")
                 column_list = pcur.fetchall()
                 new_columns_str = preserve_fid(pkey, column_list)
-                view_str = "CREATE OR REPLACE VIEW "+temp_view_name + \
-                    " AS SELECT "+new_columns_str+" FROM " + schema+"."+table
+                view_str = f"""
+                CREATE OR REPLACE VIEW {temp_view_name} AS
+                SELECT {new_columns_str} FROM {schema}.{table}"""
                 if feature_list:
-                    view_str = "CREATE OR REPLACE VIEW "+temp_view_name+" AS SELECT "+new_columns_str+" FROM " + schema+"." + \
-                        table+" WHERE "+pkey + \
-                        ' in ('+",".join([str(feature_list[i])
-                                          for i in range(0, len(feature_list))])+')'
+                    actual_table_pk = get_pkey(pcur, schema, table)
+                    fids_str = ",".join([str(feature_list[i]) for i in range(0, len(feature_list))])
+                    view_str += f" WHERE {actual_table_pk} in ({fids_str})"
                 pcur.execute(view_str)
                 pcur.commit()
 

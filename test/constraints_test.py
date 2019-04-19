@@ -8,29 +8,23 @@ import tempfile
 import sys
 
 tmp_dir = tempfile.gettempdir()
-sqlite_test_filename = os.path.join(tmp_dir, "constraints_test.sqlite")
+sqlite_test_filename = os.path.join(tmp_dir, "composite_primary_key.sqlite")
+dbname = "composite_primary_key_db"
+b_schema = "myschema"
 
 sql_modify_fkey = """
-    ALTER TABLE epanet.pipes
-    DROP CONSTRAINT pipes_start_node_fkey;
-    ALTER TABLE epanet.pipes
-    DROP CONSTRAINT pipes_end_node_fkey;
+    ALTER TABLE myschema.referencing
+    DROP CONSTRAINT referencing_fkid1_fkey;
 
-    ALTER TABLE epanet.pipes
-    ADD CONSTRAINT pipes_start_node_fkey
-    FOREIGN KEY (start_node)
-    REFERENCES epanet.junctions(id)
-    {ftype};
-
-    ALTER TABLE epanet.pipes
-    ADD CONSTRAINT pipes_end_node_fkey
-    FOREIGN KEY (end_node)
-    REFERENCES epanet.junctions(id)
+    ALTER TABLE myschema.referencing
+    ADD CONSTRAINT referencing_fkid1_fkey
+    FOREIGN KEY (fkid1,fkid2)
+    REFERENCES myschema.referenced(id1,id2)
     {ftype};
     """
 
 
-class ConstraintTest:
+class BaseTest:
 
     def __init__(self, host, pguser, schema, additional_sql=None):
 
@@ -39,17 +33,16 @@ class ConstraintTest:
         self.con = None
         self.versioning = None
 
-        self.pg_conn_info = "dbname=epanet_test_db host={} user={}".format(
-            host, pguser)
+        self.pg_conn_info = "dbname={} host={} user={}".format(
+            dbname, host, pguser)
 
         test_data_dir = os.path.dirname(os.path.realpath(__file__))
+        sql_file = os.path.join(test_data_dir, "composite_primary_key_db.sql")
 
         # create the test database
-        os.system("dropdb --if-exists -h " + host + " -U "+pguser
-                  + " epanet_test_db")
-        os.system("createdb -h " + host + " -U "+pguser+" epanet_test_db")
-        os.system("psql -h " + host + " -U "+pguser+" epanet_test_db -f "
-                  + test_data_dir + "/epanet_test_db.sql")
+        os.system(f"dropdb --if-exists -h {host} -U {pguser} {dbname}")
+        os.system(f"createdb -h {host} -U {pguser} {dbname}")
+        os.system(f"psql -h {host} -U {pguser} {dbname} -f {sql_file}")
 
         self.pcon = psycopg2.connect(self.pg_conn_info)
         self.pcur = self.pcon.cursor()
@@ -59,8 +52,7 @@ class ConstraintTest:
             self.pcon.commit()
 
         versioning.historize(
-            "dbname=epanet_test_db host={} user={}".format(host, pguser),
-            "epanet")
+            "dbname={} host={} user={}".format(dbname, host, pguser), b_schema)
 
     def commit_and_check(self, to_check):
         """
@@ -74,254 +66,282 @@ class ConstraintTest:
 
         for table, nb in to_check:
             self.versioning.commit("commit msg")
-            self.pcur.execute("SELECT COUNT(*) FROM epanet.{}".format(table))
+            self.pcur.execute("SELECT COUNT(*) FROM {}.{}".format(b_schema,
+                                                                  table))
             res = self.pcur.fetchone()[0]
             assert (res == nb),\
                 "Expected {} rows for {}, got {}".format(nb, table, res)
 
     def test_insert(self):
 
+        self.cur.execute("SELECT COUNT(*) FROM {}.referenced_view".format(
+            self.schema))
+        assert(self.cur.fetchone()[0] == 2)
+
+        self.cur.execute("SELECT COUNT(*) FROM {}.referencing_view".format(
+            self.schema))
+        assert(self.cur.fetchone()[0] == 1)
+
         # insert valid
-        res = self.cur.execute(
-            "insert into {}.pipes_view (id, start_node, end_node) "
-            "values (2,1,2);".format(self.schema))
+        self.cur.execute(
+            "insert into {}.referencing_view (id, fkid1, fkid2) "
+            "values (18,42,4);".format(self.schema))
 
         self.con.commit()
-        self.cur.execute("SELECT COUNT(*) FROM {}.pipes_view".format(
+        self.cur.execute("SELECT COUNT(*) FROM {}.referencing_view".format(
             self.schema))
         assert(self.cur.fetchone()[0] == 2)
 
         # insert fail unique constraint
         try:
-            res = self.cur.execute(
-                "insert into {}.pipes_view (id, start_node, end_node) "
-                "values (1,1,2);".format(self.schema))
+            self.cur.execute(
+                "insert into {}.referencing_view (id, fkid1, fkid2) "
+                "values (16,1,18);".format(self.schema))
             assert(False and "Insert must fail unique constraint")
-        except (IntegrityError, psycopg2.InternalError) as e:
+        except (IntegrityError, psycopg2.InternalError):
             self.con.rollback()
         else:
             self.con.commit()
 
         # insert fail foreign key constraint
         try:
-            res = self.cur.execute(
-                "insert into {}.pipes_view (id, start_node, end_node) "
-                "values (3,1,3);".format(self.schema))
+            self.cur.execute(
+                "insert into {}.referencing_view (id, fkid1, fkid2) "
+                "values (19,42,7);".format(self.schema))
             assert(False and "Insert must fail foreign key constraint")
-        except (IntegrityError, psycopg2.InternalError) as e:
+        except (IntegrityError, psycopg2.InternalError):
             self.con.rollback()
         else:
             self.con.commit()
 
-        # One existing feature, insert one, so 2 expected revisions
-        self.commit_and_check([("pipes", 2)])
+        # 1 existing feature, insert one, so 2 expected revisions
+        self.commit_and_check([("referencing", 2)])
 
     def test_update_referencing(self):
 
-        # insert one more pipe for testing
-        res = self.cur.execute("insert into {}.pipes_view "
-                               "(id, start_node, end_node) "
-                               "values (2,1,2);".format(self.schema))
+        # insert one more referencing for testing
+        self.cur.execute("insert into {}.referencing_view "
+                         "(id, fkid1, fkid2) "
+                         "values (17,42,4);".format(self.schema))
         self.con.commit()
-        self.cur.execute("SELECT COUNT(*) FROM {}.pipes_view".format(
+        self.cur.execute("SELECT COUNT(*) FROM {}.referencing_view".format(
             self.schema))
         assert(self.cur.fetchone()[0] == 2)
 
-
         # update nothing to do with foreign key or unique constraint
-        res = self.cur.execute(
-            "UPDATE {}.pipes_view SET diameter = '10' WHERE id = 1".format(
+        self.cur.execute(
+            "UPDATE {}.referencing_view SET name = 'X' WHERE id = 16".format(
                 self.schema))
         self.con.commit()
         self.cur.execute(
-            "SELECT diameter FROM {}.pipes_view WHERE id = 1".format(
+            "SELECT name FROM {}.referencing_view WHERE id = 16".format(
                 self.schema))
-        assert(self.cur.fetchone()[0] == 10)
+        assert(self.cur.fetchone()[0] == 'X')
 
         # update valid unique constraint
-        res = self.cur.execute(
-            "UPDATE {}.pipes_view SET id = 3 WHERE id = 1".format(self.schema))
+        self.cur.execute(
+            "UPDATE {}.referencing_view SET id = 18 WHERE id = 16".format(
+                self.schema))
         self.con.commit()
-        self.cur.execute("SELECT * FROM {}.pipes_view WHERE id = 3".format(
-            self.schema))
+        self.cur.execute(
+            "SELECT * FROM {}.referencing_view WHERE id = 18".format(
+                self.schema))
         assert(len(self.cur.fetchall()) == 1)
 
         # update valid foreign key constraint
-        res = self.cur.execute(
-            "UPDATE {}.pipes_view SET start_node = 2 WHERE id = 2".format(
+        self.cur.execute(
+            "UPDATE {}.referencing_view "
+            "SET fkid1 = 1, fkid2 = 18 WHERE id = 17".format(
                 self.schema))
         self.con.commit()
         self.cur.execute(
-            "SELECT start_node FROM {}.pipes_view WHERE id = 2".format(
+            "SELECT fkid1, fkid2 FROM {}.referencing_view "
+            "WHERE id = 17".format(
                 self.schema))
-        assert(self.cur.fetchone()[0] == 2)
+        assert(self.cur.fetchone() == (1, 18))
 
         # update fail unique constraint
         try:
-            res = self.cur.execute(
-                "UPDATE {}.pipes_view SET ID = 2 WHERE id = 3".format(
+            self.cur.execute(
+                "UPDATE {}.referencing_view SET ID = 17 WHERE id = 18".format(
                     self.schema))
             assert(False and "Insert must fail unique constraint")
-        except (IntegrityError, psycopg2.InternalError) as e:
+        except (IntegrityError, psycopg2.InternalError):
             self.con.rollback()
         else:
             self.con.commit()
 
         # update fail foreign key constraint
         try:
-            res = self.cur.execute("UPDATE {}.pipes_view SET start_node = 3 "
-                                   "WHERE id = 2".format(self.schema))
+            self.cur.execute("UPDATE {}.referencing_view "
+                             "SET fkid1 = 3, fkid2 = 18 "
+                             "WHERE id = 17".format(self.schema))
             assert(False and "Update must fail foreign key constraint")
-        except (IntegrityError, psycopg2.InternalError) as e:
+        except (IntegrityError, psycopg2.InternalError):
             self.con.rollback()
         else:
             self.con.commit()
 
-        # One existing feature, insert and one, modify several times one so 3
+        # 1 existing feature, insert and one, modify several times one so 3
         # revisions
-        self.commit_and_check([("pipes", 3)])
+        self.commit_and_check([("referencing", 3)])
 
     def test_delete_restrict(self):
 
         # delete is restrict, must fail
         try:
-            res = self.cur.execute(
-                "DELETE FROM {}.junctions_view WHERE id = 1".format(
+            self.cur.execute(
+                "DELETE FROM {}.referenced_view "
+                "WHERE id1 = 1 and id2 = 18".format(
                     self.schema))
             assert(False and "Delete must fail because of referenced key")
-        except (IntegrityError, psycopg2.InternalError) as e:
+        except (IntegrityError, psycopg2.InternalError):
             self.con.rollback()
         else:
             self.con.commit()
 
         # Two existing feature, delete has failed, so 2 revisions
-        self.commit_and_check([("junctions", 2)])
+        self.commit_and_check([("referenced", 2)])
 
     def test_delete_cascade(self):
 
-        res = self.cur.execute(
-            "DELETE FROM {}.junctions_view WHERE id = 1".format(self.schema))
+        self.cur.execute(
+            "DELETE FROM {}.referenced_view WHERE id1 = 1 and id2 = 18".format(
+                self.schema))
         self.con.commit()
 
-        self.cur.execute("SELECT * FROM {}.junctions_view".format(self.schema))
+        self.cur.execute("SELECT * FROM {}.referenced_view".format(
+            self.schema))
         assert(len(self.cur.fetchall()) == 1)
 
-        self.cur.execute("SELECT * FROM {}.pipes_view".format(self.schema))
+        self.cur.execute("SELECT * FROM {}.referencing_view".format(
+            self.schema))
         assert(len(self.cur.fetchall()) == 0)
 
-        # 2 junctions, delete one (modify its rev end field, so 2 revisions
-        # 1 pipe, cascade deleted (modify its rev end field) so 1 revision
-        self.commit_and_check([("junctions", 2), ("pipes", 1)])
+        # 2 referenced, delete one (modify its rev end field, so 2 revisions
+        # 1 referencing, cascade deleted (modify its rev end field)
+        # so 1 revision
+        self.commit_and_check([("referenced", 2), ("referencing", 1)])
 
     def test_update_cascade(self):
 
-        res = self.cur.execute(
-            "UPDATE {}.junctions_view SET id = 3 WHERE id = 1".format(
+        self.cur.execute(
+            "UPDATE {}.referenced_view SET id1 = 2, id2 = 7 "
+            "WHERE id1 = 1 AND id2 = 18".format(
                 self.schema))
         self.con.commit()
         self.cur.execute(
-            "SELECT count(*) FROM {}.junctions_view WHERE id = 3".format(
+            "SELECT count(*) FROM {}.referenced_view "
+            "WHERE id1 = 2 AND id2 = 7".format(
                 self.schema))
         assert(len(self.cur.fetchall()) == 1)
 
         self.cur.execute(
-            "SELECT * FROM {}.pipes_view WHERE start_node = 3".format(
+            "SELECT * FROM {}.referencing_view "
+            "WHERE fkid1 = 2 AND fkid2 = 7".format(
                 self.schema))
         assert(len(self.cur.fetchall()) == 1)
 
         self.cur.execute(
-            "SELECT * FROM {}.pipes_view WHERE start_node = 1".format(
+            "SELECT * FROM {}.referencing_view "
+            "WHERE fkid1 = 1 AND fkid2 = 18".format(
                 self.schema))
         assert(len(self.cur.fetchall()) == 0)
 
-        # 2 junctions, update one, so 3 revisions
-        # 1 pipe, cascade updated so 2 revision
-        self.commit_and_check([("junctions", 3), ("pipes", 2)])
+        # 2 referenced, update one, so 3 revisions
+        # 1 referencing, cascade updated so 2 revision
+        self.commit_and_check([("referenced", 3), ("referencing", 2)])
 
     def test_delete_setnull(self):
 
-        res = self.cur.execute(
-            "DELETE FROM {}.junctions_view WHERE id = 1".format(self.schema))
+        self.cur.execute(
+            "DELETE FROM {}.referenced_view "
+            "WHERE id1 = 1 and id2 = 18".format(self.schema))
         self.con.commit()
 
         self.cur.execute(
-            "SELECT * FROM {}.junctions_view".format(self.schema))
+            "SELECT * FROM {}.referenced_view".format(self.schema))
         assert(len(self.cur.fetchall()) == 1)
 
         self.cur.execute(
-            "SELECT start_node, end_node FROM {}.pipes_view".format(self.schema))
-        pipes = self.cur.fetchall()
-        assert(len(pipes) == 1)
-        assert(pipes[0][0] is None)
-        assert(pipes[0][1] == 2)
+            "SELECT fkid1, fkid2 FROM {}.referencing_view".format(self.schema))
+        referencing = self.cur.fetchall()
+        assert(len(referencing) == 1)
+        assert(referencing[0][0] is None)
+        assert(referencing[0][1] is None)
 
-        # 2 junctions, delete one (modify its rev_end field), so 2 revisions
-        # 1 pipe, cascade updated so 2 revisions
-        self.commit_and_check([("junctions", 2), ("pipes", 2)])
+        # 2 referenced, delete one (modify its rev_end field), so 2 revisions
+        # 1 referencing, cascade updated so 2 revisions
+        self.commit_and_check([("referenced", 2), ("referencing", 2)])
 
     def test_update_setnull(self):
 
-        res = self.cur.execute(
-            "UPDATE {}.junctions_view SET id = 3 WHERE id = 1".format(self.schema))
+        self.cur.execute(
+            "UPDATE {}.referenced_view SET id1 = 7, id2 = 15 "
+            "WHERE id1 = 1 and id2 = 18".format(self.schema))
         self.con.commit()
         self.cur.execute(
-            "SELECT count(*) FROM {}.junctions_view WHERE id = 3".format(self.schema))
+            "SELECT count(*) FROM {}.referenced_view "
+            "WHERE id1 = 7 AND id2 = 15".format(self.schema))
         assert(len(self.cur.fetchall()) == 1)
 
         self.cur.execute(
-            "SELECT start_node, end_node FROM {}.pipes_view".format(self.schema))
-        pipes = self.cur.fetchall()
-        assert(len(pipes) == 1)
-        assert(pipes[0][0] is None)
-        assert(pipes[0][1] == 2)
+            "SELECT fkid1, fkid2 FROM {}.referencing_view".format(self.schema))
+        referencing = self.cur.fetchall()
+        assert(len(referencing) == 1)
+        assert(referencing[0][0] is None)
+        assert(referencing[0][1] is None)
 
-        # 2 junctions, update one, so 3 revisions
-        # 1 pipe, cascade updated so 2 revisions
-        self.commit_and_check([("junctions", 3), ("pipes", 2)])
+        # 2 referenced, update one, so 3 revisions
+        # 1 referencing, cascade updated so 2 revisions
+        self.commit_and_check([("referenced", 3), ("referencing", 2)])
 
     def test_delete_setdefault(self):
 
-        res = self.cur.execute(
-            "DELETE FROM {}.junctions_view WHERE id = 1".format(self.schema))
+        self.cur.execute(
+            "DELETE FROM {}.referenced_view WHERE id1 = 1 and id2 = 18".format(
+                self.schema))
         self.con.commit()
 
         self.cur.execute(
-            "SELECT * FROM {}.junctions_view".format(self.schema))
+            "SELECT * FROM {}.referenced_view".format(self.schema))
         assert(len(self.cur.fetchall()) == 1)
 
         self.cur.execute(
-            "SELECT start_node, end_node FROM {}.pipes_view".format(self.schema))
-        pipes = self.cur.fetchall()
-        assert(len(pipes) == 1)
-        assert(pipes[0][0] == 2)
-        assert(pipes[0][1] == 2)
+            "SELECT fkid1, fkid2 FROM {}.referencing_view".format(self.schema))
+        referencing = self.cur.fetchall()
+        assert(len(referencing) == 1)
+        assert(referencing[0][0] == 42)
+        assert(referencing[0][1] == 4)
 
-        # 2 junctions, delete one (modify its rev_end), so 2 revisions
-        # 1 pipe, cascade updated so 2 revisions
-        self.commit_and_check([("junctions", 2), ("pipes", 2)])
+        # 2 referenced, delete one (modify its rev_end), so 2 revisions
+        # 1 referencing, cascade updated so 2 revisions
+        self.commit_and_check([("referenced", 2), ("referencing", 2)])
 
     def test_update_setdefault(self):
 
-        res = self.cur.execute(
-            "UPDATE {}.junctions_view SET id = 3 WHERE id = 1".format(self.schema))
+        self.cur.execute(
+            "UPDATE {}.referenced_view SET id1 = 7, id2 = 15 "
+            "WHERE id1 = 1 and id2 = 18".format(self.schema))
         self.con.commit()
         self.cur.execute(
-            "SELECT count(*) FROM {}.junctions_view WHERE id = 3".format(self.schema))
+            "SELECT count(*) FROM {}.referenced_view "
+            "WHERE id1 = 7 and id2 = 15".format(self.schema))
         assert(len(self.cur.fetchall()) == 1)
 
         self.cur.execute(
-            "SELECT start_node, end_node FROM {}.pipes_view".format(self.schema))
-        pipes = self.cur.fetchall()
-        assert(len(pipes) == 1)
-        assert(pipes[0][0] == 2)
-        assert(pipes[0][1] == 2)
+            "SELECT fkid1, fkid2 FROM {}.referencing_view".format(self.schema))
+        referencing = self.cur.fetchall()
+        assert(len(referencing) == 1)
+        assert(referencing[0][0] == 42)
+        assert(referencing[0][1] == 4)
 
-        # 2 junctions, update one, so 3 revisions
-        # 1 pipe, cascade updated so 2 revisions
-        self.commit_and_check([("junctions", 3), ("pipes", 2)])
+        # 2 referenced, update one, so 3 revisions
+        # 1 referencing, cascade updated so 2 revisions
+        self.commit_and_check([("referenced", 3), ("referencing", 2)])
 
 
-class ConstraintSpatialiteTest(ConstraintTest):
+class SpatialiteTest(BaseTest):
 
     def __init__(self, host, pguser, additional_sql=None):
 
@@ -332,7 +352,8 @@ class ConstraintSpatialiteTest(ConstraintTest):
 
         self.versioning = versioning.spatialite(sqlite_test_filename,
                                                 self.pg_conn_info)
-        self.versioning.checkout(["epanet_trunk_rev_head.pipes"])
+        self.versioning.checkout(["myschema_trunk_rev_head.referencing",
+                                  "myschema_trunk_rev_head.referenced"])
 
         self.con = dbapi2.connect(sqlite_test_filename)
         self.con.enable_load_extension(True)
@@ -347,29 +368,30 @@ class ConstraintSpatialiteTest(ConstraintTest):
             self.pcon.close()
 
 
-class ConstraintPgServerTest(ConstraintTest):
+class PgServerTest(BaseTest):
 
     def __init__(self, host, pguser, additional_sql=None):
 
-        wc_schema = "epanet_workingcopy"
+        wc_schema = "myschema_workingcopy"
         super().__init__(host, pguser, wc_schema, additional_sql)
 
         self.versioning = versioning.pgServer(self.pg_conn_info,
                                               wc_schema)
-        self.versioning.checkout(["epanet_trunk_rev_head.pipes"])
+        self.versioning.checkout(["myschema_trunk_rev_head.referencing",
+                                  "myschema_trunk_rev_head.referenced"])
 
         self.con = self.pcon
         self.cur = self.pcur
 
 
-class ConstraintPgLocalTest(ConstraintTest):
+class PgLocalTest(BaseTest):
 
     def __init__(self, host, pguser, additional_sql=None):
 
-        wc_schema = "epanet_workingcopy"
+        wc_schema = "myschema_workingcopy"
         super().__init__(host, pguser, wc_schema, additional_sql)
 
-        db_name = "epanet_test_db_wc"
+        db_name = dbname + "_wc"
         pg_conn_info_out = "dbname={} host={} user={}".format(
             db_name, host, pguser)
 
@@ -381,7 +403,8 @@ class ConstraintPgLocalTest(ConstraintTest):
 
         self.versioning = versioning.pgLocal(self.pg_conn_info,
                                              wc_schema, pg_conn_info_out)
-        self.versioning.checkout(["epanet_trunk_rev_head.pipes"])
+        self.versioning.checkout(["myschema_trunk_rev_head.referencing",
+                                  "myschema_trunk_rev_head.referenced"])
 
         self.con = psycopg2.connect(pg_conn_info_out)
         self.cur = self.con.cursor()
@@ -390,9 +413,9 @@ class ConstraintPgLocalTest(ConstraintTest):
 def test(host, pguser):
 
     # loop on the 3 ways of checkout (sqlite, pgserver, pglocal)
-    for test_class in [ConstraintSpatialiteTest,
-                       ConstraintPgServerTest,
-                       ConstraintPgLocalTest]:
+    for test_class in [SpatialiteTest,
+                       PgServerTest,
+                       PgLocalTest]:
 
         test = test_class(host, pguser)
         test.test_insert()
@@ -427,13 +450,19 @@ def test(host, pguser):
         del test
 
         sql = sql_modify_fkey.format(ftype="ON DELETE SET DEFAULT")
-        sql += "ALTER TABLE epanet.pipes ALTER COLUMN start_node SET DEFAULT 2;"
+        sql += """ALTER TABLE myschema.referencing ALTER COLUMN fkid1
+        SET DEFAULT 42;"""
+        sql += """ALTER TABLE myschema.referencing ALTER COLUMN fkid2
+        SET DEFAULT 4;"""
         test = test_class(host, pguser, sql)
         test.test_delete_setdefault()
         del test
 
         sql = sql_modify_fkey.format(ftype="ON UPDATE SET DEFAULT")
-        sql += "ALTER TABLE epanet.pipes ALTER COLUMN start_node SET DEFAULT 2;"
+        sql += """ALTER TABLE myschema.referencing ALTER COLUMN fkid1
+        SET DEFAULT 42;"""
+        sql += """ALTER TABLE myschema.referencing ALTER COLUMN fkid2
+        SET DEFAULT 4;"""
         test = test_class(host, pguser, sql)
         test.test_update_setdefault()
         del test

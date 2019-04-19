@@ -294,7 +294,7 @@ def get_pkeys(b_cur, schema, table):
     """
 
     b_cur.execute(f"""
-    SELECT UNNEST(columns_from) FROM epanet.versioning_constraints
+    SELECT UNNEST(columns_from) FROM {schema}.versioning_constraints
     WHERE table_from = '{table}' and table_to is NULL;""")
 
     return [res[0] for res in b_cur.fetchall()]

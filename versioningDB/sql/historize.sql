@@ -26,7 +26,7 @@ SELECT (SELECT relname FROM pg_class WHERE oid = conrelid::regclass) AS table_fr
        
        (SELECT array_agg(att.attname)
 	  FROM (SELECT unnest(confkey) AS key) AS keys,
-	       pg_attribute att WHERE att.attrelid = conrelid AND att.attnum = keys.key) AS columns_to,
+	       pg_attribute att WHERE att.attrelid = confrelid AND att.attnum = keys.key) AS columns_to,
        
        c.confupdtype as updtype,
        c.confdeltype as deltype

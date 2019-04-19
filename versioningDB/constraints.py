@@ -219,29 +219,52 @@ class ConstraintBuilder:
 
             q_table_from = constraint.get_q_table_from(self.wc_schema)
 
+            col_where = " AND ".join([f"{column_from} = OLD.{column_to}"
+                                      for column_from, column_to in
+                                      zip(constraint.columns_from,
+                                          constraint.columns_to)])
+
             # cascade
             if action_type == 'c':
-                for column_from, column_to in zip(constraint.columns_from, constraint.columns_to):
-                    col_where = where + f" AND {column_from} = OLD.{column_to}"
-                    if method == 'update':
-                        sql_constraint += f"UPDATE {q_table_from}_view SET {column_from} = NEW.{column_to} WHERE {col_where};"""
-                    else:
-                        sql_constraint += f"DELETE FROM {q_table_from}_view WHERE {col_where};"
+                where += " AND " + col_where
+
+                if method == 'update':
+                    updated_fields = ",".join(
+                        [f"{column_from} = NEW.{column_to}"
+                         for column_from, column_to
+                         in zip(constraint.columns_from,
+                                constraint.columns_to)])
+
+                    sql_constraint += f"""
+                    UPDATE {q_table_from}_view
+                    SET {updated_fields} WHERE {where};"""
+                else:
+                    sql_constraint += f"""
+                    DELETE FROM {q_table_from}_view WHERE {where};"""
 
             # set null or set default
             elif action_type == 'n' or action_type == 'd':
-                for column_from, column_to, default_from in zip(constraint.columns_from, constraint.columns_to, constraint.defaults_from):
-                    new_value = "NULL" if action_type == 'n' or default_from is None else default_from
-                    col_where = where + f" AND {column_from} = OLD.{column_to}"
-                    sql_constraint += f"UPDATE {q_table_from}_view SET {column_from} = {new_value} WHERE {col_where};"""
+                where += " AND " + col_where
+
+                updated_fields = ",".join(
+                        ["{} = {}".format(
+                            column_from,
+                            "NULL" if (action_type == 'n'
+                                       or default_from is None)
+                            else default_from)
+                         for column_from, column_to, default_from
+                         in zip(constraint.columns_from,
+                                constraint.columns_to,
+                                constraint.defaults_from)])
+                
+                sql_constraint += f"""UPDATE {q_table_from}_view
+                SET {updated_fields} WHERE {col_where};"""
 
             # fail
             else:
 
-                where += " AND (SELECT COUNT(*) FROM {}_view WHERE {}) > 0".format(
-                    q_table_from,
-                    " AND ".join(f"{column_from} = OLD.{column_to}" for column_from, column_to in
-                                 zip(constraint.columns_from, constraint.columns_to)))
+                where += f""" AND (SELECT COUNT(*) FROM {q_table_from}_view
+                WHERE {col_where}) > 0"""
                 
                 keys_label = ",".join(constraint.columns_to) + (" is" if len(constraint.columns_to) == 1 else " are")
                 sql_constraint += (f"""IF {where} THEN RAISE EXCEPTION '{keys_label} still referenced by {q_table_from}'; END IF;"""
@@ -277,6 +300,8 @@ def check_unique_constraints(b_cur, wc_cur, wc_schema):
 
         pkeys = get_pkeys(b_cur, b_schema, table)
         pkey_list = ",".join(["trev." + pkey for pkey in pkeys])
+        new_pkeys_filter = " OR ".join(["trev.{0} != trev2.{0}".format(pkey)
+                                        for pkey in pkeys])
 
         wc_cur.execute(f"""
         -- INSERTED PKEY
@@ -292,7 +317,7 @@ def check_unique_constraints(b_cur, wc_cur, wc_schema):
         WHERE trev.{branch}_parent IS NOT NULL
         AND trev.{branch}_rev_begin > 1
         AND trev.{branch}_parent = trev2.{vid}
-        AND trev.id != trev2.id;
+        AND ({new_pkeys_filter})
         """)
 
         new_keys = wc_cur.fetchall()

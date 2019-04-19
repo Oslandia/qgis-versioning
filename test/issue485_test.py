@@ -1,14 +1,12 @@
 #!/usr/bin/env python3
-from __future__ import absolute_import
-import sys
-sys.path.insert(0, '..')
 
-from versioningDB import versioning 
+import sys
+from versioningDB import versioning
 from sqlite3 import dbapi2
 import psycopg2
 import os
-import shutil
 import tempfile
+
 
 def test(host, pguser):
     pg_conn_info = "dbname=epanet_test_db host=" + host + " user=" + pguser
@@ -25,8 +23,7 @@ def test(host, pguser):
     pcur.execute("CREATE SCHEMA epanet")
     pcur.execute("""
         CREATE TABLE epanet.junctions (
-            hid serial PRIMARY KEY,
-            id varchar,
+            id serial PRIMARY KEY,
             elevation float,
             base_demand_flow float,
             demand_pattern_id varchar,
@@ -36,22 +33,21 @@ def test(host, pguser):
 
     pcur.execute("""
         INSERT INTO epanet.junctions
-            (id, elevation, geometry, geometry_schematic)
+            (elevation, geometry, geometry_schematic)
             VALUES
-            ('0',0,ST_GeometryFromText('POINT(0 0)',2154),
+            (0,ST_GeometryFromText('POINT(0 0)',2154),
             ST_GeometryFromText('POLYGON((-1 -1,1 -1,1 1,-1 1,-1 -1))',2154))""")
 
     pcur.execute("""
         INSERT INTO epanet.junctions
-            (id, elevation, geometry, geometry_schematic)
+            (elevation, geometry, geometry_schematic)
             VALUES
-            ('1',1,ST_GeometryFromText('POINT(0 1)',2154),
+            (1,ST_GeometryFromText('POINT(0 1)',2154),
             ST_GeometryFromText('POLYGON((0 0,2 0,2 2,0 2,0 0))',2154))""")
 
     pcur.execute("""
         CREATE TABLE epanet.pipes (
-            hid serial PRIMARY KEY,
-            id varchar,
+            id serial PRIMARY KEY,
             start_node varchar,
             end_node varchar,
             length float,
@@ -64,9 +60,9 @@ def test(host, pguser):
 
     pcur.execute("""
         INSERT INTO epanet.pipes
-            (id, start_node, end_node, length, diameter, geometry)
+            (start_node, end_node, length, diameter, geometry)
             VALUES
-            ('0','0','1',1,2,ST_GeometryFromText('LINESTRING(1 0,0 1)',2154))""")
+            (1,2,1,2,ST_GeometryFromText('LINESTRING(1 0,0 1)',2154))""")
 
     pcur.commit()
     pcur.close()
@@ -111,7 +107,6 @@ def test(host, pguser):
     pcur.execute(select_and_where_str[0] + " WHERE " + select_and_where_str[1])
     assert( len(pcur.fetchall()) == 1 )
 
-    ##pcur.execute("SELECT ST_AsText(geometry), ST_AsText(geometry_schematic) FROM epanet_mybranch_rev_2.junctions")
     pcur.execute("SELECT ST_AsText(geometry), ST_AsText(geometry_schematic) FROM epanet.junctions")
     res = pcur.fetchall()
     assert( res[0][0] == 'POINT(0 0)' )
@@ -130,9 +125,10 @@ def test(host, pguser):
     scur.close()
     spversioning.commit(  'moved a junction' )
 
-    pcur.execute("SELECT ST_AsText(geometry), ST_AsText(geometry_schematic) FROM epanet_trunk_rev_head.junctions ORDER BY hid DESC")
+    pcur.execute("SELECT ST_AsText(geometry), ST_AsText(geometry_schematic) FROM epanet_trunk_rev_head.junctions ORDER BY versioning_id DESC")
     res = pcur.fetchall()
     for r in res: print(r)
+    print("res={}".format(res[0][0]))
     assert( res[0][0] == 'POINT(3 3)' )
     assert( res[0][1] == 'POLYGON((-1 -1,1 -1,1 1,-1 1,-1 -1))' )
 
@@ -142,7 +138,7 @@ def test(host, pguser):
     versioning.add_branch( pg_conn_info, 'epanet', 'b1', 'add branch b1' )
 
     pcur = versioning.Db(psycopg2.connect(pg_conn_info))
-    pcur.execute("SELECT hid, trunk_rev_begin, trunk_rev_end, b1_rev_begin, b1_rev_end FROM epanet.junctions ORDER BY hid")
+    pcur.execute("SELECT versioning_id, trunk_rev_begin, trunk_rev_end, b1_rev_begin, b1_rev_end FROM epanet.junctions ORDER BY versioning_id")
     for r in pcur.fetchall(): print(r)
     pcur.close()
 
@@ -161,7 +157,7 @@ def test(host, pguser):
     spversioning.commit( 'moved a junction')
 
     pcur = versioning.Db(psycopg2.connect(pg_conn_info))
-    pcur.execute("SELECT hid, trunk_rev_begin, trunk_rev_end, b1_rev_begin, b1_rev_end FROM epanet.junctions ORDER BY hid")
+    pcur.execute("SELECT versioning_id, trunk_rev_begin, trunk_rev_end, b1_rev_begin, b1_rev_end FROM epanet.junctions ORDER BY versioning_id")
     print("-----------------")
     for r in pcur.fetchall(): print(r)
     pcur.close()

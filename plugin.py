@@ -20,8 +20,6 @@
  ***************************************************************************/
 """
 
-from __future__ import absolute_import
-
 import re
 import os
 import os.path
@@ -43,7 +41,7 @@ from qgis.core import QgsCredentials, QgsDataSourceUri, QgsProject, \
     QgsFeatureRequest, QgsWkbTypes, QgsFeature, QgsGeometry, QgsPoint, QgsSymbol, \
     QgsRuleBasedRenderer, QgsLayerTreeNode, QgsVectorLayer, Qgis
 
-from .versioningDB import versioning
+from versioningDB import versioning
 
 
 CONN = "PostgreSQL/connections"

@@ -1,17 +1,14 @@
 #!/usr/bin/env python3
-from __future__ import absolute_import
-import sys
-sys.path.insert(0, '..')
 
+import sys
 from versioningDB import versioning
 import psycopg2
 import os
-import shutil
 
 
 def prtTab( cur, tab ):
     print("--- ",tab," ---")
-    cur.execute("SELECT pid, trunk_rev_begin, trunk_rev_end, trunk_parent, trunk_child, length FROM "+tab)
+    cur.execute("SELECT versioning_id, trunk_rev_begin, trunk_rev_end, trunk_parent, trunk_child, length FROM "+tab)
     for r in cur.fetchall():
         t = []
         for i in r: t.append(str(i))
@@ -19,7 +16,7 @@ def prtTab( cur, tab ):
 
 def prtHid( cur, tab ):
     print("--- ",tab," ---")
-    cur.execute("SELECT pid FROM "+tab)
+    cur.execute("SELECT versioning_id FROM "+tab)
     for [r] in cur.fetchall(): print(r)
 
 def test(host, pguser):
@@ -27,24 +24,24 @@ def test(host, pguser):
     test_data_dir = os.path.dirname(os.path.realpath(__file__))
 
     # create the test database
-
     os.system("dropdb --if-exists -h " + host + " -U "+pguser+" epanet_test_db")
     os.system("createdb -h " + host + " -U "+pguser+" epanet_test_db")
     os.system("psql -h " + host + " -U "+pguser+" epanet_test_db -c 'CREATE EXTENSION postgis'")
     os.system("psql -h " + host + " -U "+pguser+" epanet_test_db -f "+test_data_dir+"/epanet_test_db.sql")
+    versioning.historize("dbname=epanet_test_db host={} user={}".format(host,pguser), "epanet")
 
-    # chechout
+    # checkout
     pgversioning = versioning.pgServer(pg_conn_info, 'epanet_working_copy')
     pgversioning.checkout(['epanet_trunk_rev_head.junctions','epanet_trunk_rev_head.pipes'])
 
     pcur = versioning.Db(psycopg2.connect(pg_conn_info))
 
-    pcur.execute("UPDATE epanet_working_copy.pipes_view SET length = 4 WHERE pid = 1")
+    pcur.execute("UPDATE epanet_working_copy.pipes_view SET length = 4 WHERE id = 1")
     prtTab(pcur, 'epanet_working_copy.pipes_diff')
 
     prtHid( pcur, 'epanet_working_copy.pipes_view')
-    pcur.execute("SElECT COUNT(pid) FROM epanet_working_copy.pipes_view")
-    assert( 1 == pcur.fetchone()[0] )
+    pcur.execute("SElECT COUNT(id) FROM epanet_working_copy.pipes_view")
+    assert(1 == pcur.fetchone()[0])
 
 if __name__ == "__main__":
     if len(sys.argv) != 3:

@@ -1,15 +1,13 @@
 #!/usr/bin/env python3
-from __future__ import absolute_import
+
 import sys
-sys.path.insert(0, '..')
-
 from versioningDB.versioning import diff_rev_view_str
-
-from versioningDB import versioning 
+from versioningDB import versioning
 from sqlite3 import dbapi2
 import psycopg2
 import os
 import tempfile
+
 
 def test(host, pguser):
     pg_conn_info = "dbname=epanet_test_db host=" + host + " user=" + pguser
@@ -31,8 +29,9 @@ def test(host, pguser):
 
     os.system("dropdb --if-exists -h " + host + " -U "+pguser+" epanet_test_db")
     os.system("createdb -h " + host + " -U "+pguser+" epanet_test_db")
-    os.system("psql -h " + host + " -U "+pguser+" epanet_test_db -c 'CREATE EXTENSION postgis'")
     os.system("psql -h " + host + " -U "+pguser+" epanet_test_db -f "+test_data_dir+"/epanet_test_db.sql")
+    
+    versioning.historize("dbname=epanet_test_db host={} user={}".format(host,pguser), "epanet")
 
     spversioning1 = versioning.spatialite(sqlite_test_filename1, pg_conn_info)
     spversioning2 = versioning.spatialite(sqlite_test_filename2, pg_conn_info)
@@ -63,7 +62,7 @@ def test(host, pguser):
     scon.enable_load_extension(True)
     scon.execute("SELECT load_extension('mod_spatialite')")
     scur = scon.cursor()
-    scur.execute("UPDATE junctions_view SET elevation = '8' WHERE id = '1'")
+    scur.execute("UPDATE junctions_view SET elevation = '8' WHERE id = '2'")
     scon.commit()
     scur.execute("SELECT COUNT(*) FROM junctions")
     assert( scur.fetchone()[0] == 3 )
@@ -78,13 +77,13 @@ def test(host, pguser):
 
     # add revision : edit one table and commit changes; rev = 3
 
-    spversioning2.checkout(["epanet_trunk_rev_head.junctions"])
+    spversioning2.checkout(["epanet_trunk_rev_head.junctions", "epanet_trunk_rev_head.pipes"])
 
     scon = dbapi2.connect(sqlite_test_filename2)
     scon.enable_load_extension(True)
     scon.execute("SELECT load_extension('mod_spatialite')")
     scur = scon.cursor()
-    scur.execute("UPDATE junctions_view SET elevation = '22' WHERE id = '1'")
+    scur.execute("UPDATE junctions_view SET elevation = '22' WHERE id = '2'")
     scon.commit()
     #scur.execute("SELECT COUNT(*) FROM junctions")
     #assert( scur.fetchone()[0] == 3 )
@@ -108,16 +107,23 @@ def test(host, pguser):
 
     # add revision : delete one junction and commit changes; rev = 5
 
-    spversioning4.checkout(["epanet_trunk_rev_head.junctions"])
+    spversioning4.checkout(["epanet_trunk_rev_head.junctions", "epanet_trunk_rev_head.pipes"])
 
     scon = dbapi2.connect(sqlite_test_filename4)
     scur = scon.cursor()
-    scur.execute("DELETE FROM junctions_view  WHERE id = 0")
+
+    # remove pipes so wen can delete referenced junctions
+    scur.execute("DELETE FROM pipes_view")
+    scon.commit()
+    scur.execute("SELECT COUNT(*) FROM pipes_view")
+    assert(scur.fetchone()[0]==0)
+    
+    scur.execute("DELETE FROM junctions_view  WHERE id = 1")
     scon.commit()
     #scur.execute("SELECT COUNT(*) FROM junctions")
     #assert( scur.fetchone()[0] == 3 )
     scon.close()
-    spversioning4.commit('delete id=0 commit')
+    spversioning4.commit('delete id=1 commit')
 
     select_str = diff_rev_view_str(pg_conn_info, 'epanet', 'junctions','trunk', 1,2)
     pcur.execute(select_str)
@@ -129,9 +135,10 @@ def test(host, pguser):
 
     select_str = diff_rev_view_str(pg_conn_info, 'epanet', 'junctions','trunk', 1,3)
     pcur.execute(select_str)
+
     res = pcur.fetchall()
-    assert(res[0][0] == 'u')
-    assert(res[1][0] == 'i')
+    assert(res[0][0] == 'i')
+    assert(res[1][0] == 'u')
     #print("fetchall 1 vs 3 = " + str(res))
     #fetchall 1 vs 3 = [
     #('u', 4, '1', 22.0, None, None, '01010000206A0800000000000000000000000000000000F03F', 3, None, 3, None),
@@ -140,10 +147,10 @@ def test(host, pguser):
     select_str = diff_rev_view_str(pg_conn_info, 'epanet', 'junctions','trunk', 1,4)
     pcur.execute(select_str)
     res = pcur.fetchall()
-    assert(res[0][0] == 'u')
+    assert(res[0][0] == 'i')
     assert(res[1][0] == 'i')
-    assert(res[2][0] == 'a')
-    assert(res[3][0] == 'i') # object is in intermediate state; will be deleted in rev 5
+    assert(res[2][0] == 'u')
+    assert(res[3][0] == 'a') # object is in intermediate state; will be deleted in rev 5
     #print("fetchall 1 vs 4 = " + str(res))
     #fetchall 1 vs 4 = [
     #('u', 4, '1', 22.0, None, None, '01010000206A0800000000000000000000000000000000F03F', 3, None, 3, None),
@@ -154,10 +161,10 @@ def test(host, pguser):
     select_str = diff_rev_view_str(pg_conn_info, 'epanet', 'junctions','trunk', 1,5)
     pcur.execute(select_str)
     res = pcur.fetchall()
-    assert(res[0][0] == 'u')
+    assert(res[0][0] == 'd')
     assert(res[1][0] == 'i')
-    assert(res[2][0] == 'a')
-    assert(res[3][0] == 'd')
+    assert(res[2][0] == 'u')
+    assert(res[3][0] == 'a')
     #print("fetchall 1 vs 5 = " + str(res))
     #fetchall 1 vs 5 = [
     #('u', 4, '1', 22.0, None, None, '01010000206A0800000000000000000000000000000000F03F', 3, None, 3, None),
@@ -167,7 +174,7 @@ def test(host, pguser):
 
     # add revision : edit one table then delete and commit changes; rev = 6
 
-    spversioning5.checkout(["epanet_trunk_rev_head.junctions"])
+    spversioning5.checkout(["epanet_trunk_rev_head.junctions", "epanet_trunk_rev_head.pipes"])
 
     scon = dbapi2.connect(sqlite_test_filename5)
     scur = scon.cursor()

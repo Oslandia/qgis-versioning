@@ -1,14 +1,11 @@
 #!/usr/bin/env python3
-from __future__ import absolute_import
-import sys
-sys.path.insert(0, '..')
 
-from versioningDB import versioning 
+import sys
+from versioningDB import versioning
 from sqlite3 import dbapi2
-import psycopg2
 import os
-import shutil
 import tempfile
+
 
 def test(host, pguser):
     pg_conn_info = "dbname=epanet_test_db host=" + host + " user=" + pguser
@@ -21,6 +18,7 @@ def test(host, pguser):
     os.system("createdb -h " + host + " -U "+pguser+" epanet_test_db")
     os.system("psql -h " + host + " -U "+pguser+" epanet_test_db -c 'CREATE EXTENSION postgis'")
     os.system("psql -h " + host + " -U "+pguser+" epanet_test_db -f "+test_data_dir+"/epanet_test_db.sql")
+    versioning.historize("dbname=epanet_test_db host={} user={}".format(host,pguser), "epanet")
 
     # try the update
     wc = [os.path.join(tmp_dir,"issue437_wc0.sqlite"), os.path.join(tmp_dir,"issue437_wc1.sqlite")]

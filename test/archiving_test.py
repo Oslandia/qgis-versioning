@@ -1,15 +1,14 @@
-# -*- coding: utf-8 -*-
 #!/usr/bin/env python3
-from __future__ import absolute_import
-import sys
-sys.path.insert(0, '..')
+# -*- coding: utf-8 -*-
 
+import sys
 from versioningDB import versioning
 import psycopg2
 import os
 
+
 def printTab(pcur, schema, table):
-    pk = 'pid'
+    pk = 'versioning_id'
     try:
         pk = versioning.pg_pk(pcur, schema, table)
     except:
@@ -41,6 +40,7 @@ def test(host, pguser):
     os.system("createdb -h " + host + " -U "+pguser+" epanet_test_db")
     os.system("psql -h " + host + " -U "+pguser+" epanet_test_db -c 'CREATE EXTENSION postgis'")
     os.system("psql -h " + host + " -U "+pguser+" epanet_test_db -f "+test_data_dir+"/epanet_test_db.sql")
+    versioning.historize("dbname=epanet_test_db host={} user={}".format(host,pguser), "epanet")
 
     # chechout
     #tables = ['epanet_trunk_rev_head.junctions','epanet_trunk_rev_head.pipes']
@@ -63,16 +63,16 @@ def test(host, pguser):
     pcur.execute("INSERT INTO epanet_working_copy.pipes_view(id, start_node, end_node, geom) VALUES ('5','1','2',ST_GeometryFromText('LINESTRING(1 -1,0 1)',2154))")
     pcur.commit()
     pgversioning.commit("rev 4")
-    pcur.execute("DELETE FROM epanet_working_copy.pipes_view S WHERE pid = 5")
+    pcur.execute("DELETE FROM epanet_working_copy.pipes_view S WHERE versioning_id = 5")
     pcur.commit()
     pgversioning.commit("rev 5")
     pcur.execute("INSERT INTO epanet_working_copy.pipes_view(id, start_node, end_node, geom) VALUES ('6','1','2',ST_GeometryFromText('LINESTRING(1 -1,0 1)',2154))")
     pcur.commit()
     pgversioning.commit("rev 6")
-    pcur.execute("UPDATE epanet_working_copy.pipes_view SET length = 4 WHERE pid = 3")
+    pcur.execute("UPDATE epanet_working_copy.pipes_view SET length = 4 WHERE versioning_id = 3")
     pcur.commit()
     pgversioning.commit("rev 7")
-    pcur.execute("UPDATE epanet_working_copy.pipes_view SET length = 4 WHERE pid = 1")
+    pcur.execute("UPDATE epanet_working_copy.pipes_view SET length = 4 WHERE versioning_id = 1")
     pcur.commit()
     pgversioning.commit("rev 8")
     pcur.execute("INSERT INTO epanet_working_copy.pipes_view(id, start_node, end_node, geom) VALUES ('7','1','2',ST_GeometryFromText('LINESTRING(1 -1,0 1)',2154))")
@@ -81,14 +81,14 @@ def test(host, pguser):
     pcur.execute("INSERT INTO epanet_working_copy.pipes_view(id, start_node, end_node, geom) VALUES ('8','1','2',ST_GeometryFromText('LINESTRING(1 -1,0 1)',2154))")
     pcur.commit()
     pgversioning.commit("rev 10")
-    pcur.execute("DELETE FROM epanet_working_copy.pipes_view S WHERE pid = 7")
+    pcur.execute("DELETE FROM epanet_working_copy.pipes_view S WHERE versioning_id = 7")
     pcur.commit()
     pgversioning.commit("rev 11")
     pcur.execute("INSERT INTO epanet_working_copy.pipes_view(id, start_node, end_node, geom) VALUES ('9','1','2',ST_GeometryFromText('LINESTRING(1 -1,0 1)',2154))")
     pcur.commit()
     pgversioning.commit("rev 12")
     
-    pcur.execute("SELECT * FROM epanet.pipes ORDER BY pid")
+    pcur.execute("SELECT * FROM epanet.pipes ORDER BY versioning_id")
     end = pcur.fetchall()
     
     printTab(pcur, 'epanet', 'pipes')
@@ -101,13 +101,13 @@ def test(host, pguser):
     pcur.execute("SELECT count(*) FROM epanet.pipes")
     [ret] = pcur.fetchone()
     assert(ret == 9)
-    pcur.execute("SELECT pid FROM epanet.pipes ORDER BY pid")
+    pcur.execute("SELECT versioning_id FROM epanet.pipes ORDER BY versioning_id")
     assert([i[0] for i in pcur.fetchall()] == [1, 2, 4, 6, 7, 8, 9, 10, 11])
     printTab(pcur, 'epanet_archive', 'pipes')
     pcur.execute("SELECT count(*) FROM epanet_archive.pipes")
     [ret] = pcur.fetchone()
     assert(ret == 2)
-    pcur.execute("SELECT pid FROM epanet_archive.pipes ORDER BY pid")
+    pcur.execute("SELECT versioning_id FROM epanet_archive.pipes ORDER BY versioning_id")
     assert([i[0] for i in pcur.fetchall()] == [3, 5])
     
     versioning.archive(pg_conn_info, 'epanet', 11)
@@ -115,13 +115,13 @@ def test(host, pguser):
     pcur.execute("SELECT count(*) FROM epanet.pipes")
     [ret] = pcur.fetchone()
     assert(ret == 7)
-    pcur.execute("SELECT pid FROM epanet.pipes ORDER BY pid")
+    pcur.execute("SELECT versioning_id FROM epanet.pipes ORDER BY versioning_id")
     assert([i[0] for i in pcur.fetchall()] == [2, 4, 6, 8, 9, 10, 11])
     printTab(pcur, 'epanet_archive', 'pipes')
     pcur.execute("SELECT count(*) FROM epanet_archive.pipes")
     [ret] = pcur.fetchone()
     assert(ret == 4)
-    pcur.execute("SELECT pid FROM epanet_archive.pipes ORDER BY pid")
+    pcur.execute("SELECT versioning_id FROM epanet_archive.pipes ORDER BY versioning_id")
     assert([i[0] for i in pcur.fetchall()] == [1, 3, 5, 7])
     
     # view
@@ -129,7 +129,7 @@ def test(host, pguser):
     pcur.execute("SELECT count(*) FROM epanet_archive.pipes_all")
     [ret] = pcur.fetchone()
     assert(ret == 11)
-    pcur.execute("SELECT * FROM epanet_archive.pipes_all ORDER BY pid")
+    pcur.execute("SELECT * FROM epanet_archive.pipes_all ORDER BY versioning_id")
     endv = pcur.fetchall()
     assert(end==endv)
     

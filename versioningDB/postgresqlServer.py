@@ -8,6 +8,8 @@ from itertools import zip_longest
 
 DEBUG=False
 
+from .constraints import ConstraintBuilder, check_unique_constraints
+
 class pgVersioningServer(object):    
     
     def revision(self, connection ):
@@ -312,22 +314,16 @@ class pgVersioningServer(object):
             "WHERE schema_name = '"+wcs+"'")
         if pcur.fetchone():
             raise RuntimeError("Schema "+wcs+" already exists")
-    
-        for pg_table_name in pg_table_names:
-            [schema, table] = pg_table_name.split('.')
-            if not ( schema and table and schema[-9:] == "_rev_head"):
-                raise RuntimeError("Schema names must end with suffix "
-                    "_branch_rev_head")
-    
-    
+
+        tables = get_checkout_tables(pg_conn_info, pg_table_names, selected_feature_lists)
+
         pcur.execute("CREATE SCHEMA "+wcs)
     
         first_table = True
-        for pg_table_name, feature_list in list(zip_longest(pg_table_names, selected_feature_lists)):
-            [schema, table] = pg_table_name.split('.')
-            [schema, sep, branch] = schema[:-9].rpartition('_')
-            del sep
-    
+        for (schema, table, branch), feature_list in tables.items():
+
+            constraint_builder = ConstraintBuilder(pcur, pcur, schema, wcs)
+
             pkey = pg_pk( pcur, schema, table )
             history_columns = [pkey] + sum([
                 [brch+'_rev_end', brch+'_rev_begin',
@@ -385,15 +381,14 @@ class pgVersioningServer(object):
                 "ON UPDATE CASCADE ON DELETE CASCADE")
     
             if feature_list:
-                additional_filter = "AND t.{pkey} IN ({features})".format(
-                        pkey=pkey,
-                        features = ','.join(str(f) for f in feature_list)
-                        )
+                actual_table_pk = get_pkey(pcur, schema, table)
+                fids_str = ",".join([str(feature_list[i]) for i in range(0, len(feature_list))])
+                additional_filter = f"AND t.{actual_table_pk} IN ({fids_str})"
             else:
                 additional_filter = ""
     
             current_rev_sub = "(SELECT MAX(rev) FROM "+wcs+".initial_revision)"
-            pcur.execute("""
+            pcur.execute(f"""
                 CREATE VIEW {wcs}.{table}_view AS 
                     SELECT {pkey}, {cols}
                     FROM {wcs}.{table}_diff 
@@ -409,17 +404,7 @@ class pgVersioningServer(object):
                         OR t.{branch}_rev_end >= {current_rev_sub}) 
                         AND t.{branch}_rev_begin IS NOT NULL)
                     {additional_filter}
-                """.format(
-                    wcs=wcs,
-                    schema=schema,
-                    table=table,
-                    pkey=pkey,
-                    cols=cols,
-                    hcols=hcols,
-                    branch=branch,
-                    current_rev_sub=current_rev_sub,
-                    additional_filter=additional_filter
-                ))
+                """)
     
             max_fid_sub = ("( SELECT MAX(max_fid) FROM ( SELECT MAX("+pkey+") "
                 "AS max_fid FROM "+wcs+"."+table+"_diff "
@@ -434,9 +419,12 @@ class pgVersioningServer(object):
                 "end;\n"
                 "$$ language plpgsql;")
     
+            constraint_before = constraint_builder.get_referencing_constraint('update', table)
+            constraint_after = constraint_builder.get_referenced_constraint('update', table)
             pcur.execute("CREATE FUNCTION "+wcs+".update_"+table+"() "
             "RETURNS trigger AS $$\n"
-                "BEGIN\n"
+                "BEGIN\n"+
+                    constraint_before+"\n"+
                     # when we edit something we already added , we just update
                     "UPDATE "+wcs+"."+table+"_diff "
                     "SET ("+cols+") = ("+newcols+") "
@@ -485,7 +473,9 @@ class pgVersioningServer(object):
                         "WHERE "+pkey+" = OLD."+pkey+" "
                         "AND "+branch+"_rev_begin <= "+current_rev_sub+" "
                         "AND ("+branch+"_rev_end IS NULL "
-                            "OR "+branch+"_rev_end >= "+current_rev_sub+")) = 1;\n"
+                            "OR "+branch+"_rev_end >= "+current_rev_sub+")) = 1;\n"+
+
+                    constraint_after+"\n"+
                     "RETURN NEW;\n"
                 "END;\n"
             "$$ LANGUAGE plpgsql;")
@@ -493,10 +483,12 @@ class pgVersioningServer(object):
             pcur.execute("CREATE TRIGGER update_"+table+" "
                 "INSTEAD OF UPDATE ON "+wcs+"."+table+"_view "
                 "FOR EACH ROW EXECUTE PROCEDURE "+wcs+".update_"+table+"();")
-    
+
+            constraint = constraint_builder.get_referencing_constraint('insert', table)
             pcur.execute("CREATE FUNCTION "+wcs+".insert_"+table+"() "
             "RETURNS trigger AS $$\n"
-                "BEGIN\n"
+                "BEGIN\n"+
+                    constraint + "\n" +
                     "INSERT INTO "+wcs+"."+table+"_diff "+
                         "("+pkey+", "+cols+", "+branch+"_rev_begin) "
                         "VALUES "
@@ -509,9 +501,11 @@ class pgVersioningServer(object):
                 "INSTEAD OF INSERT ON "+wcs+"."+table+"_view "
                 "FOR EACH ROW EXECUTE PROCEDURE "+wcs+".insert_"+table+"();")
     
+            constraint = constraint_builder.get_referenced_constraint('delete', table)
             pcur.execute("CREATE FUNCTION "+wcs+".delete_"+table+"() "
             "RETURNS trigger AS $$\n"
-                "BEGIN\n"
+                "BEGIN\n"+
+                    constraint+"\n"+
                     # insert if not already in diff
                     "INSERT INTO "+wcs+"."+table+"_diff "
                         "SELECT "+cols+", "+hcols+" FROM "+schema+"."+table+" "
@@ -547,7 +541,7 @@ class pgVersioningServer(object):
     
         pcur.commit()
         pcur.close()
-    
+
     def unresolved_conflicts(self, connection ):
         (pg_conn_info, working_copy_schema) = connection
         """return a list of tables with unresolved conflicts"""
@@ -582,7 +576,7 @@ class pgVersioningServer(object):
             raise RuntimeError("Working copy "+working_copy_schema+" "
                 "is not up to date. It's late by "+str(late_by)+" commit(s).\n\n"
                 "Please update before committing your modifications")
-    
+
         # Better if we could have a QgsDataSourceURI.username()
         try :
             pg_username = pg_conn_info.split(' ')[3].replace("'","").split('=')[1]
@@ -592,7 +586,9 @@ class pgVersioningServer(object):
         pcur.execute("SELECT rev, branch, table_schema, table_name "
             "FROM "+wcs+".initial_revision")
         versioned_layers = pcur.fetchall()
-    
+
+        check_unique_constraints(pcur, pcur, wcs)
+
         if not versioned_layers:
             raise RuntimeError("Cannot find a versioned layer in "+wcs)
     

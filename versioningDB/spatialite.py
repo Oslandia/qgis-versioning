@@ -7,6 +7,8 @@ from itertools import zip_longest
 import os
 DEBUG=False
 
+from .constraints import ConstraintBuilder, check_unique_constraints
+
 class spVersioning(object):
     
     def revision(self, connection ):
@@ -321,7 +323,6 @@ class spVersioning(object):
         scur.commit()
         scur.close()
         
-    
     def checkout(self, connection, pg_table_names, selected_feature_lists = []):
         (sqlite_filename, pg_conn_info) = connection
         """create working copy from versioned database tables
@@ -330,24 +331,17 @@ class spVersioning(object):
         the file sqlite_filename must not exists
         the views and trigger for local edition will be created
         along with the tables and triggers for conflict resolution"""
-    
+
         if os.path.isfile(sqlite_filename):
             raise RuntimeError("File "+sqlite_filename+" already exists")
-        for pg_table_name in pg_table_names:
-            [schema, table] = pg_table_name.split('.')
-            if not ( schema and table and schema[-9:] == "_rev_head"):
-                raise RuntimeError("Schema names must end with "
-                    "suffix _branch_rev_head")
-    
+
+        tables = get_checkout_tables(pg_conn_info, pg_table_names, selected_feature_lists)
         pcur = Db(psycopg2.connect(pg_conn_info))
     
         temp_view_names = []
         first_table = True
-        for pg_table_name,feature_list in list(zip_longest(pg_table_names, selected_feature_lists)):
-            [schema, table] = pg_table_name.split('.')
-            [schema, sep, branch] = schema[:-9].rpartition('_')
-            del sep
-    
+        for (schema, table, branch), feature_list in tables.items():
+
             # fetch the current rev
             pcur.execute("SELECT MAX(rev) FROM "+schema+".revisions")
             current_rev = int(pcur.fetchone()[0])
@@ -380,15 +374,20 @@ class spVersioning(object):
                 pcur.execute("SELECT column_name FROM information_schema.columns WHERE table_schema = \'"+schema+"\' AND table_name   = \'"+table+"\'")
                 column_list = pcur.fetchall()
                 new_columns_str = preserve_fid( pkey, column_list)
-                view_str = "CREATE OR REPLACE VIEW "+temp_view_name+" AS SELECT "+new_columns_str+" FROM " +schema+"."+table
+                view_str = f"""
+                CREATE OR REPLACE VIEW {temp_view_name} AS
+                SELECT {new_columns_str} FROM {schema}.{table}"""
                 if feature_list:
-                    view_str = "CREATE OR REPLACE VIEW "+temp_view_name+" AS SELECT "+new_columns_str+" FROM " +schema+"."+table+" WHERE "+pkey+' in ('+",".join([str(feature_list[i]) for i in range(0, len(feature_list))])+')'
+                    actual_table_pk = get_pkey(pcur, schema, table)
+                    fids_str = ",".join([str(feature_list[i]) for i in range(0, len(feature_list))])
+                    view_str += f" WHERE {actual_table_pk} in ({fids_str})"
+
                 pcur.execute(view_str)
                 pcur.commit()
     
                 if DEBUG: print(' '.join(cmd))
                 os.system(' '.join(cmd))
-    
+
                 # save target revision in a table
                 scur = Db(dbapi2.connect(sqlite_filename))
                 scur.execute("CREATE TABLE initial_revision AS SELECT "+
@@ -431,7 +430,9 @@ class spVersioning(object):
                 scur.close()
     
             scur = Db(dbapi2.connect(sqlite_filename))
-    
+
+            constraint_builder = ConstraintBuilder(pcur, scur, schema, None)
+            
             # create views and triggers in spatilite db
             
             cols = ""
@@ -464,15 +465,19 @@ class spVersioning(object):
                 (view_name, view_geometry, view_rowid, 
                 f_table_name, f_geometry_column, read_only)
                 VALUES ('{0}_view', '{1}', 'rowid', '{0}', '{1}', 0)""".format(table, pgeom))
-    
+
+            
             # when we edit something old, we insert and update parent
+            constraint_before = constraint_builder.get_referencing_constraint('update', table)
+            constraint_after = constraint_builder.get_referenced_constraint('update', table)
             scur.execute(
             "CREATE TRIGGER update_old_"+table+" "
                 "INSTEAD OF UPDATE ON "+table+"_view "
                 "WHEN (SELECT COUNT(*) FROM "+table+" "
                 "WHERE ogc_fid = new.ogc_fid "
                 "AND ("+branch+"_rev_begin <= "+current_rev_sub+" ) ) \n"
-                "BEGIN\n"
+                "BEGIN\n"+
+                constraint_before+"\n"+
                 "INSERT INTO "+table+" "
                 "(ogc_fid, "+cols+", "+branch+"_rev_begin, "
                  +branch+"_parent) "
@@ -480,35 +485,43 @@ class spVersioning(object):
                 "("+max_fid_sub+"+1, "+newcols+", "+current_rev_sub+"+1, "
                   "old.ogc_fid);\n"
                 "UPDATE "+table+" SET "+branch+"_rev_end = "+current_rev_sub+", "
-                +branch+"_child = "+max_fid_sub+" WHERE ogc_fid = old.ogc_fid;\n"
+                +branch+"_child = "+max_fid_sub+" WHERE ogc_fid = old.ogc_fid;\n"+
+                constraint_after+"\n"+
                 "END")
+            
             # when we edit something new, we just update
             scur.execute("CREATE TRIGGER update_new_"+table+" "
             "INSTEAD OF UPDATE ON "+table+"_view "
                   "WHEN (SELECT COUNT(*) FROM "+table+" "
                   "WHERE ogc_fid = new.ogc_fid AND ("+branch+"_rev_begin > "
                   +current_rev_sub+" ) ) \n"
-                  "BEGIN\n"
+                  "BEGIN\n"+
+                    constraint_before+"\n"+
                     "REPLACE INTO "+table+" "
                     "(ogc_fid, "+cols+", "+branch+"_rev_begin, "+branch+"_parent) "
                     "VALUES "
                     "(new.ogc_fid, "+newcols+", "+current_rev_sub+"+1, (SELECT "
                     +branch+"_parent FROM "+table+
-                    " WHERE ogc_fid = new.ogc_fid));\n"
+                    " WHERE ogc_fid = new.ogc_fid));\n"+
+                    constraint_after+"\n"+
                   "END")
     
+            constraint = constraint_builder.get_referencing_constraint('insert', table)
             scur.execute("CREATE TRIGGER insert_"+table+" "
             "INSTEAD OF INSERT ON "+table+"_view\n"
-                "BEGIN\n"
+                "BEGIN\n"+
+                    constraint+"\n"+
                     "INSERT INTO "+table+" "+
                     "(ogc_fid, "+cols+", "+branch+"_rev_begin) "
                     "VALUES "
                     "("+max_fid_sub+"+1, "+newcols+", "+current_rev_sub+"+1);\n"
                 "END")
-    
+
+            constraint = constraint_builder.get_referenced_constraint('delete', table)
             scur.execute("CREATE TRIGGER delete_"+table+" "
             "INSTEAD OF DELETE ON "+table+"_view\n"
-                "BEGIN\n"
+                "BEGIN\n"+
+                    constraint+"\n"+
                   # update it if its old
                     "UPDATE "+table+" "
                         "SET "+branch+"_rev_end = "+current_rev_sub+" "
@@ -529,14 +542,15 @@ class spVersioning(object):
                 "END")
     
             scur.commit()
-            scur.close()
+
         # Remove temp views after sqlite file is written
         for i in temp_view_names:
             del_view_str = "DROP VIEW IF EXISTS " + i
             pcur.execute(del_view_str)
             pcur.commit()
+
         pcur.close()
-        
+        scur.close()
     
     def unresolved_conflicts(self, connection):
         sqlite_filename = connection[0]
@@ -575,11 +589,14 @@ class spVersioning(object):
                     " is not up to date. "
                     "It's late by "+str(late_by)+" commit(s).\n\n"
                     "Please update before commiting your modifications")
-    
+
         scur = Db(dbapi2.connect(sqlite_filename))
         scur.execute("SELECT rev, branch, table_schema, table_name "
             "FROM initial_revision")
         versioned_layers = scur.fetchall()
+
+        pcur = Db(psycopg2.connect(pg_conn_info))
+        check_unique_constraints(pcur, scur, "main")
     
         if not versioned_layers:
             raise RuntimeError("Cannot find a versioned layer in "+sqlite_filename)
@@ -595,7 +612,7 @@ class spVersioning(object):
                 assert( next_rev == rev + 1 )
             else:
                 next_rev = rev + 1
-    
+
             scur.execute( "DROP TABLE IF EXISTS "+table+"_diff")
     
             # note, creating the diff table dirrectly with
@@ -634,7 +651,6 @@ class spVersioning(object):
             except (IndexError):
                 pg_username = ''
     
-            pcur = Db(psycopg2.connect(pg_conn_info))
             pg_users_list = get_pg_users_list(pg_conn_info)
             pkey = pg_pk( pcur, table_schema, table )
             pgeom = pg_geom( pcur, table_schema, table )
@@ -658,10 +674,10 @@ class spVersioning(object):
                     '"' + sqlite_filename + '"',
                     table+"_diff",
                     '-nln', diff_schema+'.'+table+"_diff"]
-    
+
             if DEBUG: print(' '.join(cmd))
             os.system(' '.join(cmd))
-    
+
             for l in pcur.execute( "select * from geometry_columns").fetchall():
                 if DEBUG: print(l)
     
@@ -673,7 +689,6 @@ class spVersioning(object):
     
             if not there_is_something_to_commit:
                 if DEBUG: print("nothing to commit for ", table)
-                pcur.close()
                 continue
     
             nb_of_updated_layer += 1
@@ -733,13 +748,12 @@ class spVersioning(object):
                     "AND src."+branch+"_rev_end = "+str(rev))
     
             pcur.commit()
-            pcur.close()
+            # pcur.close()
     
             scur.commit()
-    
+
         if nb_of_updated_layer:
             for [rev, branch, table_schema, table] in versioned_layers:
-                pcur = Db(psycopg2.connect(pg_conn_info))
                 pkey = pg_pk( pcur, table_schema, table )
                 pcur.execute("SELECT MAX(rev) FROM "+table_schema+".revisions")
                 [rev] = pcur.fetchone()
@@ -747,7 +761,7 @@ class spVersioning(object):
                 [max_pk] = pcur.fetchone()
                 if not max_pk :
                     max_pk = 0
-                pcur.close()
+                
                 scur.execute("UPDATE initial_revision "
                     "SET rev = "+str(rev)+", max_pk = "+str(max_pk)+" "
                     "WHERE table_schema = '"+table_schema+"' "
@@ -759,9 +773,8 @@ class spVersioning(object):
     
         # cleanup diffs in postgis
         for schema, conn_info in schema_list.items():
-            pcur = Db(psycopg2.connect(conn_info))
             pcur.execute("DROP SCHEMA "+schema+" CASCADE")
             pcur.commit()
-            pcur.close()
-    
+        
+        pcur.close()
         return nb_of_updated_layer

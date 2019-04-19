@@ -166,6 +166,20 @@ CREATE SEQUENCE revisions_rev_seq
 
 ALTER SEQUENCE revisions_rev_seq OWNED BY revisions.rev;
 
+--
+-- Name: versioning_constraints; Type: TABLE; Schema: epanet; 
+--
+
+CREATE TABLE epanet.versioning_constraints (
+    table_from character varying,
+    columns_from character varying[],
+    defaults_from character varying[],
+    table_to character varying,
+    columns_to character varying[],
+    updtype character(1),
+    deltype character(1)
+);
+
 
 SET search_path = epanet_trunk_rev_head, pg_catalog;
 
@@ -262,6 +276,17 @@ COPY revisions (rev, commit_msg, branch, date, author) FROM stdin;
 --
 
 SELECT pg_catalog.setval('revisions_rev_seq', 1, false);
+
+--
+-- Data for Name: versioning_constraints; Type: TABLE DATA; Schema: epanet;
+--
+
+COPY epanet.versioning_constraints (table_from, columns_from, defaults_from, table_to, columns_to, updtype, deltype) FROM stdin;
+junctions	{id}	{nextval('epanet.junctions_id_seq'::regclass)}	\N	\N	 	 
+pipes	{id}	{nextval('epanet.pipes_id_seq'::regclass)}	\N	\N	 	 
+pipes	{start_node}	{NULL}	junctions	{id}	a	a
+pipes	{end_node}	{NULL}	junctions	{id}	a	a
+\.
 
 
 SET search_path = public, pg_catalog;

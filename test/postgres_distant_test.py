@@ -1,9 +1,7 @@
 #!/usr/bin/env python3
-from __future__ import absolute_import
-import sys
-sys.path.insert(0, '..')
 
-from versioningDB import versioning 
+import sys
+from versioningDB import versioning
 from sqlite3 import dbapi2
 import psycopg2
 import os
@@ -36,9 +34,8 @@ def test(host, pguser):
     os.system("dropdb --if-exists -h " + host + " -U "+pguser+" epanet_test_copy_db")
     os.system("createdb -h " + host + " -U "+pguser+" epanet_test_db")
     os.system("createdb -h " + host + " -U "+pguser+" epanet_test_copy_db")
-    os.system("psql -h " + host + " -U "+pguser+" epanet_test_db -c 'CREATE EXTENSION postgis'")
-    os.system("psql -h " + host + " -U "+pguser+" epanet_test_copy_db -c 'CREATE EXTENSION postgis'")
     os.system("psql -h " + host + " -U "+pguser+" epanet_test_db -f "+test_data_dir+"/epanet_test_db.sql")
+    versioning.historize("dbname=epanet_test_db host={} user={}".format(host,pguser), "epanet")
 
     # chechout
     #tables = ['epanet_trunk_rev_head.junctions','epanet_trunk_rev_head.pipes']
@@ -64,7 +61,7 @@ def test(host, pguser):
     pcur.execute("SELECT * FROM epanet.pipes")
     assert( len(pcur.fetchall()) == 3 )
 
-    pcurcpy.execute("UPDATE epanet_trunk_rev_head.pipes_view SET start_node = '2' WHERE id = '0'")
+    pcurcpy.execute("UPDATE epanet_trunk_rev_head.pipes_view SET start_node = '2' WHERE id = '1'")
     pcurcpy.commit()
     pcurcpy.execute("SELECT * FROM epanet_trunk_rev_head.pipes_view")
     assert( len(pcurcpy.fetchall())  == 3 )
@@ -92,7 +89,7 @@ def test(host, pguser):
     scon.enable_load_extension(True)
     scon.execute("SELECT load_extension('mod_spatialite')")
     scur = scon.cursor()
-    scur.execute("INSERT INTO pipes_view(id, start_node, end_node, geom) VALUES ('4', '10','100',ST_GeometryFromText('LINESTRING(2 0, 0 2)',2154))")
+    scur.execute("INSERT INTO pipes_view(id, start_node, end_node, geom) VALUES (4, 1, 2,ST_GeometryFromText('LINESTRING(2 0, 0 2)',2154))")
     scon.commit()
     spversioning1.commit("sp commit")
     
@@ -107,7 +104,7 @@ def test(host, pguser):
     pcurcpy.execute("SELECT * FROM epanet_trunk_rev_head.pipes_view")
     assert( len(pcurcpy.fetchall())  == 3 )
     
-    pcur.execute("SELECT pid FROM epanet_trunk_rev_head.pipes ORDER BY pid")
+    pcur.execute("SELECT versioning_id FROM epanet_trunk_rev_head.pipes ORDER BY versioning_id")
     ret = pcur.fetchall()
 
     assert([i[0] for i in ret] == [3, 4, 5])
@@ -115,7 +112,7 @@ def test(host, pguser):
     ret = pcurcpy.fetchall()
     assert([i[0] for i in ret] == [3, 4, 5])
 
-    pcurcpy.execute("INSERT INTO epanet_trunk_rev_head.pipes_view(id, start_node, end_node, geom) VALUES ('4','1','2',ST_GeometryFromText('LINESTRING(3 2,0 1)',2154))")
+    pcurcpy.execute("INSERT INTO epanet_trunk_rev_head.pipes_view(id, start_node, end_node, geom) VALUES (5,'1','2',ST_GeometryFromText('LINESTRING(3 2,0 1)',2154))")
     pcurcpy.commit()
     pgversioning.commit('INSERT AFTER UPDATE')
     

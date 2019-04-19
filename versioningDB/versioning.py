@@ -48,24 +48,25 @@ gdal_mac_path = "/Library/Frameworks/GDAL.framework/Programs"
 if any(platform.mac_ver()) and gdal_mac_path not in os.environ["PATH"]:
     os.environ["PATH"] += ":"+gdal_mac_path
 
+sql_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "sql")
+
 
 def historize(pg_conn_info, schema):
     """Create historisation for the given schema"""
     if not schema:
         raise RuntimeError("no schema specified")
+
     pcur = utils.Db(psycopg2.connect(pg_conn_info))
 
-    pcur.execute("""
-        CREATE TABLE {schema}.revisions (
-            rev serial PRIMARY KEY,
-            commit_msg varchar,
-            branch varchar DEFAULT 'trunk',
-            date timestamp DEFAULT current_timestamp,
-            author varchar)
-            """.format(schema=schema))
+    sql_file = open(os.path.join(sql_path, 'historize.sql'), 'r')
+    sql = sql_file.read()
+    sql_file.close()
+    pcur.execute(sql.format(schema=schema))
+
     pcur.commit()
     pcur.close()
     add_branch(pg_conn_info, schema, 'trunk', 'initial commit')
+
 
 def createIndex(pcur, schema, table, branch):
     """ create index on columns used for versinoning"""
@@ -120,27 +121,16 @@ def add_branch( pg_conn_info, schema, branch, commit_msg,
                  "WHERE table_schema = '"+schema+"' "
                  "AND table_type = 'BASE TABLE'")
     for [table] in pcur.fetchall():
-        if table == 'revisions':
+        if table in ('revisions', 'versioning_constraints'):
             continue
 
-        try:
-            pkey = utils.pg_pk(pcur, schema, table)
-        except:
-            if 'VERSIONING_NO_PK' in os.environ and os.environ['VERSIONING_NO_PK'] == 'skip':
-                if DEBUG:
-                    print(schema+'.'+table+' has no primary key, skipping')
-            else:
-                raise RuntimeError(schema+'.'+table+' has no primary key')
+        pcur.execute("""ALTER TABLE {schema}.{table}
+        ADD COLUMN {branch}_rev_begin integer REFERENCES {schema}.revisions(rev),
+        ADD COLUMN {branch}_rev_end   integer REFERENCES {schema}.revisions(rev),
+        ADD COLUMN {branch}_parent    integer REFERENCES {schema}.{table}(versioning_id),
+        ADD COLUMN {branch}_child     integer REFERENCES {schema}.{table}(versioning_id)""".format(
+            schema=schema, branch=branch, table=table))
 
-        pcur.execute("ALTER TABLE "+schema+"."+table+" "
-            "ADD COLUMN "+branch+"_rev_begin integer "
-            "REFERENCES "+schema+".revisions(rev), "
-            "ADD COLUMN "+branch+"_rev_end   integer "
-            "REFERENCES "+schema+".revisions(rev), "
-            "ADD COLUMN "+branch+"_parent    integer "
-            "REFERENCES "+schema+"."+table+"("+pkey+"),"
-            "ADD COLUMN "+branch+"_child     integer "
-            "REFERENCES "+schema+"."+table+"("+pkey+")")
         createIndex(pcur, schema, table, branch)
 
         if branch == 'trunk':  # initial versioning
@@ -202,28 +192,37 @@ def diff_rev_view_str(pg_conn_info, schema, table, branch, rev_begin, rev_end):
         pcur.close()
         raise RuntimeError("Revision 2 (end) "+rev_end+" doesn't exist")
 
-    select_str = ("SELECT "
-                  "CASE WHEN "
-                  + schema+"."+table+"."+branch+"_rev_begin > "+rev_begin + " "
-                  "AND " + schema+"."+table+"."+branch+"_rev_begin <= "+rev_end + " "
-                  "AND " + schema+"."+table+"."+branch+"_parent IS NULL THEN 'a' "
-                  "WHEN (" + schema+"."+table+"."+branch +
-                  "_rev_begin > "+rev_begin + " "
-                  "AND " + schema+"."+table+"."+branch+"_rev_end IS NULL "
-                  "AND " + schema+"."+table+"."+branch+"_parent IS NOT NULL) "
-                  "OR ("+schema+"."+table+"."+branch+"_rev_end >= "+rev_end+" "
-                  "AND "+schema+"."+table+"."+branch+"_child IS NOT NULL) "
-                  "THEN 'u' "
-                  "WHEN " + schema+"."+table+"."+branch+"_rev_end > "+rev_begin + " "
-                  "AND " + schema+"."+table+"."+branch+"_rev_end < "+rev_end + " "
-                  "AND " + schema+"."+table+"."+branch+"_child IS NULL THEN 'd' ELSE 'i' END "
-                  "as diff_status, * FROM "+schema+"."+table + " "
-                  "WHERE (" + schema+"."+table+"."+branch +
-                  "_rev_begin > "+rev_begin + " "
-                  "AND " + schema+"."+table+"."+branch+"_rev_begin <= "+rev_end+") "
-                  "OR (" + schema+"."+table+"."+branch +
-                  "_rev_end > "+rev_begin + " "
-                  "AND " + schema+"."+table+"."+branch+"_rev_end <= "+rev_end + " )")
+    select_str = """SELECT CASE
+
+    -- Added/Created
+    WHEN t.{branch}_rev_begin > {rev_begin}
+    AND t.{branch}_rev_begin <= {rev_end}
+    AND t.{branch}_parent IS NULL THEN 'a'
+
+    -- Updated
+    WHEN (t.{branch}_rev_begin > {rev_begin}
+    AND t.{branch}_rev_end IS NULL
+    AND t.{branch}_parent IS NOT NULL)
+    OR (t.{branch}_rev_end >= {rev_end}
+    AND t.{branch}_child IS NOT NULL) THEN 'u'
+
+    -- Deleted
+    WHEN t.{branch}_rev_end > {rev_begin}
+    AND t.{branch}_rev_end < {rev_end}
+    AND t.{branch}_child IS NULL THEN 'd'
+
+    -- Intermediate
+    ELSE 'i'
+    END
+
+    as diff_status, * FROM {schema}.{table} t
+    WHERE (t.{branch}_rev_begin > {rev_begin}
+    AND t.{branch}_rev_begin <= {rev_end})
+    OR (t.{branch}_rev_end > {rev_begin}
+    AND t.{branch}_rev_end <= {rev_end} )
+    ORDER BY versioning_id""".format(
+        schema=schema, table=table, branch=branch,
+        rev_begin=rev_begin, rev_end=rev_end)
 
     pcur.close()
     return select_str
@@ -300,7 +299,7 @@ def add_revision_view(pg_conn_info, schema, branch, rev):
                  "AND table_type = 'BASE TABLE'")
 
     for [table] in pcur.fetchall():
-        if table == 'revisions':
+        if table in ('revisions', 'versioning_constraints'):
             continue
         pcur.execute("SELECT column_name "
                      "FROM information_schema.columns "
@@ -345,7 +344,7 @@ def archive(pg_conn_info, schema, revision_end):
         "AND table_type = 'BASE TABLE'")
     
     for [table] in pcur.fetchall():
-        if table == 'revisions': 
+        if table in ('revisions', 'versioning_constraints'):
             continue
         
         pk = utils.pg_pk(pcur, schema, table)
@@ -427,8 +426,9 @@ def merge(pg_conn_info, schema, branch_name):
 
     total = 0
     for [table] in pcur.fetchall():
-        if table == 'revisions':
+        if table in ('revisions', 'versioning_constraints'):
             continue
+        
         pcur.execute("""SELECT count(*) FROM {schema}.{table} WHERE 
                      trunk_rev_begin IS NULL OR 
                      (trunk_rev_end IS NULL and {branche}_rev_end IS NOT NULL)""".format(

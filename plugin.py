@@ -1313,8 +1313,14 @@ class Plugin(QObject):
 
         nb_of_updated_layer = 0
         rev = 0
-        nb_of_updated_layer = self.versioning.commit(
-            commit_msg, commit_pg_user)
+
+        try:
+            nb_of_updated_layer = self.versioning.commit(
+                commit_msg, commit_pg_user)
+        except RuntimeError as e:
+            self.iface.messageBar().pushWarning("Commit failed", str(e))
+            return
+
         rev = self.versioning.revision()
 
         if nb_of_updated_layer:

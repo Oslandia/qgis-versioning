@@ -199,6 +199,27 @@ def pg_branches(pcur, schema):
     return [res for [res] in pcur.fetchall()]
 
 
+def pg_user_defined_type(cur, schema, table, column):
+    """Return the user defined type for given column
+
+    :param cur: current PostGres cursor
+    :param schema: Schema name
+    :param table: Table name
+    :param column: Column name
+    """
+    cur.execute(f"""SELECT udt_name
+    FROM information_schema.columns
+    WHERE table_schema = '{schema}' AND table_name = '{table}'
+    AND data_type = 'USER-DEFINED' AND column_name= '{column}';
+    """)
+
+    if not cur.hasrow():
+        raise RuntimeError(f"Column {column} from {schema}.{table} "
+                           "is not a user defined type")
+    res = cur.fetchone()[0]
+    return res
+
+
 def pg_array_elem_type(cur, schema, table, column):
     """Fetch type of elements of a column of type ARRAY"""
     cur.execute("SELECT e.data_type FROM information_schema.columns c "

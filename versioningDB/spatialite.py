@@ -721,7 +721,7 @@ class spVersioning(object):
                     cols += quote_ident(col[0])+", "
                     if col[1] != 'ARRAY':
                         if col[1] == 'USER-DEFINED':
-                            cast = ""
+                            cast = "::" + pg_user_defined_type(pcur, table_schema, table, col[0])
                         elif col[1] == 'character' and col[2]:
                             cast = "::varchar"
                         else:
